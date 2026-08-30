@@ -284,6 +284,27 @@ Plugins.band_survey.init = function () {
     listenCmd = "continue";
   }
 
+  function sameListenFreq(freq) {
+    return !!(listenFreq && freq && Math.abs(Number(freq) - listenFreq) < 4000);
+  }
+
+  function alwaysSkipAndContinue(freq) {
+    freq = Number(freq) || currentTuneHz();
+    if (freq) ignoreFreq(freq);
+    listenCmd = "skip";
+    if (listenPaused) resumeListenScan();
+    if (freq) {
+      setStatus("Always skip " + fmtMhz(freq) + (listenPaused ? " — continuing scan." : " — next scan will not land here."));
+    }
+  }
+
+  function continueIfPausedOn(freq) {
+    if (!sameListenFreq(freq)) return false;
+    listenCmd = "skip";
+    if (listenPaused) resumeListenScan();
+    return listenPaused;
+  }
+
   function ownerOverrideAllowed() {
     return BAND_SURVEY_ALLOW_OWNER_OVERRIDE !== false;
   }
@@ -881,7 +902,7 @@ Plugins.band_survey.init = function () {
         ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
         : "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> — the operator locked fast hops on this public receiver (visitors cannot tick the override). Server bot-ban still applies if it is enabled.</li>") +
       "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to always skip a birdie (click again to undo).</li>" +
-      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ~30 min, <b>Always skip</b> never land there again (saved in this browser). A <b>busy</b> channel pauses until you click <b>Continue scan</b>. Undo with <b>un-ign</b> on the peak (untick Hide birdies) or <b>Clear always-skip</b>.</li>" +
+      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ~30 min, <b>Always skip</b> never land there again and continue the scan (saved in this browser). A <b>busy</b> channel pauses until you click <b>Continue scan</b> or <b>Always skip</b>. Undo with <b>un-ign</b> on the peak (untick Hide birdies) or <b>Clear always-skip</b>.</li>" +
       "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
@@ -1928,7 +1949,7 @@ Plugins.band_survey.init = function () {
           '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
           (skipped
             ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
-            : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Never land on this frequency again in this browser.">ign</button>') +
+            : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>') +
           "</li>";
       }).join("") + "</ul>";
     }
@@ -2136,7 +2157,11 @@ Plugins.band_survey.init = function () {
         setStatus("Will land on " + fmtMhz(f) + " again.");
       } else {
         ignoreFreq(f);
-        setStatus("Always skip " + fmtMhz(f) + " (saved in this browser).");
+        if (continueIfPausedOn(f)) {
+          setStatus("Always skip " + fmtMhz(f) + " — continuing scan.");
+        } else {
+          setStatus("Always skip " + fmtMhz(f) + " (saved in this browser).");
+        }
       }
       renderBookmarkPane();
       return;
@@ -2293,7 +2318,7 @@ Plugins.band_survey.init = function () {
       var alwaysOn = isIgnoredFreq(h.freq) || !!h.ignored;
       var ignBtn = alwaysOn
         ? ' <button type="button" class="bs-tiny bs-on" data-ignore="' + h.freq + '" title="Stop always-skipping this MHz">un-ign</button>'
-        : ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Always skip this MHz on future scans">ign</button>';
+        : ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Skip this MHz forever and continue the scan.">ign</button>';
       return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
         '<td class="bs-n">' + h.seen + "</td>" +
         '<td>' + pri + newb + ch +
@@ -3151,7 +3176,7 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-hold" title="Stay on this frequency until you click Hold again or Skip.">Hold</button>' +
       '<button type="button" id="bs-skip" title="Leave this frequency and go to the next bookmark.">Skip</button>' +
       '<button type="button" id="bs-lockout" title="Skip this frequency for Lockout minutes (saved in this browser).">Lockout</button>' +
-      '<button type="button" id="bs-alwaysskip" title="Never land on this frequency again in this browser.">Always skip</button>' +
+      '<button type="button" id="bs-alwaysskip" title="Skip this MHz forever and continue the scan.">Always skip</button>' +
       '<button type="button" id="bs-contscan" title="Leave this busy channel and keep scanning bookmarks.">Continue scan</button>' +
       '<span class="bs-hint" id="bs-hophint">busy waits · Always skip = never again · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
@@ -3294,14 +3319,7 @@ Plugins.band_survey.init = function () {
     };
     $("bs-skip").onclick = function () { listenCmd = "skip"; };
     $("bs-lockout").onclick = function () { listenCmd = "lock"; };
-    $("bs-alwaysskip").onclick = function () {
-      var f = currentTuneHz();
-      listenCmd = "skip";
-      if (f) {
-        ignoreFreq(f);
-        setStatus("Always skip " + fmtMhz(f) + " — next scan will not land here.");
-      }
-    };
+    $("bs-alwaysskip").onclick = function () { alwaysSkipAndContinue(); };
     $("bs-contscan").onclick = resumeListenScan;
     if ($("bs-clearskip")) $("bs-clearskip").onclick = clearAlwaysSkips;
     $("bs-filter").oninput = filterBands;
@@ -3423,7 +3441,11 @@ Plugins.band_survey.init = function () {
           setStatus("Will land on " + fmtMhz(ignF) + " again.");
         } else {
           ignoreFreq(ignF);
-          setStatus("Always skip " + fmtMhz(ignF) + " (saved in this browser).");
+          if (continueIfPausedOn(ignF)) {
+            setStatus("Always skip " + fmtMhz(ignF) + " — continuing scan.");
+          } else {
+            setStatus("Always skip " + fmtMhz(ignF) + " (saved in this browser).");
+          }
         }
         return;
       }
