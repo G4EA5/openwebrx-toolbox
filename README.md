@@ -64,7 +64,7 @@ sudo systemctl restart varnish nginx
 2. Click orange **SV**.
 3. Click **Check install**. Green means ready. Red or yellow includes the fix
    on screen — not only in the browser console.
-4. Tick bands (or **Air** / **VHF voice** / **Ham**) and press **Continue**.
+4. Tick bands (or **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**) and press **Continue**.
 
 To verify files on the radio without writing anything:
 
@@ -163,15 +163,17 @@ Typical `htdocs` paths:
 
 ## Usage (short)
 
-1. Tick bands, or tap **Air** / **VHF voice** / **Ham**.
+1. Tick bands, or tap **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**. Presets are **additive** (combine VHF+UHF; **None** clears all).
 2. **Continue** adds to Seen totals. **Fresh** starts at zero.
 3. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
-4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** (never land there again; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip**. Bookmarks are not deleted.
+4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan** or **Always skip**. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** (never land there again and continue the scan; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip**. Bookmarks are not deleted.
 5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
    (there is no regular-user API to write those). **Import CSV** / **Import JSON**
    restores Peaks/Seen in this browser (file picker; Shift-click to paste).
+6. **Load bookmarks** imports JSON/CSV into an amber **[load]** list (separate from blue **[auto]** local bookmarks). **Scan bookmarks** includes both. **Clear loaded** removes only **[load]** entries.
+7. Tick **Record busy** before **Scan bookmarks** to capture demod audio only while parked on a busy/held channel — not during the survey walk. **Save audio** / **Load audio** manage clips on the right.
 
-Blue (local) bookmarks live in **this browser** (right-hand pane: named vs **[auto]**, plus always-skip). Hover any control for a tip. Drag the panel edges or corner to resize, and the vertical bar to grow the bookmarks pane — size is remembered here. The plugin copies bookmarks before
+Blue (local) bookmarks live in **this browser** (right-hand pane: named vs **[auto]**, plus **[load]** imports and always-skip). Hover any control for a tip. Drag the panel edges or corner to resize, and the vertical bar to grow the bookmarks pane — size is remembered here. The plugin copies bookmarks before
 it writes, and on first run. Restore from **Help**.
 
 **Only if alone** refuses to retune when another listener is connected. Untick
