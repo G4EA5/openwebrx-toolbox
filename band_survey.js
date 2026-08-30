@@ -3680,10 +3680,7 @@ Plugins.band_survey.init = function () {
       "</div></div>" +
       '<div class="bs-splitter bs-splitter-h" id="bs-left-splitter" title="Drag to resize controls vs peaks table." role="separator" aria-orientation="horizontal"></div>' +
       '<div class="bs-left-bottom" id="bs-left-bottom">' +
-      "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
-      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button></div>' +
-      '<div id="bs-hitwrap"></div>' +
-      '<div class="bs-row" style="margin-top:8px">' +
+      '<div class="bs-row">' +
       '<button type="button" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
       '<button type="button" id="bs-listen" title="Hop through new auto bookmarks, or qualified peaks if none are new.">Scan bookmarks</button>' +
       '<button type="button" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
@@ -3693,6 +3690,8 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips (busy-channel recordings and files you loaded). Does not record the survey walk.">Save audio</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
+      "</div>" +
+      '<div class="bs-row" style="margin-top:4px;margin-bottom:8px">' +
       '<button type="button" id="bs-bm-save" title="Download local blue bookmarks and [load] imports as one JSON file. Load bookmarks can re-import it.">Save bookmarks</button>' +
       '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list on the right. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks unless the file is a Save bookmarks export.">Load bookmarks</button>' +
       '<button type="button" id="bs-bm-clearload" title="Remove all [load] bookmarks from this browser. Local blue bookmarks stay.">Clear loaded</button>' +
@@ -3704,6 +3703,9 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       "</div>" +
+      "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
+      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button></div>' +
+      '<div id="bs-hitwrap"></div>' +
       "</div></div></div>" +
       '<div class="bs-splitter" id="bs-splitter" title="Drag to resize the bookmarks pane." role="separator" aria-orientation="vertical"></div>' +
       '<div class="bs-right" id="bs-right">' +
