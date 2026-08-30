@@ -1,0 +1,500 @@
+/* Band survey — floating panel. Do not size #openwebrx-panel-receiver. */
+
+#bs-toggle-btn {
+  position: absolute;
+  bottom: 3px;
+  left: 4px;
+  z-index: 99;
+  font-size: 12px;
+  font-weight: bold;
+  color: #ddd;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid #666;
+  user-select: none;
+  line-height: 12px;
+}
+
+#bs-toggle-btn.bs-running {
+  color: #111;
+  background: #f59e0b;
+  border-color: #fbbf24;
+}
+
+#bs-panel {
+  position: fixed;
+  top: 72px;
+  right: 12px;
+  z-index: 10040;
+  width: min(460px, 96vw);
+  max-height: min(88vh, 820px);
+  display: flex;
+  flex-direction: column;
+  background: #111111;
+  color: #f4f4f4;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  font: 12px/1.35 sans-serif;
+}
+
+#bs-panel[hidden] {
+  display: none !important;
+}
+
+#bs-panel .bs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  background: #1f2937;
+  border-bottom: 1px solid #555;
+  cursor: move;
+  user-select: none;
+  border-radius: 6px 6px 0 0;
+}
+
+#bs-panel .bs-head b {
+  flex: 1;
+  font-size: 13px;
+}
+
+#bs-panel .bs-x {
+  border: 0;
+  background: transparent;
+  color: #eee;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+#bs-panel .bs-body {
+  padding: 8px;
+  overflow: auto;
+}
+
+#bs-panel .bs-note {
+  color: #d1d5db;
+  margin: 0 0 8px;
+}
+
+#bs-panel .bs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+#bs-panel button,
+#bs-panel select,
+#bs-panel input[type="number"],
+#bs-panel input[type="search"],
+#bs-panel input[type="text"] {
+  background: #111;
+  color: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font: inherit;
+}
+
+#bs-panel button {
+  cursor: pointer;
+}
+
+#bs-panel button:hover {
+  background: #2563eb;
+}
+
+#bs-panel button.bs-primary {
+  background: #2563eb;
+  border-color: #60a5fa;
+}
+
+#bs-panel button.bs-stop {
+  background: #7f1d1d;
+  border-color: #ef4444;
+}
+
+#bs-panel button.bs-tiny {
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+#bs-panel button.bs-on {
+  background: #f59e0b;
+  color: #111;
+  border-color: #fbbf24;
+}
+
+#bs-panel .bs-hint {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+#bs-panel .bs-new,
+#bs-panel .bs-pri {
+  display: inline-block;
+  margin-right: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  color: #111;
+}
+
+#bs-panel .bs-new {
+  background: #34d399;
+}
+
+#bs-panel .bs-pri {
+  background: #fbbf24;
+}
+
+#bs-panel .bs-icao {
+  color: #93c5fd;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+#bs-panel label.bs-chk {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+#bs-panel .bs-progress {
+  height: 7px;
+  background: #222;
+  border: 1px solid #555;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 0 8px;
+}
+
+#bs-panel .bs-progress > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #f59e0b;
+}
+
+#bs-panel .bs-status {
+  color: #fbbf24;
+  min-height: 1.3em;
+  margin-bottom: 6px;
+}
+
+#bs-panel .bs-bands {
+  max-height: 168px;
+  overflow: auto;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px;
+  margin-bottom: 8px;
+  background: #0a0a0a;
+}
+
+#bs-panel .bs-bands label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 2px 3px;
+  cursor: pointer;
+}
+
+#bs-panel .bs-bands label:hover {
+  background: #1d4ed8;
+}
+
+#bs-panel .bs-bands .bs-id {
+  color: #9ca3af;
+  flex: 0 0 72px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+#bs-panel table.bs-hits {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+
+#bs-panel table.bs-hits th,
+#bs-panel table.bs-hits td {
+  text-align: left;
+  padding: 3px 4px;
+  border-bottom: 1px solid #333;
+  vertical-align: top;
+}
+
+#bs-panel table.bs-hits th {
+  color: #d1d5db;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#bs-panel table.bs-hits th.bs-sort {
+  color: #fbbf24;
+}
+
+#bs-panel table.bs-hits td.bs-n {
+  font-weight: 700;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+#bs-panel table.bs-hits button.bs-tune {
+  background: transparent;
+  border: 0;
+  color: #93c5fd;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+#bs-panel table.bs-hits button.bs-tune:hover {
+  color: #fff;
+  background: transparent;
+  text-decoration: underline;
+}
+
+#bs-panel .bs-empty {
+  color: #9ca3af;
+  margin: 6px 0;
+}
+
+#bs-panel .bs-count {
+  color: #9ca3af;
+  margin-left: auto;
+}
+
+#bs-panel table.bs-hits tr.bs-spur {
+  opacity: 0.5;
+  color: #9ca3af;
+}
+
+#bs-panel .bs-spur-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: #111;
+  background: #9ca3af;
+  border-radius: 3px;
+}
+
+#bs-panel #bs-help-btn {
+  background: #1d4ed8;
+  border-color: #60a5fa;
+}
+
+#bs-panel .bs-health {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #1f2937;
+}
+
+#bs-panel .bs-health p {
+  margin: 0 0 6px;
+}
+
+#bs-panel .bs-health p:last-child {
+  margin-bottom: 0;
+}
+
+#bs-panel .bs-health-warn {
+  border-color: #fbbf24;
+  background: #3f3a1a;
+}
+
+#bs-panel .bs-health-info {
+  border-color: #60a5fa;
+  background: #1e3a5f;
+}
+
+#bs-panel .bs-health-err {
+  border-color: #ef4444;
+  background: #4a1515;
+}
+
+#bs-panel .bs-health-ok {
+  border-color: #34d399;
+  background: #143528;
+}
+
+#bs-panel .bs-health-opt-h {
+  margin-top: 8px;
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+#bs-panel label.bs-off {
+  opacity: 0.55;
+  cursor: help;
+}
+
+#bs-toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10080;
+  max-width: min(520px, 94vw);
+  background: #1f2937;
+  color: #fbbf24;
+  border: 1px solid #fbbf24;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: 13px/1.4 sans-serif;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+#bs-toast[hidden] {
+  display: none !important;
+}
+
+#bs-fallback-chip {
+  position: fixed;
+  bottom: 14px;
+  right: 14px;
+  z-index: 10070;
+  font-size: 13px;
+  font-weight: bold;
+  color: #111;
+  cursor: pointer;
+  background: #f59e0b;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #fbbf24;
+  user-select: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+#bs-fallback .bs-fallback-sv {
+  background: #f59e0b;
+  color: #111;
+  border: 1px solid #fbbf24;
+  font-weight: 700;
+}
+
+#bs-help {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+#bs-help[hidden] {
+  display: none !important;
+}
+
+#bs-help .bs-help-card {
+  width: min(580px, 96vw);
+  max-height: min(88vh, 740px);
+  overflow: auto;
+  background: #111111;
+  color: #f4f4f4;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  padding: 12px 16px 16px;
+  font: 13px/1.45 sans-serif;
+}
+
+#bs-help .bs-help-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#bs-help h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+}
+
+#bs-help h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+#bs-help p,
+#bs-help li {
+  margin: 0 0 6px;
+}
+
+#bs-help ol,
+#bs-help ul {
+  margin: 0 0 8px;
+  padding-left: 1.3em;
+}
+
+#bs-help code {
+  font-size: 12px;
+  background: #1f2937;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+#bs-help .bs-x {
+  border: 0;
+  background: transparent;
+  color: #eee;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+#bs-help button {
+  background: #111;
+  color: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+#bs-help button:hover {
+  background: #2563eb;
+}
+
+#bs-fallback {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10070;
+  max-width: min(560px, 94vw);
+  background: #7f1d1d;
+  color: #fff;
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: 13px/1.4 sans-serif;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+#bs-fallback button {
+  margin-left: 8px;
+  background: #111;
+  color: #fff;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}

@@ -1,0 +1,2243 @@
+// Band survey — standalone OpenWebRX+ receiver plugin.
+// Does not need freq_scanner, scan_hunt, uikit, or notify.
+// Optional: uses notify/freq_scanner if they are already loaded.
+//
+// Install (preferred): run ./install.sh from this folder — it backs up
+// init.js, bookmarks, and any previous copy, then loads the plugin.
+// Manual: see README.md. Orange SV button is on the right-hand panel.
+// Help is always available from the panel (and on first run).
+
+Plugins.band_survey = {};
+Plugins.band_survey._version = 5;
+
+Plugins.band_survey.init = function () {
+  var LS = "owrx_band_survey_v1";
+  var LS_HITS = "owrx_band_survey_hits_v1";
+  var SAMPLE_MS = 400;
+  var CENTER_GUARD_HZ = 25000;
+  var EDGE_FRAC = 0.06;
+  var OFFSET_BUCKET_HZ = 8000;
+  var S = loadSettings();
+  var hits = [];
+  var tileLooks = {};
+  var running = false;
+  var stopFlag = false;
+  var sortKey = "seen";
+  var mutedHold = false;
+  var savedVol = null;
+  var lastCreated = [];
+  var listenCmd = "";
+  var schedTimer = null;
+  var LS_LOCK = "owrx_band_survey_lock_v1";
+  var LS_SNAP = "owrx_band_survey_snap_v1";
+  var LS_BM_FIRST = "owrx_band_survey_bm_backup_v1";
+  var LS_BM_LAST = "owrx_band_survey_bm_backup_last_v1";
+
+  function loadSettings() {
+    var d = {
+      selected: null,
+      passes: 2,
+      dwell: 2.5,
+      minHits: 3,
+      threshDb: 7,
+      autoBm: true,
+      hideAuto: false,
+      mute: true,
+      hideSpurs: true,
+      ignoredFreqs: [],
+      scanAfter: false,
+      listenSec: 4,
+      holdBusy: true,
+      recordBusy: false,
+      notifyNew: true,
+      aloneOnly: true,
+      lockoutMin: 30,
+      scheduleHrs: 0,
+      priority: "121.5",
+      seenHelp: false
+    };
+    try {
+      var raw = window.localStorage.getItem(LS);
+      if (raw) {
+        var o = JSON.parse(raw);
+        Object.keys(d).forEach(function (k) {
+          if (typeof o[k] !== "undefined") d[k] = o[k];
+        });
+      }
+    } catch (e) {}
+    return d;
+  }
+
+  function saveSettings() {
+    try {
+      window.localStorage.setItem(LS, JSON.stringify(S));
+    } catch (e) {}
+  }
+
+  function loadHits() {
+    try {
+      var raw = window.localStorage.getItem(LS_HITS);
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (o && Array.isArray(o.hits)) hits = o.hits;
+      if (o && o.tileLooks && typeof o.tileLooks === "object") tileLooks = o.tileLooks;
+    } catch (e) {}
+  }
+
+  function saveHits() {
+    try {
+      hits.forEach(function (h) {
+        if (h.samples && h.samples.length > 48) h.samples = h.samples.slice(-48);
+      });
+      window.localStorage.setItem(LS_HITS, JSON.stringify({ hits: hits, tileLooks: tileLooks }));
+    } catch (e) {}
+  }
+
+  function alwaysOnBand(pid) {
+    return /^(fm_|dab_|ais|adsb|vdl2|pocsag|tetra|ism)/.test(pid || "");
+  }
+
+  function stddev(arr) {
+    if (!arr || arr.length < 4) return 99;
+    var m = 0;
+    var i;
+    for (i = 0; i < arr.length; i++) m += arr[i];
+    m /= arr.length;
+    var s = 0;
+    for (i = 0; i < arr.length; i++) s += (arr[i] - m) * (arr[i] - m);
+    return Math.sqrt(s / arr.length);
+  }
+
+  function offsetBucket(hz) {
+    return Math.round(hz / OFFSET_BUCKET_HZ) * OFFSET_BUCKET_HZ;
+  }
+
+  function isIgnoredFreq(freq) {
+    var list = S.ignoredFreqs || [];
+    for (var i = 0; i < list.length; i++) {
+      if (Math.abs(list[i] - freq) < 4000) return true;
+    }
+    return false;
+  }
+
+  function isSpur(h) {
+    return !!(h && (h.spur || h.ignored || isIgnoredFreq(h.freq)));
+  }
+
+  function icao833(hz) {
+    if (!hz || hz < 118e6 || hz > 137e6) return "";
+    var step = 25000 / 3;
+    var n = Math.round(hz / step);
+    var rem = ((n % 3) + 3) % 3;
+    var block = Math.floor(n / 3) * 25000;
+    var suffix = rem === 0 ? 0 : rem === 1 ? 5 : 10;
+    var mhz = Math.floor(block / 1e6);
+    var frac = Math.round((block % 1e6) / 1000) + suffix;
+    return mhz + "." + String(frac).padStart(3, "0");
+  }
+
+  function freqKey(hz) {
+    return String(Math.round(Number(hz) / 1000));
+  }
+
+  function loadSnap() {
+    try { return JSON.parse(window.localStorage.getItem(LS_SNAP) || "{}"); } catch (e) { return {}; }
+  }
+
+  function saveSnap() {
+    var o = loadSnap();
+    hits.forEach(function (h) {
+      if (!isSpur(h)) o[freqKey(h.freq)] = Date.now();
+    });
+    try { window.localStorage.setItem(LS_SNAP, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function markNewFlags(prev) {
+    prev = prev || loadSnap();
+    hits.forEach(function (h) {
+      h.isNew = !isSpur(h) && !prev[freqKey(h.freq)];
+    });
+  }
+
+  function loadLockouts() {
+    try { return JSON.parse(window.localStorage.getItem(LS_LOCK) || "[]"); } catch (e) { return []; }
+  }
+
+  function saveLockouts(list) {
+    try { window.localStorage.setItem(LS_LOCK, JSON.stringify(list || [])); } catch (e) {}
+  }
+
+  function pruneLockouts() {
+    var now = Date.now();
+    var list = loadLockouts().filter(function (l) { return l && l.until > now; });
+    saveLockouts(list);
+    return list;
+  }
+
+  function isLocked(freq) {
+    return pruneLockouts().some(function (l) { return Math.abs(l.freq - freq) < 4000; });
+  }
+
+  function lockout(freq) {
+    var minutes = Math.max(1, Number(S.lockoutMin) || 30);
+    var list = pruneLockouts().filter(function (l) { return Math.abs(l.freq - freq) >= 4000; });
+    list.push({ freq: Math.round(freq), until: Date.now() + minutes * 60 * 1000 });
+    saveLockouts(list);
+  }
+
+  function parseHzList(s) {
+    var out = [];
+    String(s || "").split(/[\s,;]+/).forEach(function (p) {
+      p = String(p || "").trim();
+      if (!p) return;
+      var n = parseFloat(p);
+      if (!isFinite(n) || n <= 0) return;
+      if (n < 2000) n *= 1e6;
+      else if (n < 1e6) n *= 1e3;
+      out.push(n);
+    });
+    return out;
+  }
+
+  function priorityFreqs() {
+    var out = parseHzList(S.priority);
+    allBookmarks().forEach(function (b) {
+      if (b && b.frequency && b.name && /guard|tower|twr|atis/i.test(b.name)) {
+        out.push(b.frequency);
+      }
+    });
+    return out;
+  }
+
+  function isPriority(freq) {
+    return priorityFreqs().some(function (p) { return Math.abs(p - freq) < 4000; });
+  }
+
+  function sortListenPriority(items) {
+    return (items || []).slice().sort(function (a, b) {
+      var fa = (a.hit || a).freq || a.frequency;
+      var fb = (b.hit || b).freq || b.frequency;
+      var pa = isPriority(fa) ? 0 : 1;
+      var pb = isPriority(fb) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      var sa = (a.hit && a.hit.seen) || a.seen || 0;
+      var sb = (b.hit && b.hit.seen) || b.seen || 0;
+      return sb - sa;
+    });
+  }
+
+  function clientCount() {
+    var el = $("openwebrx-bar-clients");
+    if (el) {
+      var m = String(el.textContent || "").match(/(\d+)/);
+      if (m) return parseInt(m[1], 10);
+    }
+    try {
+      if (window.jQuery) {
+        var $el = jQuery("#openwebrx-bar-clients");
+        var pb = $el.data("ui-progressbar") || $el.data("progressbar");
+        if (pb && typeof pb.clients === "number") return pb.clients;
+      }
+    } catch (e) {}
+    return 1;
+  }
+
+  function courtesyBlocked(action) {
+    if (!S.aloneOnly) return false;
+    var n = clientCount();
+    if (n <= 1) return false;
+    setStatus("Other listeners online (" + n + ") — untick Only if alone.");
+    toast("Other listeners online (" + n + ") — untick Only if alone.");
+    return true;
+  }
+
+  function beep() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ctx = new AC();
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.frequency.value = 880;
+      osc.connect(g);
+      g.connect(ctx.destination);
+      g.gain.value = 0.06;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+      setTimeout(function () { try { ctx.close(); } catch (e) {} }, 400);
+    } catch (e2) {}
+  }
+
+  function notify(msg) {
+    if (!S.notifyNew || !msg) return;
+    beep();
+    try {
+      if (window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function") {
+        Plugins.notify.show(msg);
+      }
+    } catch (e) {}
+    try {
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("Band survey", { body: msg, silent: true });
+      }
+    } catch (e2) {}
+    setStatus(msg);
+  }
+
+  function askNotifyPerm() {
+    try {
+      if (S.notifyNew && window.Notification && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    } catch (e) {}
+  }
+
+  var recordingOn = false;
+  function setRecording(on) {
+    if (on === recordingOn) return;
+    if (on && !S.recordBusy) return;
+    try {
+      if (window.UI && typeof UI.toggleRecording === "function") {
+        UI.toggleRecording(!!on);
+        recordingOn = !!on;
+      }
+    } catch (e) {}
+  }
+
+  function applySchedule() {
+    if (schedTimer) {
+      clearInterval(schedTimer);
+      schedTimer = null;
+    }
+    var hrs = Number(S.scheduleHrs) || 0;
+    if (hrs < 0.1) return;
+    schedTimer = setInterval(function () {
+      if (!running) runSurvey(false);
+    }, hrs * 3600 * 1000);
+  }
+
+  function localBookmarkList() {
+    try {
+      if (typeof BookmarkLocalStorage === "function") {
+        var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+        return store.getBookmarks() || [];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function backupLocalBookmarks(reason, forceFirst) {
+    var list = localBookmarkList();
+    if (!list) return false;
+    var payload = { when: Date.now(), reason: reason || "auto", bookmarks: list };
+    try {
+      if (forceFirst || !window.localStorage.getItem(LS_BM_FIRST)) {
+        window.localStorage.setItem(LS_BM_FIRST, JSON.stringify(payload));
+      }
+      window.localStorage.setItem(LS_BM_LAST, JSON.stringify(payload));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function backupInfo(which) {
+    try {
+      var raw = window.localStorage.getItem(which === "last" ? LS_BM_LAST : LS_BM_FIRST);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function restoreBookmarkBackup(which) {
+    var info = backupInfo(which);
+    if (!info || !Array.isArray(info.bookmarks)) {
+      setStatus("No bookmark backup in this browser yet. Run a survey once, or re-install with install.sh.");
+      return false;
+    }
+    if (typeof BookmarkLocalStorage !== "function") {
+      setStatus("This page cannot write local bookmarks. Export the backup from Help instead.");
+      return false;
+    }
+    if (!window.confirm("Replace blue (local) bookmarks with the " + (which === "last" ? "last" : "first-install") + " backup (" + info.bookmarks.length + " entries)? Yellow server bookmarks are not touched.")) {
+      return false;
+    }
+    try {
+      var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+      store.setBookmarks(info.bookmarks);
+      if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+        bookmarks.loadLocalBookmarks();
+      }
+      refreshBookmarks();
+      setStatus("Restored " + info.bookmarks.length + " local bookmarks from " + new Date(info.when).toLocaleString() + ".");
+      return true;
+    } catch (e) {
+      setStatus("Restore failed: " + (e && e.message ? e.message : e) + ". See Help → Troubleshooting.");
+      return false;
+    }
+  }
+
+  function caps() {
+    return {
+      plugins: typeof window.Plugins !== "undefined" && typeof window.Plugins.load === "function",
+      receiver: !!$("openwebrx-panel-receiver"),
+      profiles: !!$("openwebrx-sdr-profiles-listbox"),
+      profileHop: typeof window.sdr_profile_changed === "function",
+      waterfall: typeof window.waterfall_add === "function" || !!(window.bs_wf_data || window.fs_wf_data),
+      center: typeof window.center_freq === "number" && window.center_freq > 0,
+      bandwidth: typeof window.bandwidth === "number" && window.bandwidth > 0,
+      tune: !!(window.UI && typeof UI.setFrequency === "function"),
+      bookmarks: typeof BookmarkLocalStorage === "function",
+      record: !!(window.UI && typeof UI.toggleRecording === "function"),
+      mute: !!(window.UI && typeof UI.setVolume === "function") ||
+        !!(window.audioEngine && typeof audioEngine.setVolume === "function"),
+      clients: !!$("openwebrx-bar-clients"),
+      notifyPlugin: !!(window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function"),
+      notifyWeb: typeof window.Notification === "function",
+      freqScanner: !!(window.fs_scanner_state || (window.Plugins && Plugins.freq_scanner)),
+      scanHunt: !!(window.Plugins && Plugins.scan_hunt)
+    };
+  }
+
+  function diagnose() {
+    var issues = [];
+    var c = caps();
+    function add(level, title, fix) {
+      issues.push({ level: level, title: title, fix: fix });
+    }
+    if (!c.plugins) {
+      add("error", "This is not OpenWebRX+ (no plugin loader).",
+        "Install OpenWebRX+ (the luarvique fork), not vanilla OpenWebRX. Plugins only exist on the + fork.");
+    }
+    if (!c.receiver) {
+      add("error", "No receiver panel on this page.",
+        "Open the receiver page (the SDR waterfall), not the map hub only. Wait for OpenWebRX+ to finish loading, then hard-refresh (Ctrl+Shift+R).");
+    }
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    if (!sel) {
+      add("error", "No profile list.",
+        "Open the receiver page (not the map hub only), wait for OpenWebRX+ to finish loading, hard-refresh.");
+    } else if (!sel.options || !sel.options.length) {
+      add("warn", "Profile list is empty.",
+        "Wait ~10 seconds for the radio to connect, then click Check install. If it stays empty, add SDR profiles in OpenWebRX settings (admin).");
+    }
+    if (sel && !c.profileHop) {
+      add("warn", "Cannot hop profiles from the plugin.",
+        "Survey can still count peaks on the current tile. Profile hopping needs a stock OpenWebRX+ receiver page (sdr_profile_changed).");
+    }
+    if (!c.waterfall) {
+      add(c.receiver ? "warn" : "error", "No waterfall data yet.",
+        "Wait a few seconds after the radio connects, then click Check install again. A black waterfall usually means the SDR is not started. Stay on the receiver page (not the map hub).");
+    }
+    if (!c.center || !c.bandwidth) {
+      add("warn", "Center frequency / bandwidth not ready yet.",
+        "Wait a few seconds after the radio connects. Peak finding needs window.center_freq and window.bandwidth.");
+    }
+    if (!c.tune) {
+      add("warn", "Tune API is missing (UI.setFrequency).",
+        "Clicking a MHz or Jump loudest will not retune. Update OpenWebRX+ or open the full receiver UI.");
+    }
+    if (!c.bookmarks) {
+      add("warn", "Local bookmarks API missing.",
+        "Auto-bookmark is off; Export JSON still works. Blue bookmarks need BookmarkLocalStorage on this page.");
+    }
+    if (!c.record) {
+      add("info", "Record busy unavailable.",
+        "This page has no UI.toggleRecording. Untick Record busy — survey still works.");
+    }
+    if (!c.mute) {
+      add("info", "Mute-while-running unavailable.",
+        "No UI.setVolume on this page. Unmute the receiver yourself, or update OpenWebRX+.");
+    }
+    if (!c.clients) {
+      add("info", "Courtesy / alone check unavailable.",
+        "No #openwebrx-bar-clients on this page. “Only if alone” cannot see other listeners, so it will not block. Untick it if you want that clear.");
+    }
+    if (!c.notifyPlugin && !c.notifyWeb) {
+      add("info", "Desktop notify not available.",
+        "Plugins.notify / Notification missing — new-peak alerts fall back to a short beep and the status line.");
+    } else if (!c.notifyPlugin) {
+      add("info", "notify plugin not installed (optional).",
+        "Not required. New peaks still beep and show in the status line; browser notifications work if you allow them.");
+    }
+    if (!c.freqScanner) {
+      add("info", "freq_scanner — optional, not installed.",
+        "Band survey does not need it. Ignore this unless you want the separate scanner plugin.");
+    }
+    if (!c.scanHunt) {
+      add("info", "scan_hunt — optional, not installed.",
+        "Band survey does not need it (nor uikit). Core needs: profile select, waterfall, local bookmarks APIs.");
+    }
+    try {
+      window.localStorage.setItem("owrx_band_survey_ping", "1");
+      window.localStorage.removeItem("owrx_band_survey_ping");
+    } catch (e) {
+      add("warn", "This browser blocked saved settings.",
+        "Allow cookies / site data for this receiver, or use another browser. Survey will still run this session only. Privacy: this plugin stores data in localStorage only, in this browser.");
+    }
+    var cssOk = false;
+    try {
+      var probe = $("bs-panel") || document.querySelector("#bs-toggle-btn") || $("bs-fallback-chip");
+      if (probe) {
+        var z = window.getComputedStyle(probe).zIndex;
+        cssOk = z && z !== "auto";
+      }
+      var links = document.querySelectorAll('link[rel="stylesheet"]');
+      for (var i = 0; i < links.length; i++) {
+        if (/band_survey/.test(links[i].href || "")) cssOk = true;
+      }
+    } catch (e2) {}
+    if ($("bs-panel") && !cssOk) {
+      add("warn", "Plugin CSS did not load.",
+        "band_survey.css must sit next to band_survey.js. Re-copy the folder or re-run install.sh, then hard-refresh.");
+    }
+    return issues;
+  }
+
+  function renderIssueP(x) {
+    var tag = x.level === "error" ? "Needs a fix: " : x.level === "warn" ? "Note: " : "Optional: ";
+    return "<p><b>" + tag + escapeHtml(x.title) + "</b><br>" + escapeHtml(x.fix) + "</p>";
+  }
+
+  function renderHealth(opts) {
+    opts = opts || {};
+    applyCaps();
+    var box = $("bs-health");
+    if (!box) return diagnose();
+    var issues = diagnose();
+    var hard = issues.filter(function (x) { return x.level === "error"; });
+    var warns = issues.filter(function (x) { return x.level === "warn"; });
+    var extras = issues.filter(function (x) { return x.level === "info"; });
+    var showExtra = !!opts.all;
+    if (!hard.length && !warns.length && !opts.ok && !showExtra) {
+      box.hidden = true;
+      box.innerHTML = "";
+      box.className = "bs-health";
+      return issues;
+    }
+    var html = "";
+    if (!hard.length && !warns.length) {
+      html += "<p><b>Install looks good.</b> Orange <b>SV</b> is this plugin. Tick bands (or Air / VHF / Ham) and press Continue. Help is always in the header.</p>";
+    }
+    html += hard.concat(warns).map(renderIssueP).join("");
+    if (showExtra && extras.length) {
+      html += "<p class=\"bs-health-opt-h\">Optional extras (not required)</p>" + extras.map(renderIssueP).join("");
+    }
+    html += '<p><button type="button" class="bs-tiny" id="bs-health-help">Open Help</button></p>';
+    box.hidden = false;
+    box.className = "bs-health" + (hard.length ? " bs-health-err" : warns.length ? " bs-health-warn" : " bs-health-ok");
+    box.innerHTML = html;
+    var hb = $("bs-health-help");
+    if (hb) hb.onclick = function () { openHelp(); };
+    if (opts.toast) {
+      var first = hard[0] || warns[0];
+      if (first) toast(first.title + " — " + first.fix);
+    }
+    return issues;
+  }
+
+  function blockingIssue() {
+    var issues = diagnose();
+    for (var i = 0; i < issues.length; i++) {
+      if (issues[i].level === "error") return issues[i];
+    }
+    return null;
+  }
+
+  function toast(msg) {
+    if (!msg) return;
+    var el = $("bs-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "bs-toast";
+      document.body.appendChild(el);
+    }
+    el.textContent = String(msg).replace(/\s+/g, " ").slice(0, 280);
+    el.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.hidden = true; }, 7000);
+  }
+
+  function friendlyError(err, action) {
+    var msg = (err && err.message) ? err.message : String(err || "unknown error");
+    msg = msg.replace(/\s+/g, " ").slice(0, 160);
+    return (action || "That") + " failed: " + msg + ". Click Help or Check install.";
+  }
+
+  function applyCaps() {
+    var c = caps();
+    function setOpt(id, ok, why) {
+      var el = $(id);
+      if (!el) return;
+      el.disabled = !ok;
+      var lab = el.parentElement;
+      if (lab) {
+        if (lab.classList) lab.classList.toggle("bs-off", !ok);
+        if (!ok) lab.title = why;
+      }
+    }
+    setOpt("bs-autobm", c.bookmarks, "Local bookmarks API missing — auto-bookmark is off; Export JSON still works.");
+    if (!c.bookmarks) {
+      S.autoBm = false;
+      if ($("bs-autobm")) $("bs-autobm").checked = false;
+    }
+    setOpt("bs-record", c.record, "Record busy unavailable — this page has no UI.toggleRecording.");
+    if (!c.record) {
+      S.recordBusy = false;
+      if ($("bs-record")) $("bs-record").checked = false;
+    }
+    setOpt("bs-mute", c.mute, "Mute-while-running unavailable — no volume API on this page.");
+    setOpt("bs-alone", c.clients, "Courtesy / alone check unavailable — client count bar not found.");
+  }
+
+  function helpHtml() {
+    return (
+      '<div class="bs-help-card" role="dialog" aria-labelledby="bs-help-title">' +
+      '<div class="bs-help-top"><h2 id="bs-help-title">Band survey — help</h2>' +
+      '<button type="button" class="bs-x" id="bs-help-x" title="Close">×</button></div>' +
+      "<h3>First 30 seconds</h3>" +
+      "<ol>" +
+      "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after you install or update.</li>" +
+      "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
+      "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
+      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
+      "</ol>" +
+      '<p><button type="button" id="bs-help-check">Check install now</button></p>' +
+      "<h3>What this is</h3>" +
+      "<p>A <b>standalone OpenWebRX+ receiver plugin</b>. It walks the bands you tick, counts real waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>.</p>" +
+      "<p>It does <b>not</b> need freq_scanner, scan_hunt, rx_bands, uikit, or notify. Those are optional extras if they are already loaded.</p>" +
+      "<h3>Install (new machine)</h3>" +
+      "<p>Preferred: from this folder run <code>./install.sh</code>. It backs up your files, copies the plugin, and adds one load line. Then hard-refresh. To only verify an existing copy: <code>./install.sh --check</code>.</p>" +
+      "<p>Manual: copy <code>band_survey/</code> into <code>htdocs/plugins/receiver/band_survey/</code> (typical htdocs: <code>/usr/lib/python3/dist-packages/htdocs</code> or <code>/opt/openwebrx/htdocs</code>), then add <code>await Plugins.load(\"band_survey\");</code> inside <code>plugins/receiver/init.js</code>.</p>" +
+      "<h3>How to use</h3>" +
+      "<ol>" +
+      "<li><b>Continue</b> adds to Seen totals; <b>Fresh</b> starts at zero.</li>" +
+      "<li>Profile changes are spaced ~<b>11 seconds</b> (anti-ban).</li>" +
+      "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to ignore a birdie.</li>" +
+      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ignore for Lockout min.</li>" +
+      "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
+      "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
+      "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks.</li>" +
+      "</ol>" +
+      "<h3>Bookmarks</h3>" +
+      "<p><b>Blue</b> bookmarks are local to this browser. Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge that file on the radio host.</p>" +
+      '<p><button type="button" id="bs-restore-first">Restore first-run bookmarks</button> ' +
+      '<button type="button" id="bs-restore-last">Restore last backup</button> ' +
+      '<button type="button" id="bs-dl-backup">Download bookmark backup</button></p>' +
+      "<h3>If something is wrong</h3>" +
+      "<ul>" +
+      "<li><b>No SV button</b> — plugin not loaded, or this browser cached an old file. Re-run <code>./install.sh --check</code>, then hard-refresh. If the receiver panel is missing, use the fixed SV chip or the red banner.</li>" +
+      "<li><b>No profile list</b> — open the receiver page (not the map / settings page only), wait for OpenWebRX+ to finish loading, hard-refresh.</li>" +
+      "<li><b>No waterfall data</b> — wait a few seconds after the radio connects, or check the SDR is started.</li>" +
+      "<li><b>Local bookmarks API missing</b> — auto-bookmark is off; Export JSON still works.</li>" +
+      "<li><b>Other listeners online</b> — untick Only if alone.</li>" +
+      "<li><b>Nothing counted</b> — lower “dB over noise”, pick a busier band, or wait until the waterfall is moving.</li>" +
+      "<li><b>Banned / kicked</b> — leave the 11s gap on; ask the admin about bot-ban if needed.</li>" +
+      "</ul>" +
+      "<p>Press <b>Esc</b> or click outside this card to close. Click <b>Check install</b> any time — messages include the fix.</p>" +
+      "<h3>Privacy</h3>" +
+      "<p>Settings, hit lists, and bookmark backups live in <b>localStorage only in this browser</b>. Nothing is uploaded. Clearing site data removes them.</p>" +
+      "</div>"
+    );
+  }
+
+  function openHelp() {
+    var wrap = $("bs-help");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "bs-help";
+      wrap.innerHTML = helpHtml();
+      document.body.appendChild(wrap);
+      $("bs-help-x").onclick = closeHelp;
+      wrap.addEventListener("click", function (ev) {
+        if (ev.target === wrap) closeHelp();
+      });
+      if ($("bs-restore-first")) {
+        $("bs-restore-first").onclick = function () { restoreBookmarkBackup("first"); };
+      }
+      if ($("bs-restore-last")) {
+        $("bs-restore-last").onclick = function () { restoreBookmarkBackup("last"); };
+      }
+      if ($("bs-dl-backup")) {
+        $("bs-dl-backup").onclick = function () {
+          var info = backupInfo("last") || backupInfo("first");
+          if (!info) {
+            setStatus("No bookmark backup to download yet.");
+            return;
+          }
+          downloadFile("band-survey-bookmarks-backup.json", JSON.stringify(info, null, 2), "application/json");
+          setStatus("Downloaded bookmark backup.");
+        };
+      }
+      if ($("bs-help-check")) {
+        $("bs-help-check").onclick = function () {
+          closeHelp();
+          var p = $("bs-panel");
+          if (p) p.hidden = false;
+          var issues = renderHealth({ all: true, toast: true, ok: true });
+          var hard = issues.filter(function (x) { return x.level === "error"; }).length;
+          var notes = issues.filter(function (x) { return x.level === "warn"; }).length;
+          if (!hard && !notes) setStatus("Install looks good. Tick bands and press Continue.");
+        };
+      }
+    }
+    wrap.hidden = false;
+    document.removeEventListener("keydown", helpEsc);
+    document.addEventListener("keydown", helpEsc);
+    S.seenHelp = true;
+    saveSettings();
+  }
+
+  function helpEsc(ev) {
+    if (ev && ev.key === "Escape") closeHelp();
+  }
+
+  function closeHelp() {
+    var wrap = $("bs-help");
+    if (wrap) wrap.hidden = true;
+    document.removeEventListener("keydown", helpEsc);
+    S.seenHelp = true;
+    saveSettings();
+    if ($("bs-panel") && !$("bs-panel").hidden && !hits.length) {
+      setStatus("Next: tick bands (or Air / VHF / Ham) and press Continue. Check install if anything looks wrong.");
+    }
+  }
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function profiles() {
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    var out = [];
+    if (!sel) return out;
+    for (var i = 0; i < sel.options.length; i++) {
+      var opt = sel.options[i];
+      var value = opt.value || "";
+      var id = value.indexOf("|") >= 0 ? value.split("|").slice(1).join("|") : value;
+      out.push({ value: value, id: id, label: opt.text || id });
+    }
+    return out;
+  }
+
+  function defaultSelected() {
+    return profiles()
+      .filter(function (p) { return /^air_[1-7]$/.test(p.id); })
+      .map(function (p) { return p.value; });
+  }
+
+  function hookWaterfall() {
+    if (window._bs_wf_hooked) return;
+    if (typeof window.waterfall_add !== "function") return;
+    var orig = window.waterfall_add;
+    window.waterfall_add = function (data) {
+      window.bs_wf_data = data;
+      if (!window.fs_wf_data) window.fs_wf_data = data;
+      return orig.apply(this, arguments);
+    };
+    window._bs_wf_hooked = true;
+  }
+
+  function wf() {
+    return window.fs_wf_data || window.bs_wf_data || null;
+  }
+
+  function noiseFloor(data) {
+    if (!data || data.length < 16) return -80;
+    var copy = Array.prototype.slice.call(data).sort(function (a, b) { return a - b; });
+    return copy[Math.floor(copy.length * 0.2)];
+  }
+
+  function freqOf(i, data) {
+    var center = window.center_freq;
+    var bw = window.bandwidth;
+    return (center - bw / 2) + (i / data.length) * bw;
+  }
+
+  function snapFreq(freq, pid) {
+    var step = 1000;
+    if (/^air_|^vor|vdl2/.test(pid)) step = 25000 / 3;
+    else if (/^fm_/.test(pid)) step = 100000;
+    else if (/marine|2m_|70c_|pmr|ais|tetra/.test(pid)) step = 12500;
+    return Math.round(freq / step) * step;
+  }
+
+  function guessMode(pid) {
+    var mode = "nfm";
+    if (/^air_|^vor/.test(pid)) mode = "am";
+    else if (/^fm_/.test(pid)) mode = "wfm";
+    else if (/lf|80m|hffax|40m|30m|25m|20m|17m|15m|12m|10m|6m_/.test(pid)) mode = "usb";
+    if (window.Modes && typeof Modes.findByModulation === "function") {
+      if (Modes.findByModulation(mode)) return mode;
+      if (mode === "wfm" && Modes.findByModulation("wfm")) return "wfm";
+      if (Modes.findByModulation("nfm")) return "nfm";
+      if (Modes.findByModulation("am")) return "am";
+    }
+    return mode;
+  }
+
+  function findPeaks(pid) {
+    var data = wf();
+    var center = window.center_freq;
+    var bw = window.bandwidth;
+    if (!data || !data.length || !bw) return [];
+    var floor = noiseFloor(data);
+    var thr = floor + (Number(S.threshDb) || 10);
+    var lo = Math.floor(data.length * EDGE_FRAC);
+    var hi = Math.ceil(data.length * (1 - EDGE_FRAC));
+    var found = [];
+    var i = lo;
+    while (i < hi) {
+      if (data[i] < thr) {
+        i++;
+        continue;
+      }
+      var maxV = -999;
+      var maxI = i;
+      var sum = 0;
+      var n = 0;
+      while (i < hi && data[i] >= thr) {
+        sum += data[i];
+        n++;
+        if (data[i] > maxV) {
+          maxV = data[i];
+          maxI = i;
+        }
+        i++;
+      }
+      if (!n) continue;
+      // n=1 would always fail max<mean+1.2; only skip flat broadband blobs.
+      if (n >= 4 && maxV < sum / n + 1.2) continue;
+      var f = freqOf(maxI, data);
+      if (Math.abs(f - center) < CENTER_GUARD_HZ) continue;
+      if (isIgnoredFreq(snapFreq(f, pid))) continue;
+      found.push({ freq: snapFreq(f, pid), raw: f, db: maxV, width: n, offset: f - center });
+    }
+    return found;
+  }
+
+  function mergeHz(pid) {
+    if (/^air_|^vor/.test(pid)) return 4000;
+    if (/^fm_/.test(pid)) return 80000;
+    return 2500;
+  }
+
+  function findHit(freq, pid) {
+    var tol = mergeHz(pid);
+    for (var i = 0; i < hits.length; i++) {
+      if (Math.abs(hits[i].freq - freq) <= tol) return hits[i];
+    }
+    return null;
+  }
+
+  function classifyHit(h) {
+    if (!h) return;
+    if (isIgnoredFreq(h.freq) || h.ignored) {
+      h.spur = true;
+      h.spurWhy = "ignored";
+      return;
+    }
+    var looks = h.looks || 0;
+    var duty = looks ? h.seen / looks : 0;
+    var live = stddev(h.samples);
+    var voice = !alwaysOnBand(h.pid);
+
+    if (h.dongle) {
+      h.spur = true;
+      h.spurWhy = h.spurWhy || "same offset on several bands";
+      return;
+    }
+    if (voice && looks >= 6 && duty >= 0.85 && (h.width || 9) <= 2) {
+      h.spur = true;
+      h.spurWhy = "narrow always-on line";
+      return;
+    }
+    if (voice && looks >= 6 && duty >= 0.88 && live < 1.2) {
+      h.spur = true;
+      h.spurWhy = "steady line (birdie)";
+      return;
+    }
+    if (voice && looks >= 6 && live < 0.7 && duty >= 0.7) {
+      h.spur = true;
+      h.spurWhy = "no level change";
+      return;
+    }
+    if (!voice && (h.width || 9) <= 2 && looks >= 6 && live < 0.6 && duty >= 0.9) {
+      h.spur = true;
+      h.spurWhy = "narrow constant spur";
+      return;
+    }
+    if (h.spur && h.spurWhy && h.spurWhy !== "ignored") {
+      h.spur = false;
+      h.spurWhy = "";
+    }
+  }
+
+  function markDongleOffsets() {
+    var buckets = {};
+    hits.forEach(function (h) {
+      if (h.offset == null) return;
+      var key = String(offsetBucket(h.offset));
+      if (!buckets[key]) buckets[key] = [];
+      buckets[key].push(h);
+    });
+    Object.keys(buckets).forEach(function (key) {
+      var group = buckets[key];
+      var pids = {};
+      group.forEach(function (h) { pids[h.pid] = true; });
+      if (Object.keys(pids).length < 2) return;
+      group.forEach(function (h) {
+        h.dongle = true;
+        h.spur = true;
+        h.spurWhy = "same offset on " + Object.keys(pids).length + " bands";
+      });
+    });
+  }
+
+  function classifyAll() {
+    markDongleOffsets();
+    hits.forEach(classifyHit);
+  }
+
+  function recordLook(pid, label) {
+    tileLooks[pid] = (tileLooks[pid] || 0) + 1;
+    var peaks = findPeaks(pid);
+    var now = Date.now();
+    var seenIds = {};
+    peaks.forEach(function (p) {
+      var hit = findHit(p.freq, pid);
+      if (!hit) {
+        hit = {
+          freq: p.freq,
+          raw: p.raw,
+          seen: 0,
+          looks: 0,
+          maxDb: p.db,
+          lastDb: p.db,
+          pid: pid,
+          label: label,
+          first: now,
+          last: now,
+          mode: guessMode(pid),
+          samples: [],
+          width: p.width || 1,
+          offset: p.offset,
+          spur: false,
+          spurWhy: "",
+          ignored: false,
+          dongle: false,
+          name: existingName(p.freq) || "",
+          isNew: false
+        };
+        hits.push(hit);
+      }
+      hit.seen += 1;
+      hit.looks += 1;
+      hit.lastDb = p.db;
+      if (p.db > hit.maxDb) hit.maxDb = p.db;
+      hit.last = now;
+      hit.width = p.width || hit.width;
+      if (p.offset != null) hit.offset = p.offset;
+      if (!hit.samples) hit.samples = [];
+      hit.samples.push(p.db);
+      if (hit.samples.length > 48) hit.samples = hit.samples.slice(-48);
+      if (Math.abs(p.raw - hit.freq) < Math.abs((hit.raw || hit.freq) - hit.freq)) {
+        hit.raw = p.raw;
+      }
+      seenIds[hit.freq] = true;
+    });
+    hits.forEach(function (h) {
+      if (h.pid !== pid) return;
+      if (seenIds[h.freq]) return;
+      h.looks = (h.looks || 0) + 1;
+    });
+    classifyAll();
+    var min = Number(S.minHits) || 3;
+    var prev = loadSnap();
+    hits.forEach(function (h) {
+      if (h.pid !== pid || isSpur(h) || h._notified) return;
+      if (h.seen < min) return;
+      if (prev[freqKey(h.freq)]) return;
+      h._notified = true;
+      h.isNew = true;
+      notify("New " + (h.name || existingName(h.freq) || icao833(h.freq) || fmtMhz(h.freq)));
+    });
+  }
+
+  function fmtMhz(hz) {
+    return (hz / 1e6).toFixed(hz >= 3e7 ? 3 : 3);
+  }
+
+  function isAuto(b) {
+    return !!(b && (b.auto === true || (b.name && /^\[auto\]/i.test(b.name))));
+  }
+
+  function allBookmarks() {
+    try {
+      if (window.bookmarks && typeof bookmarks.getAllBookmarks === "function") {
+        return bookmarks.getAllBookmarks() || [];
+      }
+    } catch (e) {}
+    try {
+      if (typeof BookmarkLocalStorage === "function") {
+        return new BookmarkLocalStorage().getBookmarks() || [];
+      }
+    } catch (e2) {}
+    return [];
+  }
+
+  function existingName(freq) {
+    var list = [];
+    try {
+      if (typeof BookmarkLocalStorage === "function") {
+        list = list.concat(new BookmarkLocalStorage().getBookmarks() || []);
+      }
+    } catch (e) {}
+    list = list.concat(allBookmarks());
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && Math.abs(list[i].frequency - freq) < 2500) return list[i].name;
+    }
+    return null;
+  }
+
+  function bookmarkNameFor(hit) {
+    if (hit && hit.name && String(hit.name).trim() && !/^\[auto\]/i.test(hit.name)) {
+      return String(hit.name).trim();
+    }
+    var known = existingName(hit.freq);
+    if (known && !/^\[auto\]/i.test(known)) return known;
+    if (known) return known;
+    var icao = hit && icao833(hit.freq);
+    if (icao) return "[auto] " + icao;
+    return "[auto] " + fmtMhz(hit.freq);
+  }
+
+  function addBookmark(hit) {
+    if (isSpur(hit)) return null;
+    var known = existingName(hit.freq);
+    if (known && !/^\[auto\]/i.test(known)) {
+      hit.name = known;
+      return { freq: hit.freq, pid: hit.pid, mode: hit.mode, name: known, already: true };
+    }
+    if (typeof BookmarkLocalStorage !== "function") {
+      setStatus("Cannot save blue bookmarks here. Use Export CSV/JSON, or see Help → Bookmarks.");
+      return null;
+    }
+    backupLocalBookmarks("before-bookmark");
+    var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+    var list = store.getBookmarks() || [];
+    var name = bookmarkNameFor(hit);
+    for (var i = 0; i < list.length; i++) {
+      if (Math.abs(list[i].frequency - hit.freq) < 2500) {
+        if (hit.name && list[i].name !== name) {
+          list[i].name = name;
+          store.setBookmarks(list);
+          if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+            bookmarks.loadLocalBookmarks();
+          }
+        }
+        return {
+          freq: list[i].frequency,
+          pid: hit.pid,
+          mode: hit.mode || list[i].modulation,
+          name: list[i].name,
+          already: true
+        };
+      }
+    }
+    var id = 1;
+    if (list.length) {
+      id = 1 + Math.max.apply(Math, list.map(function (b) { return b.id || 0; }));
+    }
+    var bm = {
+      id: id,
+      name: name,
+      frequency: Math.round(hit.freq),
+      modulation: hit.mode || "am",
+      underlying: "",
+      description: "Seen " + hit.seen + "× on " + (hit.label || hit.pid),
+      scannable: true,
+      auto: true
+    };
+    list.push(bm);
+    store.setBookmarks(list);
+    if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+      bookmarks.loadLocalBookmarks();
+    }
+    hit.name = name;
+    return { freq: bm.frequency, pid: hit.pid, mode: bm.modulation, name: name, already: false };
+  }
+
+  function qualifiedHits() {
+    var min = Number(S.minHits) || 3;
+    return hits.filter(function (h) {
+      return !isSpur(h) && h.seen >= min;
+    });
+  }
+
+  function autoBookmarkQualified() {
+    var created = [];
+    var min = Number(S.minHits) || 3;
+    hits.forEach(function (h) {
+      if (isSpur(h)) return;
+      if (h.seen >= min) {
+        var row = addBookmark(h);
+        if (row) created.push(row);
+      }
+    });
+    lastCreated = created.filter(function (r) { return !r.already; });
+    return created;
+  }
+
+  function renameBookmark(freq, name) {
+    name = String(name || "").trim();
+    if (!name) return false;
+    hits.forEach(function (h) {
+      if (Math.abs(h.freq - freq) < 2500) h.name = name;
+    });
+    saveHits();
+    if (typeof BookmarkLocalStorage !== "function") {
+      renderHits();
+      return true;
+    }
+    var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+    var list = store.getBookmarks() || [];
+    var found = false;
+    list.forEach(function (b) {
+      if (Math.abs(b.frequency - freq) < 2500) {
+        b.name = name;
+        found = true;
+      }
+    });
+    if (found) {
+      store.setBookmarks(list);
+      if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+        bookmarks.loadLocalBookmarks();
+      }
+    }
+    lastCreated.forEach(function (row) {
+      if (Math.abs(row.freq - freq) < 2500) row.name = name;
+    });
+    renderHits();
+    refreshBookmarks();
+    return true;
+  }
+
+  function askRename(freq) {
+    var cur = "";
+    hits.forEach(function (h) {
+      if (Math.abs(h.freq - freq) < 2500) cur = h.name || "";
+    });
+    if (!cur) cur = existingName(freq) || ("[auto] " + fmtMhz(freq));
+    var next = window.prompt("Bookmark name for " + fmtMhz(freq), cur);
+    if (next == null) return;
+    if (renameBookmark(freq, next)) setStatus("Renamed to “" + next.trim() + "”.");
+  }
+
+  function levelAt(freq) {
+    var data = wf();
+    var center = window.center_freq;
+    var bw = window.bandwidth;
+    if (!data || !data.length || !bw) return -999;
+    var i = Math.floor((freq - (center - bw / 2)) / bw * data.length);
+    if (i < 0 || i >= data.length) return -999;
+    return data[i];
+  }
+
+  function profileValueForPid(pid) {
+    var list = profiles();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === pid) return list[i].value;
+    }
+    return null;
+  }
+
+  async function listenBookmarks(items) {
+    try {
+    if (!items || !items.length) {
+      setStatus("Nothing to listen to yet.");
+      return;
+    }
+    if (courtesyBlocked("listening / retuning")) return;
+    items = sortListenPriority(items.filter(function (row) {
+      var f = (row.hit || row).freq || row.frequency;
+      return !isLocked(f);
+    }));
+    if (!items.length) {
+      setStatus("Everything is locked out right now.");
+      return;
+    }
+    if (window.fs_scanner_state && fs_scanner_state.running && typeof fs_stop_scanner === "function") {
+      try { fs_stop_scanner(); } catch (e) {}
+    }
+    if (window.UI && typeof UI.toggleScanner === "function") {
+      try { UI.toggleScanner(false); } catch (e2) {}
+    }
+    muteOff();
+    listenCmd = "";
+    var listenMs = Math.max(1, Math.min(20, Number(S.listenSec) || 4)) * 1000;
+    var lastSwitchAt = 0;
+    var heard = 0;
+    for (var i = 0; i < items.length && !stopFlag; i++) {
+      var it = items[i].hit || items[i];
+      var freq = it.freq || it.frequency;
+      var pid = it.pid;
+      var name = it.name || existingName(freq) || icao833(freq) || fmtMhz(freq);
+      if (isLocked(freq)) continue;
+      var value = profileValueForPid(pid);
+      var sel = $("openwebrx-sdr-profiles-listbox");
+      if (value && sel && sel.value !== value) {
+        if (lastSwitchAt) {
+          var waitMore = 11000 - (Date.now() - lastSwitchAt);
+          if (waitMore > 0) {
+            setStatus("Listen wait " + Math.ceil(waitMore / 1000) + "s · " + name);
+            await sleep(waitMore);
+          }
+        }
+        if (stopFlag) break;
+        await switchProfile(value);
+        lastSwitchAt = Date.now();
+      }
+      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+      if (it.mode && window.UI && typeof UI.setModulation === "function") {
+        try { UI.setModulation(it.mode, ""); } catch (e3) {}
+      }
+      setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Lockout]");
+      await sleep(700);
+      var floor = noiseFloor(wf());
+      var busyThr = floor + Math.max(4, (Number(S.threshDb) || 7) - 2);
+      var lvl = levelAt(freq);
+      if (listenCmd === "skip") {
+        listenCmd = "";
+        continue;
+      }
+      if (listenCmd === "lock") {
+        lockout(freq);
+        listenCmd = "";
+        setStatus("Locked out " + name + " for " + (S.lockoutMin || 30) + " min");
+        continue;
+      }
+      if (lvl < busyThr && listenCmd !== "hold") {
+        setStatus("Listen " + (i + 1) + "/" + items.length + " · quiet, skip · " + name);
+        await sleep(400);
+        continue;
+      }
+      heard++;
+      var until = Date.now() + listenMs;
+      var quietMs = 0;
+      var recOn = false;
+      while (!stopFlag) {
+        if (listenCmd === "skip") {
+          listenCmd = "";
+          break;
+        }
+        if (listenCmd === "lock") {
+          lockout(freq);
+          listenCmd = "";
+          setStatus("Locked out " + name + " for " + (S.lockoutMin || 30) + " min");
+          break;
+        }
+        lvl = levelAt(freq);
+        var busy = lvl >= busyThr;
+        if (busy && S.recordBusy && !recOn) {
+          setRecording(true);
+          recOn = true;
+        }
+        var holding = listenCmd === "hold";
+        if (S.holdBusy || holding) {
+          if (busy) quietMs = 0;
+          else quietMs += 250;
+          if (!holding && quietMs >= listenMs) break;
+        } else if (Date.now() >= until) {
+          break;
+        }
+        var extra = holding ? " · HOLD" : (S.holdBusy ? (busy ? " · busy" : " · quiet") : "");
+        setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + extra);
+        await sleep(250);
+      }
+      if (recOn) setRecording(false);
+    }
+    listenCmd = "";
+    setRecording(false);
+    if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
+    if (stopFlag) setStatus("Listen stopped after " + heard + " busy bookmarks.");
+    else setStatus("Listen done. " + heard + " busy / " + items.length + " bookmarks.");
+    } catch (err) {
+      setRecording(false);
+      setStatus(friendlyError(err, "Listen"));
+      toast(friendlyError(err, "Listen"));
+      renderHealth();
+    }
+  }
+
+  function clearAutoBookmarks() {
+    if (typeof BookmarkLocalStorage !== "function") {
+      setStatus("No local bookmark store on this page. Nothing to clear. See Help.");
+      return 0;
+    }
+    backupLocalBookmarks("before-clear-auto");
+    var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+    var list = store.getBookmarks() || [];
+    var keep = list.filter(function (b) { return !isAuto(b); });
+    var n = list.length - keep.length;
+    store.setBookmarks(keep);
+    if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+      bookmarks.loadLocalBookmarks();
+    }
+    return n;
+  }
+
+  function hookHide() {
+    if (!window.BookmarkBar || BookmarkBar.prototype._bs_hide_hooked) return;
+    BookmarkBar.prototype._bs_hide_hooked = true;
+    var orig = BookmarkBar.prototype.render;
+    BookmarkBar.prototype.render = function () {
+      if (!S.hideAuto || !this.bookmarks) {
+        return orig.call(this);
+      }
+      var saved = {};
+      var src;
+      for (src in this.bookmarks) {
+        if (!Object.prototype.hasOwnProperty.call(this.bookmarks, src)) continue;
+        saved[src] = this.bookmarks[src];
+        this.bookmarks[src] = (this.bookmarks[src] || []).filter(function (b) {
+          return !isAuto(b);
+        });
+      }
+      orig.call(this);
+      for (src in saved) {
+        if (!Object.prototype.hasOwnProperty.call(saved, src)) continue;
+        this.bookmarks[src] = saved[src];
+      }
+    };
+  }
+
+  function refreshBookmarks() {
+    if (window.bookmarks && typeof bookmarks.render === "function") {
+      bookmarks.render();
+    } else if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+      bookmarks.loadLocalBookmarks();
+    }
+  }
+
+  function selectedValues() {
+    var box = $("bs-bands");
+    if (!box) return [];
+    return Array.prototype.map.call(box.querySelectorAll("input:checked"), function (el) {
+      return el.value;
+    });
+  }
+
+  function applyPreset(kind) {
+    var box = $("bs-bands");
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function (el) {
+      var id = el.dataset.id || "";
+      var on = false;
+      if (kind === "air") on = /^air_[1-7]$/.test(id);
+      else if (kind === "vhf") on = /^(air_|marine_|2m_|pmr)/.test(id);
+      else if (kind === "ham") on = /^(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m_|70c_)/.test(id);
+      else if (kind === "all") on = true;
+      else on = false;
+      el.checked = on;
+    });
+    S.selected = selectedValues();
+    saveSettings();
+    updateCount();
+  }
+
+  function updateCount() {
+    var el = $("bs-selcount");
+    if (!el) return;
+    var n = selectedValues().length;
+    var tot = profiles().length;
+    el.textContent = n + " / " + tot + " bands";
+  }
+
+  function filterBands() {
+    var q = (($("bs-filter") && $("bs-filter").value) || "").toLowerCase();
+    var box = $("bs-bands");
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll("label"), function (lab) {
+      var t = (lab.textContent || "").toLowerCase();
+      lab.style.display = !q || t.indexOf(q) >= 0 ? "" : "none";
+    });
+  }
+
+  function fillBands() {
+    var box = $("bs-bands");
+    if (!box) return;
+    var list = profiles();
+    if (!list.length) {
+      box.innerHTML = '<p class="bs-empty">No band profiles yet. Wait a few seconds for the radio to connect, then click Check install. If this stays empty, add SDR profiles in OpenWebRX settings (admin) — Help has the steps.</p>';
+      updateCount();
+      return;
+    }
+    var chosen = S.selected && S.selected.length ? S.selected : defaultSelected();
+    var chosenSet = {};
+    chosen.forEach(function (v) { chosenSet[v] = true; });
+    box.innerHTML = "";
+    list.forEach(function (p) {
+      var lab = document.createElement("label");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = p.value;
+      cb.dataset.id = p.id;
+      cb.checked = !!chosenSet[p.value];
+      var id = document.createElement("span");
+      id.className = "bs-id";
+      id.textContent = p.id;
+      var name = document.createElement("span");
+      name.textContent = p.label;
+      lab.appendChild(cb);
+      lab.appendChild(id);
+      lab.appendChild(name);
+      box.appendChild(lab);
+    });
+    updateCount();
+  }
+
+  function visibleHits() {
+    if (!S.hideSpurs) return hits.slice();
+    return hits.filter(function (h) { return !isSpur(h); });
+  }
+
+  function spurCount() {
+    return hits.filter(isSpur).length;
+  }
+
+  function sortedHits() {
+    var copy = visibleHits();
+    copy.sort(function (a, b) {
+      if (sortKey === "freq") return a.freq - b.freq;
+      if (sortKey === "db") return b.maxDb - a.maxDb;
+      if (a.seen !== b.seen) return b.seen - a.seen;
+      return b.maxDb - a.maxDb;
+    });
+    return copy;
+  }
+
+  function renderHits() {
+    var host = $("bs-hitwrap");
+    if (!host) return;
+    if (!hits.length) {
+      host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Continue or Fresh.</p>';
+      return;
+    }
+    var shown = sortedHits();
+    if (!shown.length) {
+      host.innerHTML = '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick “Hide birdies” to see them.</p>";
+      return;
+    }
+    var rows = shown.map(function (h) {
+      var known = existingName(h.freq);
+      var spur = isSpur(h);
+      var bm = spur
+        ? ""
+        : (known
+          ? '<span title="' + escapeHtml(known) + '">bm</span>'
+          : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '">+</button>');
+      var tag = spur ? '<span class="bs-spur-tag" title="' + escapeHtml(h.spurWhy || "birdie") + '">birdie</span>' : "";
+      var icao = icao833(h.freq);
+      var ch = icao && icao !== fmtMhz(h.freq) ? '<span class="bs-icao">' + icao + "</span> " : "";
+      var newb = h.isNew && !spur ? '<span class="bs-new">new</span> ' : "";
+      var pri = isPriority(h.freq) && !spur ? '<span class="bs-pri">pri</span> ' : "";
+      var nm = h.name || known || "";
+      return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
+        '<td class="bs-n">' + h.seen + "</td>" +
+        '<td>' + pri + newb + ch +
+        '<button type="button" class="bs-tune" data-tune="' + h.freq + '" data-pid="' + escapeHtml(h.pid) + '">' +
+        fmtMhz(h.freq) + "</button> " + tag + "</td>" +
+        '<td><button type="button" class="bs-tune" data-rename="' + h.freq + '" title="Rename bookmark">' +
+        (nm ? escapeHtml(nm) : "name") + "</button></td>" +
+        "<td>" + Math.round(h.maxDb) + "</td>" +
+        "<td>" + escapeHtml(h.label || h.pid) + "</td>" +
+        "<td>" + bm +
+        ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Ignore this line">ign</button></td>' +
+        "</tr>";
+    }).join("");
+    var extra = S.hideSpurs && spurCount()
+      ? '<p class="bs-empty">' + spurCount() + " birdies hidden.</p>"
+      : "";
+    host.innerHTML = extra +
+      '<table class="bs-hits"><thead><tr>' +
+      '<th data-sort="seen"' + (sortKey === "seen" ? ' class="bs-sort"' : "") + ">Seen</th>" +
+      '<th data-sort="freq"' + (sortKey === "freq" ? ' class="bs-sort"' : "") + ">MHz</th>" +
+      "<th>Name</th>" +
+      '<th data-sort="db"' + (sortKey === "db" ? ' class="bs-sort"' : "") + ">dB</th>" +
+      "<th>Band</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+
+  function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+
+  function setStatus(msg) {
+    var el = $("bs-status");
+    if (el) el.textContent = msg || "";
+  }
+
+  function setProgress(frac) {
+    var el = $("bs-bar");
+    if (el) el.style.width = Math.max(0, Math.min(100, frac * 100)) + "%";
+  }
+
+  function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function switchProfile(value) {
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    if (!sel) return Promise.resolve(false);
+    var prevCenter = window.center_freq;
+    var already = sel.value === value;
+    if (!already) {
+      sel.value = value;
+      var toggle = $("owrx-band-toggle");
+      if (toggle) {
+        var opt = sel.options[sel.selectedIndex];
+        toggle.textContent = opt ? opt.text : "Bands";
+      }
+      if (typeof sdr_profile_changed === "function") sdr_profile_changed();
+      else sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    var t0 = Date.now();
+    return new Promise(function (resolve) {
+      (function tick() {
+        var nowSel = $("openwebrx-sdr-profiles-listbox");
+        var ok = nowSel && nowSel.value === value;
+        var data = wf();
+        var moved = already || window.center_freq !== prevCenter;
+        if (ok && moved && data && data.length > 32 && Date.now() - t0 > 600) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - t0 > 10000) {
+          resolve(ok);
+          return;
+        }
+        setTimeout(tick, 200);
+      })();
+    });
+  }
+
+  function muteOn() {
+    if (!S.mute || mutedHold) return;
+    mutedHold = true;
+    try {
+      if (window.UI && typeof UI.volume === "number") savedVol = UI.volume;
+      if (window.audioEngine && typeof audioEngine.setVolume === "function") {
+        audioEngine.setVolume(0);
+      } else if (window.UI && typeof UI.setVolume === "function") {
+        UI.setVolume(0);
+      }
+    } catch (e) {}
+  }
+
+  function muteOff() {
+    if (!mutedHold) return;
+    mutedHold = false;
+    try {
+      if (window.UI && UI.volumeMuted >= 0) return;
+      if (savedVol != null && window.UI && typeof UI.setVolume === "function") {
+        UI.setVolume(savedVol);
+      }
+    } catch (e) {}
+    savedVol = null;
+  }
+
+  function profileByValue(value) {
+    var list = profiles();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].value === value) return list[i];
+    }
+    return null;
+  }
+
+  function ignoreFreq(freq) {
+    S.ignoredFreqs = S.ignoredFreqs || [];
+    if (!isIgnoredFreq(freq)) S.ignoredFreqs.push(Math.round(freq));
+    hits.forEach(function (h) {
+      if (Math.abs(h.freq - freq) < 4000) {
+        h.ignored = true;
+        h.spur = true;
+        h.spurWhy = "ignored";
+      }
+    });
+    saveSettings();
+    saveHits();
+    renderHits();
+  }
+
+  async function runSurvey(fresh) {
+    if (running) return;
+    hookWaterfall();
+    readForm();
+    S.passes = $("bs-passes") ? Math.max(1, Math.min(20, Number($("bs-passes").value) || 2)) : S.passes;
+    S.dwell = $("bs-dwell") ? Math.max(0.8, Math.min(15, Number($("bs-dwell").value) || 2.5)) : S.dwell;
+    S.minHits = $("bs-minhits") ? Math.max(1, Math.min(50, Number($("bs-minhits").value) || 3)) : S.minHits;
+    S.threshDb = $("bs-thresh") ? Math.max(4, Math.min(25, Number($("bs-thresh").value) || 10)) : S.threshDb;
+    if ($("bs-autobm")) S.autoBm = $("bs-autobm").checked;
+    if ($("bs-mute")) S.mute = $("bs-mute").checked;
+    var box = $("bs-bands");
+    if (box && !box.querySelector("input")) fillBands();
+    S.selected = selectedValues();
+    saveSettings();
+    if (!S.selected.length) {
+      var noProfiles = !profiles().length;
+      var msg = noProfiles
+        ? "No bands to pick yet. Wait for the radio to finish loading, then click Check install. See Help if this stays empty."
+        : "Pick at least one band (or tap Air / VHF / Ham).";
+      setStatus(msg);
+      toast(msg);
+      renderHealth({ ok: true });
+      return;
+    }
+    var blocked = blockingIssue();
+    if (blocked) {
+      setStatus(blocked.title + " — " + blocked.fix);
+      renderHealth();
+      openHelp();
+      return;
+    }
+    if (courtesyBlocked("surveying")) return;
+    if (window.fs_scanner_state && fs_scanner_state.running && typeof fs_stop_scanner === "function") {
+      try { fs_stop_scanner(); } catch (e) {}
+    }
+    running = true;
+    stopFlag = false;
+    var snapBefore = loadSnap();
+    if (fresh) {
+      hits = [];
+      tileLooks = {};
+    }
+    renderHits();
+    var btn = $("bs-toggle-btn");
+    if (btn) btn.classList.add("bs-running");
+    muteOn();
+    var total = S.selected.length * S.passes;
+    var step = 0;
+    var lastSwitchAt = 0;
+    var minGap = 11000;
+    try {
+      for (var pass = 1; pass <= S.passes && !stopFlag; pass++) {
+        for (var i = 0; i < S.selected.length && !stopFlag; i++) {
+          var value = S.selected[i];
+          var p = profileByValue(value) || { id: value, label: value };
+          setStatus("Pass " + pass + "/" + S.passes + " · " + p.label);
+          setProgress(step / total);
+          if (lastSwitchAt) {
+            var waitMore = minGap - (Date.now() - lastSwitchAt);
+            if (waitMore > 0) {
+              setStatus("Pass " + pass + "/" + S.passes + " · waiting " + Math.ceil(waitMore / 1000) + "s (anti-ban) · " + p.label);
+              await sleep(waitMore);
+            }
+          }
+          if (stopFlag) break;
+          await switchProfile(value);
+          lastSwitchAt = Date.now();
+          var until = Date.now() + S.dwell * 1000;
+          var lastNoise = "";
+          while (Date.now() < until && !stopFlag) {
+            recordLook(p.id, p.label);
+            saveHits();
+            var data = wf();
+            if (data && data.length) {
+              lastNoise = " · noise " + Math.round(noiseFloor(data)) + " dB · " + hits.length + " peaks";
+            }
+            setStatus("Pass " + pass + "/" + S.passes + " · " + p.label + lastNoise);
+            renderHits();
+            await sleep(SAMPLE_MS);
+          }
+          step++;
+          setProgress(step / total);
+        }
+      }
+      classifyAll();
+      markNewFlags(snapBefore);
+      saveHits();
+      saveSnap();
+      var created = S.autoBm ? autoBookmarkQualified() : [];
+      var freshBm = created.filter(function (r) { return !r.already; });
+      lastCreated = freshBm;
+      var liveN = hits.filter(function (h) { return !isSpur(h); }).length;
+      var newN = hits.filter(function (h) { return h.isNew && !isSpur(h); }).length;
+      var extra = hits.length ? "" : " Nothing sat above the threshold — lower “dB over noise” or pick a busier band.";
+      var summary = liveN + " signals (" + newN + " new), " + spurCount() + " birdies ignored. " + freshBm.length + " auto bookmarks.";
+      if (stopFlag) setStatus("Stopped. " + summary + extra);
+      else setStatus("Done. " + summary + extra);
+      muteOff();
+      if (!stopFlag && S.scanAfter && freshBm.length) {
+        setStatus("Done. " + summary + " Listening to new bookmarks…");
+        await listenBookmarks(freshBm);
+      } else if (!stopFlag && S.scanAfter && !freshBm.length && qualifiedHits().length) {
+        setStatus("No new bookmarks — listening to qualified peaks…");
+        await listenBookmarks(qualifiedHits().map(function (h) { return { hit: h, freq: h.freq, pid: h.pid, mode: h.mode, name: bookmarkNameFor(h) }; }));
+      }
+    } catch (err) {
+      setStatus(friendlyError(err, "Survey"));
+      toast(friendlyError(err, "Survey"));
+      renderHealth({ all: true, toast: false });
+    }
+    running = false;
+    if (btn) btn.classList.remove("bs-running");
+    if (!S.scanAfter) muteOff();
+    renderHits();
+  }
+
+  function stopSurvey() {
+    stopFlag = true;
+    setStatus("Stopping…");
+  }
+
+  function tuneTo(freq, pid) {
+    var list = profiles();
+    var want = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === pid) {
+        want = list[i].value;
+        break;
+      }
+    }
+    var go = want ? switchProfile(want) : Promise.resolve(true);
+    go.then(function () {
+      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+      var hit = null;
+      for (var j = 0; j < hits.length; j++) {
+        if (hits[j].freq === freq) hit = hits[j];
+      }
+      if (hit && window.UI && typeof UI.setModulation === "function") {
+        try { UI.setModulation(hit.mode, ""); } catch (e) {}
+      }
+    });
+  }
+
+  function copyResults() {
+    try {
+    var lines = sortedHits().map(function (h) {
+      return h.seen + "\t" + fmtMhz(h.freq) + "\t" + (icao833(h.freq) || "") + "\t" +
+        Math.round(h.maxDb) + "\t" + (h.label || h.pid) + "\t" + (h.name || "") + "\t" + (h.isNew ? "new" : "");
+    });
+    lines.unshift("seen\tMHz\tch833\tdB\tband\tname\tnew");
+    var text = lines.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      setStatus("Copied " + hits.length + " peaks.");
+    } else {
+      setStatus("Clipboard blocked — use Export CSV instead.");
+    }
+    } catch (err) {
+      setStatus(friendlyError(err, "Copy"));
+    }
+  }
+
+  function downloadFile(name, text, mime) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: mime || "text/plain" }));
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} }, 1500);
+  }
+
+  function exportCsv() {
+    try {
+    var lines = ["seen,MHz,ch833,dB,band,name,new,birdie,last"];
+    sortedHits().forEach(function (h) {
+      lines.push([
+        h.seen,
+        fmtMhz(h.freq),
+        icao833(h.freq),
+        Math.round(h.maxDb),
+        JSON.stringify(h.label || h.pid),
+        JSON.stringify(h.name || existingName(h.freq) || ""),
+        h.isNew ? "yes" : "",
+        isSpur(h) ? (h.spurWhy || "yes") : "",
+        h.last ? new Date(h.last).toISOString() : ""
+      ].join(","));
+    });
+    downloadFile("band-survey.csv", lines.join("\n"), "text/csv");
+    setStatus("Exported CSV.");
+    } catch (err) {
+      setStatus(friendlyError(err, "Export CSV"));
+      toast(friendlyError(err, "Export CSV"));
+    }
+  }
+
+  function exportServerJson() {
+    try {
+    var arr = qualifiedHits().map(function (h) {
+      return {
+        name: bookmarkNameFor(h),
+        frequency: Math.round(h.freq),
+        modulation: h.mode || "am",
+        description: "survey seen " + h.seen + (h.isNew ? " (new)" : "")
+      };
+    });
+    downloadFile("bookmarks-survey.json", JSON.stringify(arr, null, 2), "application/json");
+    setStatus("Exported " + arr.length + " bookmarks.json rows. Yellow server bookmarks are admin-only — merge this file on the radio host.");
+    } catch (err) {
+      setStatus(friendlyError(err, "Export JSON"));
+      toast(friendlyError(err, "Export JSON"));
+    }
+  }
+
+  function jumpLoudest() {
+    try {
+    hookWaterfall();
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    var pid = "";
+    if (sel && sel.value) {
+      pid = sel.value.indexOf("|") >= 0 ? sel.value.split("|").slice(1).join("|") : sel.value;
+    }
+    var peaks = findPeaks(pid);
+    if (!peaks.length) {
+      var blocked = blockingIssue();
+      setStatus(blocked
+        ? blocked.title + " — " + blocked.fix
+        : "No peak on this tile right now. Wait a few seconds after the radio connects, or check the SDR is started.");
+      renderHealth();
+      return;
+    }
+    peaks.sort(function (a, b) { return b.db - a.db; });
+    var p = peaks[0];
+    if (!window.UI || typeof UI.setFrequency !== "function") {
+      setStatus("Tune API is missing (UI.setFrequency). Update OpenWebRX+ or open the full receiver UI.");
+      renderHealth();
+      return;
+    }
+    UI.setFrequency(p.freq);
+    if (window.UI && typeof UI.setModulation === "function") {
+      try { UI.setModulation(guessMode(pid), ""); } catch (e) {}
+    }
+    setStatus("Jumped to " + (icao833(p.freq) || fmtMhz(p.freq)) + " (" + Math.round(p.db) + " dB) — this tile only.");
+    } catch (err) {
+      setStatus(friendlyError(err, "Jump loudest"));
+      toast(friendlyError(err, "Jump loudest"));
+      renderHealth();
+    }
+  }
+
+  function readForm() {
+    S.hideAuto = $("bs-hideauto") ? $("bs-hideauto").checked : S.hideAuto;
+    S.autoBm = $("bs-autobm") ? $("bs-autobm").checked : S.autoBm;
+    S.mute = $("bs-mute") ? $("bs-mute").checked : S.mute;
+    S.hideSpurs = $("bs-hidespurs") ? $("bs-hidespurs").checked : S.hideSpurs;
+    S.scanAfter = $("bs-scanafter") ? $("bs-scanafter").checked : S.scanAfter;
+    S.holdBusy = $("bs-holdbusy") ? $("bs-holdbusy").checked : S.holdBusy;
+    S.recordBusy = $("bs-record") ? $("bs-record").checked : S.recordBusy;
+    S.notifyNew = $("bs-notify") ? $("bs-notify").checked : S.notifyNew;
+    S.aloneOnly = $("bs-alone") ? $("bs-alone").checked : S.aloneOnly;
+    if ($("bs-listensec")) S.listenSec = Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4));
+    if ($("bs-priority")) S.priority = $("bs-priority").value || "";
+    if ($("bs-lockmin")) S.lockoutMin = Math.max(1, Math.min(240, Number($("bs-lockmin").value) || 30));
+    if ($("bs-sched")) S.scheduleHrs = Math.max(0, Math.min(24, Number($("bs-sched").value) || 0));
+    saveSettings();
+    applySchedule();
+    refreshBookmarks();
+    renderHits();
+  }
+
+  function makePanel() {
+    if ($("bs-panel")) return;
+    var panel = document.createElement("div");
+    panel.id = "bs-panel";
+    panel.hidden = true;
+    panel.innerHTML =
+      '<div class="bs-head" id="bs-drag"><b>Band survey</b>' +
+      '<button type="button" id="bs-help-btn" title="Help and install guide">Help</button>' +
+      '<button type="button" class="bs-x" id="bs-close" title="Close">×</button></div>' +
+      '<div class="bs-body">' +
+      '<div id="bs-health" class="bs-health" hidden></div>' +
+      '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Click <b>Help</b> any time. Your blue bookmarks are backed up in this browser before the plugin writes.</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-primary" id="bs-start">Continue</button>' +
+      '<button type="button" id="bs-fresh">Fresh</button>' +
+      '<button type="button" class="bs-stop" id="bs-stop">Stop</button>' +
+      '<button type="button" id="bs-jump">Jump loudest</button>' +
+      '<button type="button" id="bs-check">Check install</button>' +
+      '<span class="bs-count" id="bs-selcount"></span>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<button type="button" id="bs-hold">Hold</button>' +
+      '<button type="button" id="bs-skip">Skip</button>' +
+      '<button type="button" id="bs-lockout">Lockout</button>' +
+      '<span class="bs-hint">while listening: stay / next / ignore ~30 min</span>' +
+      "</div>" +
+      '<div class="bs-status" id="bs-status"></div>' +
+      '<div class="bs-progress"><i id="bs-bar"></i></div>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny" data-preset="air">Air</button>' +
+      '<button type="button" class="bs-tiny" data-preset="vhf">VHF voice</button>' +
+      '<button type="button" class="bs-tiny" data-preset="ham">Ham</button>' +
+      '<button type="button" class="bs-tiny" data-preset="all">All</button>' +
+      '<button type="button" class="bs-tiny" data-preset="none">None</button>' +
+      '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px">' +
+      "</div>" +
+      '<div class="bs-bands" id="bs-bands"></div>' +
+      '<div class="bs-row">' +
+      "<label>Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"20\" step=\"1\" style=\"width:3.4em\"></label>" +
+      "<label>Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\"></label>" +
+      "<label>Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\"></label>" +
+      "<label>dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\"></label>" +
+      "<label>Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\" title=\"Fixed listen, or quiet-before-move when Hold while busy is on\"></label>" +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-scanafter"> Scan new bookmarks when done</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-hideauto"> Hide auto bookmarks</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-mute"> Mute while running</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-record"> Record busy</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-notify"> Notify new</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-alone"> Only if alone</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label>Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
+      '<label>Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em"></label>' +
+      '<label>Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
+      "</div>" +
+      "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = ignore</div>" +
+      '<div id="bs-hitwrap"></div>' +
+      '<div class="bs-row" style="margin-top:8px">' +
+      '<button type="button" id="bs-bmqual">Bookmark qualified</button>' +
+      '<button type="button" id="bs-listen">Scan bookmarks</button>' +
+      '<button type="button" id="bs-copy">Copy list</button>' +
+      '<button type="button" id="bs-csv">Export CSV</button>' +
+      '<button type="button" id="bs-json">Export JSON</button>' +
+      '<button type="button" id="bs-clearauto">Clear auto bookmarks</button>' +
+      '<button type="button" id="bs-clearhits">Clear list</button>' +
+      "</div>" +
+      "</div>";
+    document.body.appendChild(panel);
+
+    $("bs-passes").value = S.passes;
+    $("bs-dwell").value = S.dwell;
+    $("bs-minhits").value = S.minHits;
+    $("bs-thresh").value = S.threshDb;
+    $("bs-autobm").checked = !!S.autoBm;
+    $("bs-scanafter").checked = !!S.scanAfter;
+    $("bs-listensec").value = S.listenSec || 4;
+    $("bs-hideauto").checked = !!S.hideAuto;
+    $("bs-mute").checked = !!S.mute;
+    $("bs-hidespurs").checked = S.hideSpurs !== false;
+    $("bs-holdbusy").checked = S.holdBusy !== false;
+    $("bs-record").checked = !!S.recordBusy;
+    $("bs-notify").checked = S.notifyNew !== false;
+    $("bs-alone").checked = S.aloneOnly !== false;
+    $("bs-priority").value = S.priority || "121.5";
+    $("bs-lockmin").value = S.lockoutMin || 30;
+    $("bs-sched").value = S.scheduleHrs || 0;
+    fillBands();
+    applyCaps();
+    loadHits();
+    classifyAll();
+    renderHits();
+
+    $("bs-close").onclick = function () { panel.hidden = true; };
+    $("bs-help-btn").onclick = openHelp;
+    $("bs-check").onclick = function () {
+      var issues = renderHealth({ all: true, toast: true, ok: true });
+      var hard = issues.filter(function (x) { return x.level === "error"; }).length;
+      var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
+      var extras = issues.filter(function (x) { return x.level === "info"; }).length;
+      if (!hard && !warns) {
+        setStatus("Install looks good. Orange SV is this plugin. Optional extras are listed only so you know they are not required.");
+      } else {
+        setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
+          (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
+          (extras ? extras + " optional extra" + (extras === 1 ? "" : "s") + ". " : "") +
+          "Read the box above, or open Help.");
+      }
+    };
+    $("bs-start").onclick = function () { runSurvey(false); };
+    $("bs-fresh").onclick = function () { runSurvey(true); };
+    $("bs-stop").onclick = stopSurvey;
+    $("bs-jump").onclick = function () { jumpLoudest(); };
+    $("bs-hold").onclick = function () {
+      listenCmd = listenCmd === "hold" ? "" : "hold";
+      $("bs-hold").classList.toggle("bs-on", listenCmd === "hold");
+      setStatus(listenCmd === "hold" ? "Holding this frequency." : "Hold released.");
+    };
+    $("bs-skip").onclick = function () { listenCmd = "skip"; };
+    $("bs-lockout").onclick = function () { listenCmd = "lock"; };
+    $("bs-filter").oninput = filterBands;
+    $("bs-autobm").onchange = readForm;
+    $("bs-scanafter").onchange = readForm;
+    $("bs-hideauto").onchange = readForm;
+    $("bs-mute").onchange = readForm;
+    $("bs-hidespurs").onchange = readForm;
+    $("bs-holdbusy").onchange = readForm;
+    $("bs-record").onchange = readForm;
+    $("bs-notify").onchange = function () { readForm(); askNotifyPerm(); };
+    $("bs-alone").onchange = readForm;
+    $("bs-priority").onchange = readForm;
+    $("bs-lockmin").onchange = readForm;
+    $("bs-sched").onchange = readForm;
+    $("bs-bands").onchange = function () {
+      S.selected = selectedValues();
+      saveSettings();
+      updateCount();
+    };
+    panel.querySelectorAll("[data-preset]").forEach(function (btn) {
+      btn.onclick = function () { applyPreset(btn.getAttribute("data-preset")); };
+    });
+    $("bs-bmqual").onclick = function () {
+      var created = autoBookmarkQualified();
+      var n = created.filter(function (r) { return !r.already; }).length;
+      setStatus("Bookmarked " + n + " new (seen ≥ " + S.minHits + "). Click a name to rename.");
+      renderHits();
+      if (S.scanAfter && lastCreated.length && !running) {
+        stopFlag = false;
+        running = true;
+        var btn2 = $("bs-toggle-btn");
+        if (btn2) btn2.classList.add("bs-running");
+      listenBookmarks(lastCreated).then(function () {
+          running = false;
+          if (btn2) btn2.classList.remove("bs-running");
+        }).catch(function (err) {
+          running = false;
+          if (btn2) btn2.classList.remove("bs-running");
+          setStatus(friendlyError(err, "Listen"));
+        });
+      }
+    };
+    $("bs-listen").onclick = function () {
+      if (running) return;
+      S.listenSec = $("bs-listensec") ? Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4)) : S.listenSec;
+      saveSettings();
+      var list = lastCreated.length
+        ? lastCreated
+        : qualifiedHits().map(function (h) {
+          return { freq: h.freq, pid: h.pid, mode: h.mode, name: bookmarkNameFor(h) };
+        });
+      if (!list.length) {
+        setStatus("No bookmarks or qualified peaks to scan.");
+        return;
+      }
+      stopFlag = false;
+      running = true;
+      var btn = $("bs-toggle-btn");
+      if (btn) btn.classList.add("bs-running");
+      listenBookmarks(list).then(function () {
+        running = false;
+        if (btn) btn.classList.remove("bs-running");
+        renderHits();
+      }).catch(function (err) {
+        running = false;
+        if (btn) btn.classList.remove("bs-running");
+        setStatus(friendlyError(err, "Listen"));
+      });
+    };
+    $("bs-copy").onclick = copyResults;
+    $("bs-csv").onclick = function () { exportCsv(); };
+    $("bs-json").onclick = function () { exportServerJson(); };
+    $("bs-clearauto").onclick = function () {
+      var n = clearAutoBookmarks();
+      setStatus("Removed " + n + " auto bookmarks.");
+      renderHits();
+    };
+    $("bs-clearhits").onclick = function () {
+      hits = [];
+      tileLooks = {};
+      saveHits();
+      renderHits();
+      setStatus("List cleared.");
+    };
+    $("bs-hitwrap").onclick = function (ev) {
+      var t = ev.target;
+      if (!t) return;
+      if (t.getAttribute("data-sort")) {
+        sortKey = t.getAttribute("data-sort");
+        renderHits();
+        return;
+      }
+      if (t.getAttribute("data-rename")) {
+        askRename(Number(t.getAttribute("data-rename")));
+        return;
+      }
+      if (t.getAttribute("data-tune")) {
+        tuneTo(Number(t.getAttribute("data-tune")), t.getAttribute("data-pid"));
+        return;
+      }
+      if (t.getAttribute("data-ignore")) {
+        ignoreFreq(Number(t.getAttribute("data-ignore")));
+        setStatus("Ignoring " + fmtMhz(Number(t.getAttribute("data-ignore"))) + " (birdie).");
+        return;
+      }
+      if (t.getAttribute("data-bm")) {
+        var f = Number(t.getAttribute("data-bm"));
+        var hit = hits.filter(function (h) { return h.freq === f; })[0];
+        if (hit && addBookmark(hit)) {
+          setStatus("Bookmarked " + (hit.name || fmtMhz(f)) + " — click the name to rename.");
+          renderHits();
+        }
+      }
+    };
+
+    var drag = $("bs-drag");
+    var ox = 0;
+    var oy = 0;
+    var dragging = false;
+    drag.addEventListener("mousedown", function (ev) {
+      if (ev.target && (ev.target.id === "bs-close" || ev.target.id === "bs-help-btn")) return;
+      dragging = true;
+      var r = panel.getBoundingClientRect();
+      ox = ev.clientX - r.left;
+      oy = ev.clientY - r.top;
+      ev.preventDefault();
+    });
+    document.addEventListener("mousemove", function (ev) {
+      if (!dragging) return;
+      panel.style.left = Math.max(4, ev.clientX - ox) + "px";
+      panel.style.top = Math.max(4, ev.clientY - oy) + "px";
+      panel.style.right = "auto";
+    });
+    document.addEventListener("mouseup", function () { dragging = false; });
+  }
+
+  function placeToggle(btn, container) {
+    var buttons = Array.prototype.slice.call(
+      container.querySelectorAll('div[id$="-toggle-btn"], div[id$="-btn"], div[id="openwebrx-clock-utc"]')
+    ).filter(function (b) { return b.offsetParent !== null; });
+    buttons.sort(function (a, b) {
+      if (a.id === "openwebrx-clock-utc") return -1;
+      if (b.id === "openwebrx-clock-utc") return 1;
+      return a.id.localeCompare(b.id);
+    });
+    var left = 4;
+    for (var i = 0; i < buttons.length; i++) {
+      if (buttons[i].id === btn.id) break;
+      var rect = buttons[i].getBoundingClientRect();
+      if (rect.width > 0) left += rect.width + 4;
+    }
+    btn.style.left = left + "px";
+  }
+
+  function showFallback(msg) {
+    var bar = $("bs-fallback");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "bs-fallback";
+      document.body.appendChild(bar);
+    }
+    bar.innerHTML = '<button type="button" id="bs-fallback-sv" class="bs-fallback-sv">SV</button> <span>' +
+      escapeHtml(msg) + '</span> <button type="button" id="bs-fallback-help">Help</button>';
+    var sv = $("bs-fallback-sv");
+    if (sv) {
+      sv.onclick = function () {
+        makePanel();
+        var p = $("bs-panel");
+        if (!p) return;
+        p.hidden = !p.hidden;
+        if (!p.hidden) {
+          fillBands();
+          renderHealth({ all: true, toast: true });
+        }
+      };
+    }
+    var hb = $("bs-fallback-help");
+    if (hb) hb.onclick = openHelp;
+    ensureFallbackChip();
+  }
+
+  function hideFallback() {
+    var bar = $("bs-fallback");
+    if (bar) bar.remove();
+    var chip = $("bs-fallback-chip");
+    if (chip) chip.remove();
+  }
+
+  function ensureFallbackChip() {
+    if ($("bs-fallback-chip")) return;
+    var chip = document.createElement("div");
+    chip.id = "bs-fallback-chip";
+    chip.textContent = "SV";
+    chip.title = "Band survey — receiver toolbar missing. Click to open the panel anyway.";
+    chip.onclick = function () {
+      makePanel();
+      var p = $("bs-panel");
+      if (!p) return;
+      p.hidden = !p.hidden;
+      if (!p.hidden) {
+        fillBands();
+        renderHealth({ all: true, toast: true });
+        setStatus("Receiver toolbar not found. Open the SDR receiver page (not a map hub), then hard-refresh.");
+      }
+    };
+    document.body.appendChild(chip);
+  }
+
+  function ensureUi() {
+    hookWaterfall();
+    hookHide();
+    makePanel();
+    backupLocalBookmarks("first-ui");
+    var container = $("openwebrx-panel-receiver");
+    if (!container) {
+      if (Date.now() - (window._bs_ui_t0 || (window._bs_ui_t0 = Date.now())) > 8000) {
+        showFallback("Band survey loaded, but the receiver panel is not on this page. Open the SDR receiver (not the map hub only) and hard-refresh. Click SV or Help.");
+      }
+      return;
+    }
+    hideFallback();
+    var btn = $("bs-toggle-btn");
+    if (!btn) {
+      btn = document.createElement("div");
+      btn.id = "bs-toggle-btn";
+      btn.textContent = "SV";
+      btn.title = "Band survey — pick bands, count peaks. Click for the panel; Help is inside.";
+      btn.onclick = function () {
+        var panel = $("bs-panel");
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) {
+          fillBands();
+          if (S.hideAuto !== $("bs-hideauto").checked) $("bs-hideauto").checked = !!S.hideAuto;
+          renderHealth();
+          applyCaps();
+          if (!profiles().length) {
+            setStatus("Waiting for band profiles… if this stays empty, click Check install or Help.");
+          }
+        }
+      };
+      container.appendChild(btn);
+    }
+    placeToggle(btn, container);
+    if (S.hideAuto) refreshBookmarks();
+    applySchedule();
+    if ($("bs-panel") && !$("bs-panel").hidden) {
+      setTimeout(function () { renderHealth(); }, 2500);
+    }
+    if (!S.seenHelp && !window._bs_welcomed) {
+      window._bs_welcomed = true;
+      var p = $("bs-panel");
+      if (p) p.hidden = false;
+      fillBands();
+      renderHealth();
+      setStatus("Welcome. Your blue bookmarks were copied into a browser backup. Click Help for the full guide — this only auto-opens once.");
+      openHelp();
+    }
+  }
+
+  if (Plugins.utils && Plugins.utils.on_ready) {
+    Plugins.utils.on_ready(ensureUi);
+  }
+  setTimeout(ensureUi, 400);
+  setTimeout(ensureUi, 1500);
+  setTimeout(ensureUi, 4000);
+  setInterval(function () {
+    var btn = $("bs-toggle-btn");
+    var container = $("openwebrx-panel-receiver");
+    if (btn && container) placeToggle(btn, container);
+  }, 2500);
+  return true;
+};
