@@ -219,6 +219,20 @@
   border-color: #fbbf24;
 }
 
+#bs-panel button.bs-scan-top {
+  background: #f59e0b;
+  color: #111;
+  border-color: #fbbf24;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+#bs-panel button.bs-scan-top:hover {
+  background: #fbbf24;
+  color: #111;
+}
+
 #bs-panel .bs-hint {
   color: #9ca3af;
   font-size: 11px;

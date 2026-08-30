@@ -3394,6 +3394,30 @@ Plugins.band_survey.init = function () {
     renderHits();
   }
 
+  function startListenScan() {
+    if (running) return;
+    S.listenSec = $("bs-listensec") ? Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4)) : S.listenSec;
+    saveSettings();
+    var list = scanTargetItems();
+    if (!list.length) {
+      setStatus("No bookmarks or qualified peaks to scan.");
+      return;
+    }
+    stopFlag = false;
+    running = true;
+    var btn = $("bs-toggle-btn");
+    if (btn) btn.classList.add("bs-running");
+    listenBookmarks(list).then(function () {
+      running = false;
+      if (btn) btn.classList.remove("bs-running");
+      renderHits();
+    }).catch(function (err) {
+      running = false;
+      if (btn) btn.classList.remove("bs-running");
+      setStatus(friendlyError(err, "Listen"));
+    });
+  }
+
   function makePanel() {
     if ($("bs-panel")) return;
     var panel = document.createElement("div");
@@ -3411,6 +3435,7 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-primary" id="bs-start" title="Run another pass and add to Seen totals.">Continue</button>' +
       '<button type="button" id="bs-fresh" title="Start over: zero Seen totals, then survey the ticked bands.">Fresh</button>' +
       '<button type="button" class="bs-stop" id="bs-stop" title="Stop the survey or bookmark scan right now.">Stop</button>' +
+      '<button type="button" class="bs-scan-top" id="bs-listen-top" title="Hop through new auto bookmarks, or qualified peaks if none are new.">Scan bookmarks</button>' +
       '<button type="button" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
       '<button type="button" id="bs-check" title="Check that this page can run Band survey and show any fix on screen.">Check install</button>' +
       '<span class="bs-count" id="bs-selcount"></span>' +
@@ -3614,29 +3639,8 @@ Plugins.band_survey.init = function () {
         });
       }
     };
-    $("bs-listen").onclick = function () {
-      if (running) return;
-      S.listenSec = $("bs-listensec") ? Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4)) : S.listenSec;
-      saveSettings();
-      var list = scanTargetItems();
-      if (!list.length) {
-        setStatus("No bookmarks or qualified peaks to scan.");
-        return;
-      }
-      stopFlag = false;
-      running = true;
-      var btn = $("bs-toggle-btn");
-      if (btn) btn.classList.add("bs-running");
-      listenBookmarks(list).then(function () {
-        running = false;
-        if (btn) btn.classList.remove("bs-running");
-        renderHits();
-      }).catch(function (err) {
-        running = false;
-        if (btn) btn.classList.remove("bs-running");
-        setStatus(friendlyError(err, "Listen"));
-      });
-    };
+    $("bs-listen-top").onclick = startListenScan;
+    $("bs-listen").onclick = startListenScan;
     $("bs-copy").onclick = copyResults;
     $("bs-csv").onclick = function () { exportCsv(); };
     $("bs-json").onclick = function () { exportServerJson(); };
