@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 11;
+Plugins.band_survey._version = 12;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -71,7 +71,11 @@ Plugins.band_survey.init = function () {
       seenHelp: false,
       panelW: 720,
       panelH: 520,
-      splitPct: 62
+      splitPct: 62,
+      leftSplitPct: 42,
+      rightSplit1: 38,
+      rightSplit2: 56,
+      rightSplit3: 78
     };
     try {
       var raw = window.localStorage.getItem(LS);
@@ -1085,7 +1089,7 @@ Plugins.band_survey.init = function () {
       "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
       "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
       "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
-      "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Drag the vertical bar to grow the bookmarks pane on the right. Size is remembered in this browser.</li>" +
+      "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Drag any grey bar between sections (controls vs peaks, survey vs bookmarks, each right-hand block) to adjust layout. Size is remembered in this browser.</li>" +
       "</ol>" +
       '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
       "<h3>What this is</h3>" +
@@ -1108,7 +1112,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Panel</h3>" +
-      "<p>The left side is survey controls, bands, settings, and the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, always-skip frequencies, and audio clips. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
+      "<p>The left side is survey controls, bands, and settings above a draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
       "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Load bookmarks</b> imports JSON/CSV into a separate amber <b>[load]</b> list — it does not overwrite blue bookmarks. <b>Scan bookmarks</b> hops through both. <b>Clear loaded</b> removes only <b>[load]</b> entries.</p>" +
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
@@ -1936,6 +1940,30 @@ Plugins.band_survey.init = function () {
     S.splitPct = pct;
     var leftEl = $("bs-left");
     if (leftEl) leftEl.style.flex = "0 0 " + pct + "%";
+    var lsp = Number(S.leftSplitPct);
+    if (!(lsp >= 22 && lsp <= 78)) lsp = 42;
+    S.leftSplitPct = lsp;
+    var leftTop = $("bs-left-top");
+    if (leftTop) leftTop.style.flex = "0 0 " + lsp + "%";
+    var rs1 = Number(S.rightSplit1);
+    var rs2 = Number(S.rightSplit2);
+    var rs3 = Number(S.rightSplit3);
+    if (!(rs1 >= 12 && rs1 <= 70)) rs1 = 38;
+    if (!(rs2 >= rs1 + 10 && rs2 <= 85)) rs2 = Math.max(rs1 + 10, 56);
+    if (!(rs3 >= rs2 + 10 && rs3 <= 95)) rs3 = Math.max(rs2 + 10, 78);
+    S.rightSplit1 = rs1;
+    S.rightSplit2 = rs2;
+    S.rightSplit3 = rs3;
+    var segMap = [
+      ["bs-bm-seg", rs1],
+      ["bs-loaded-seg", rs2 - rs1],
+      ["bs-audio-seg", rs3 - rs2],
+      ["bs-skip-seg", 100 - rs3]
+    ];
+    segMap.forEach(function (pair) {
+      var el = $(pair[0]);
+      if (el) el.style.flex = "0 0 " + pair[1] + "%";
+    });
   }
 
   function savePanelLayout() {
@@ -2025,7 +2053,7 @@ Plugins.band_survey.init = function () {
       }
       var root = t.closest("#bs-panel, #bs-help, #bs-fallback, #bs-fallback-chip, #bs-toggle-btn");
       var host = root && t.closest("[title], [data-tip]");
-      if (host && root.contains(host) && !t.closest(".bs-resize-e, .bs-resize-s, .bs-resize-se, .bs-splitter")) {
+      if (host && root.contains(host) && !t.closest(".bs-resize-e, .bs-resize-s, .bs-resize-se, .bs-splitter, .bs-splitter-h")) {
         showFloatTip(host, ev);
       } else if (hideFloatTip._host) {
         hideFloatTip();
@@ -2042,8 +2070,9 @@ Plugins.band_survey.init = function () {
       if (!kind) return;
       document.body.classList.add("bs-layout-drag");
       if (kind === "e") document.body.classList.add("bs-resize-ew");
-      else if (kind === "s") document.body.classList.add("bs-resize-ns");
-      else if (kind === "se") document.body.classList.add("bs-resize-nwse");
+      else if (kind === "s" || kind === "left-split" || kind === "r1" || kind === "r2" || kind === "r3") {
+        document.body.classList.add("bs-resize-ns");
+      } else if (kind === "se") document.body.classList.add("bs-resize-nwse");
     }
     function onMove(ev) {
       if (!dragging) return;
@@ -2055,6 +2084,32 @@ Plugins.band_survey.init = function () {
         var r = box.getBoundingClientRect();
         if (r.width < 40) return;
         S.splitPct = clamp(((ev.clientX - r.left) / r.width) * 100, 32, 80);
+        applyPanelLayout();
+        return;
+      }
+      if (dragging === "left-split") {
+        var lbox = $("bs-left-stack");
+        if (!lbox) return;
+        var lr = lbox.getBoundingClientRect();
+        if (lr.height < 80) return;
+        S.leftSplitPct = clamp(((ev.clientY - lr.top) / lr.height) * 100, 22, 78);
+        applyPanelLayout();
+        return;
+      }
+      if (dragging === "r1" || dragging === "r2" || dragging === "r3") {
+        var rbox = $("bs-right-stack");
+        if (!rbox) return;
+        var rr = rbox.getBoundingClientRect();
+        if (rr.height < 100) return;
+        var yPct = clamp(((ev.clientY - rr.top) / rr.height) * 100, 8, 92);
+        applyPanelLayout();
+        if (dragging === "r1") {
+          S.rightSplit1 = clamp(yPct, 12, Math.min(70, S.rightSplit2 - 10));
+        } else if (dragging === "r2") {
+          S.rightSplit2 = clamp(yPct, S.rightSplit1 + 10, Math.min(85, S.rightSplit3 - 10));
+        } else if (dragging === "r3") {
+          S.rightSplit3 = clamp(yPct, S.rightSplit2 + 10, 95);
+        }
         applyPanelLayout();
         return;
       }
@@ -2086,6 +2141,25 @@ Plugins.band_survey.init = function () {
         ev.preventDefault();
       });
     }
+    var leftSplit = $("bs-left-splitter");
+    if (leftSplit) {
+      leftSplit.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        dragging = "left-split";
+        setDragClass("left-split");
+        try { leftSplit.setPointerCapture(ev.pointerId); } catch (e) {}
+        ev.preventDefault();
+      });
+    }
+    Array.prototype.forEach.call(panel.querySelectorAll(".bs-splitter-h[data-split]"), function (h) {
+      h.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        dragging = h.getAttribute("data-split");
+        setDragClass(dragging);
+        try { h.setPointerCapture(ev.pointerId); } catch (e2) {}
+        ev.preventDefault();
+      });
+    });
     Array.prototype.forEach.call(panel.querySelectorAll("[data-resize]"), function (h) {
       h.addEventListener("pointerdown", function (ev) {
         if (ev.button && ev.button !== 0) return;
@@ -3429,6 +3503,8 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button></div>' +
       '<div class="bs-split" id="bs-split">' +
       '<div class="bs-left" id="bs-left">' +
+      '<div class="bs-left-stack" id="bs-left-stack">' +
+      '<div class="bs-left-top" id="bs-left-top">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
       '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Hover a control for a tip. Blue bookmarks are on the right.</p>' +
       '<div class="bs-row">' +
@@ -3487,6 +3563,9 @@ Plugins.band_survey.init = function () {
       '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
       '<label title="0 = off. Runs Continue while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
       "</div>" +
+      "</div>" +
+      '<div class="bs-splitter bs-splitter-h" id="bs-left-splitter" title="Drag to resize controls vs peaks table." role="separator" aria-orientation="horizontal"></div>' +
+      '<div class="bs-left-bottom" id="bs-left-bottom">' +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
       '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button></div>' +
       '<div id="bs-hitwrap"></div>' +
@@ -3509,24 +3588,33 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       "</div>" +
-      "</div>" +
+      "</div></div></div>" +
       '<div class="bs-splitter" id="bs-splitter" title="Drag to resize the bookmarks pane." role="separator" aria-orientation="vertical"></div>' +
       '<div class="bs-right" id="bs-right">' +
       '<div class="bs-right-head"><b>Bookmarks</b><span class="bs-count" id="bs-bmcount"></span></div>' +
       '<p class="bs-right-sub">Local = blue [auto] · Loaded = [load] import · click to tune</p>' +
+      '<div class="bs-right-stack" id="bs-right-stack">' +
+      '<div class="bs-right-seg bs-bm-seg" id="bs-bm-seg">' +
       '<div class="bs-bm-scroll" id="bs-bmlist"></div>' +
+      "</div>" +
+      '<div class="bs-splitter bs-splitter-h" id="bs-right-split1" data-split="r1" title="Drag to resize local bookmarks vs loaded." role="separator" aria-orientation="horizontal"></div>' +
+      '<div class="bs-right-seg bs-loaded-seg" id="bs-loaded-seg">' +
       '<div class="bs-loaded-block">' +
       '<div class="bs-loaded-scroll" id="bs-loadedlist"></div>' +
-      "</div>" +
+      "</div></div>" +
+      '<div class="bs-splitter bs-splitter-h" id="bs-right-split2" data-split="r2" title="Drag to resize loaded vs audio clips." role="separator" aria-orientation="horizontal"></div>' +
+      '<div class="bs-right-seg bs-audio-seg" id="bs-audio-seg">' +
       '<div class="bs-audio-block">' +
       '<b id="bs-audiohead">Audio clips</b>' +
       '<p class="bs-right-sub">busy / held channels only · this session · Save / Load below Peaks</p>' +
       '<div class="bs-audiolist" id="bs-audiolist"></div>' +
-      "</div>" +
+      "</div></div>" +
+      '<div class="bs-splitter bs-splitter-h" id="bs-right-split3" data-split="r3" title="Drag to resize audio clips vs always skip." role="separator" aria-orientation="horizontal"></div>' +
+      '<div class="bs-right-seg bs-skip-seg" id="bs-skip-seg">' +
       '<div class="bs-skip-block">' +
       '<b id="bs-skiphead">Always skip</b>' +
       '<div class="bs-skiplist" id="bs-skiplist"></div>' +
-      "</div></div></div>" +
+      "</div></div></div></div></div>" +
       '<div class="bs-resize-e" data-resize="e" title="Drag to make the panel wider or narrower."></div>' +
       '<div class="bs-resize-s" data-resize="s" title="Drag to make the panel taller or shorter."></div>' +
       '<div class="bs-resize-se" data-resize="se" title="Drag to resize the panel."></div>';
