@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 8;
+Plugins.band_survey._version = 9;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -66,7 +66,10 @@ Plugins.band_survey.init = function () {
       scheduleHrs: 0,
       priority: "121.5",
       ownRadio: false,
-      seenHelp: false
+      seenHelp: false,
+      panelW: 720,
+      panelH: 520,
+      splitPct: 62
     };
     try {
       var raw = window.localStorage.getItem(LS);
@@ -271,6 +274,9 @@ Plugins.band_survey.init = function () {
     if (start) {
       start.textContent = listenPaused ? "Continue scan" : "Continue";
       start.classList.toggle("bs-on", listenPaused);
+      start.title = listenPaused
+        ? "Leave this busy channel and keep scanning bookmarks."
+        : "Run another pass and add to Seen totals.";
     }
   }
 
@@ -612,7 +618,7 @@ Plugins.band_survey.init = function () {
     if (showExtra && extras.length) {
       html += "<p class=\"bs-health-opt-h\">Optional extras (not required)</p>" + extras.map(renderIssueP).join("");
     }
-    html += '<p><button type="button" class="bs-tiny" id="bs-health-help">Open Help</button></p>';
+    html += '<p><button type="button" class="bs-tiny" id="bs-health-help" title="Open the help overlay.">Open Help</button></p>';
     box.hidden = false;
     box.className = "bs-health" + (hard.length ? " bs-health-err" : warns.length ? " bs-health-warn" : " bs-health-ok");
     box.innerHTML = html;
@@ -662,7 +668,14 @@ Plugins.band_survey.init = function () {
       var lab = el.parentElement;
       if (lab) {
         if (lab.classList) lab.classList.toggle("bs-off", !ok);
-        if (!ok) lab.title = why;
+        if (!ok) {
+          if (!lab.getAttribute("data-tip-ok") && lab.getAttribute("title")) {
+            lab.setAttribute("data-tip-ok", lab.getAttribute("title"));
+          }
+          lab.title = why;
+        } else if (lab.getAttribute("data-tip-ok")) {
+          lab.title = lab.getAttribute("data-tip-ok");
+        }
       }
     }
     setOpt("bs-autobm", c.bookmarks, "Local bookmarks API missing — auto-bookmark is off; Export JSON still works.");
@@ -698,6 +711,7 @@ Plugins.band_survey.init = function () {
     } else if (el && lab) {
       el.disabled = false;
       lab.hidden = false;
+      lab.title = "Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off.";
       if (hint) hint.textContent = "busy channel waits here · same-band ~1s · other band 11s unless Own radio is on";
     }
   }
@@ -713,8 +727,9 @@ Plugins.band_survey.init = function () {
       "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
       "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
       "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
+      "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Drag the vertical bar to grow the bookmarks pane on the right. Size is remembered in this browser.</li>" +
       "</ol>" +
-      '<p><button type="button" id="bs-help-check">Check install now</button></p>' +
+      '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
       "<h3>What this is</h3>" +
       "<p>A <b>standalone OpenWebRX+ receiver plugin</b>. It walks the bands you tick, counts real waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>.</p>" +
       "<p>It does <b>not</b> need freq_scanner, scan_hunt, rx_bands, uikit, or notify. Those are optional extras if they are already loaded.</p>" +
@@ -733,12 +748,14 @@ Plugins.band_survey.init = function () {
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
+      "<h3>Panel</h3>" +
+      "<p>The left side is survey controls, bands, settings, and the peaks table. The <b>right side</b> lists this browser’s blue bookmarks (<b>[auto]</b> vs named) and always-skip frequencies. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
       "<p><b>Blue</b> bookmarks are local to this browser. Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
       "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue bookmarks are not changed.</p>" +
-      '<p><button type="button" id="bs-restore-first">Restore first-run bookmarks</button> ' +
-      '<button type="button" id="bs-restore-last">Restore last backup</button> ' +
-      '<button type="button" id="bs-dl-backup">Download bookmark backup</button></p>' +
+      '<p><button type="button" id="bs-restore-first" title="Replace this browser’s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
+      '<button type="button" id="bs-restore-last" title="Replace this browser’s blue bookmarks with the most recent backup.">Restore last backup</button> ' +
+      '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
       "<h3>If something is wrong</h3>" +
       "<ul>" +
       "<li><b>No SV button</b> — plugin not loaded, or this browser cached an old file. Re-run <code>./install.sh --check</code>, then hard-refresh. If the receiver panel is missing, use the fixed SV chip or the red banner.</li>" +
@@ -1444,6 +1461,311 @@ Plugins.band_survey.init = function () {
     } else if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
       bookmarks.loadLocalBookmarks();
     }
+    renderBookmarkPane();
+  }
+
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  function applyPanelLayout() {
+    var p = $("bs-panel");
+    if (!p) return;
+    var vw = window.innerWidth || 1024;
+    var vh = window.innerHeight || 768;
+    var minW = Math.min(520, Math.max(360, Math.floor(vw * 0.92)));
+    var minH = 280;
+    var w = clamp(Number(S.panelW) || 720, minW, Math.floor(vw * 0.96));
+    var h = clamp(Number(S.panelH) || 520, minH, Math.floor(vh * 0.88));
+    S.panelW = w;
+    S.panelH = h;
+    p.style.width = w + "px";
+    p.style.height = h + "px";
+    p.style.maxHeight = "none";
+    var left = parseFloat(p.style.left);
+    var top = parseFloat(p.style.top);
+    if (isNaN(left)) {
+      p.style.left = Math.max(4, vw - w - 12) + "px";
+      p.style.right = "auto";
+    } else {
+      p.style.left = clamp(left, 4, Math.max(4, vw - minW - 4)) + "px";
+    }
+    if (isNaN(top)) {
+      p.style.top = "72px";
+    } else {
+      p.style.top = clamp(top, 4, Math.max(4, vh - 80)) + "px";
+    }
+    var pct = Number(S.splitPct);
+    if (!(pct >= 30 && pct <= 82)) pct = 62;
+    S.splitPct = pct;
+    var leftEl = $("bs-left");
+    if (leftEl) leftEl.style.flex = "0 0 " + pct + "%";
+  }
+
+  function savePanelLayout() {
+    var p = $("bs-panel");
+    if (!p) return;
+    var r = p.getBoundingClientRect();
+    if (r.width > 40 && r.height > 40) {
+      S.panelW = Math.round(r.width);
+      S.panelH = Math.round(r.height);
+    }
+    saveSettings();
+  }
+
+  function layoutDragKind() {
+    return document.body.classList.contains("bs-layout-drag");
+  }
+
+  function ensureFloatTip() {
+    var el = $("bs-float-tip");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "bs-float-tip";
+    el.hidden = true;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function placeFloatTip(ev) {
+    var el = $("bs-float-tip");
+    if (!el || el.hidden) return;
+    var pad = 8;
+    var x = ev.clientX + 14;
+    var y = ev.clientY + 18;
+    var w = el.offsetWidth || 220;
+    var h = el.offsetHeight || 40;
+    if (x + w > window.innerWidth - pad) x = ev.clientX - w - 12;
+    if (y + h > window.innerHeight - pad) y = ev.clientY - h - 12;
+    el.style.left = Math.max(pad, x) + "px";
+    el.style.top = Math.max(pad, y) + "px";
+  }
+
+  function hideFloatTip() {
+    var el = $("bs-float-tip");
+    if (el) el.hidden = true;
+    var rest = hideFloatTip._restore;
+    if (rest && rest.el && rest.title && !rest.el.getAttribute("title")) {
+      rest.el.setAttribute("title", rest.title);
+    }
+    hideFloatTip._restore = null;
+    hideFloatTip._host = null;
+  }
+
+  function showFloatTip(host, ev) {
+    if (layoutDragKind()) {
+      hideFloatTip();
+      return;
+    }
+    if (hideFloatTip._host === host) {
+      placeFloatTip(ev);
+      return;
+    }
+    var text = host.getAttribute("data-tip") || host.getAttribute("title");
+    if (!text) {
+      hideFloatTip();
+      return;
+    }
+    hideFloatTip();
+    if (host.getAttribute("title")) {
+      hideFloatTip._restore = { el: host, title: host.getAttribute("title") };
+      host.removeAttribute("title");
+    }
+    hideFloatTip._host = host;
+    var tip = ensureFloatTip();
+    tip.textContent = text;
+    tip.hidden = false;
+    placeFloatTip(ev);
+  }
+
+  function wireHoverTips() {
+    if (wireHoverTips._on) return;
+    wireHoverTips._on = true;
+    document.addEventListener("mousemove", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) {
+        hideFloatTip();
+        return;
+      }
+      var root = t.closest("#bs-panel, #bs-help, #bs-fallback, #bs-fallback-chip, #bs-toggle-btn");
+      var host = root && t.closest("[title], [data-tip]");
+      if (host && root.contains(host) && !t.closest(".bs-resize-e, .bs-resize-s, .bs-resize-se, .bs-splitter")) {
+        showFloatTip(host, ev);
+      } else if (hideFloatTip._host) {
+        hideFloatTip();
+      }
+    });
+  }
+
+  function bindPanelLayout(panel) {
+    applyPanelLayout();
+    wireHoverTips();
+    var dragging = null;
+    function setDragClass(kind) {
+      document.body.classList.remove("bs-layout-drag", "bs-resize-ew", "bs-resize-ns", "bs-resize-nwse");
+      if (!kind) return;
+      document.body.classList.add("bs-layout-drag");
+      if (kind === "e") document.body.classList.add("bs-resize-ew");
+      else if (kind === "s") document.body.classList.add("bs-resize-ns");
+      else if (kind === "se") document.body.classList.add("bs-resize-nwse");
+    }
+    function onMove(ev) {
+      if (!dragging) return;
+      ev.preventDefault();
+      hideFloatTip();
+      if (dragging === "split") {
+        var box = $("bs-split");
+        if (!box) return;
+        var r = box.getBoundingClientRect();
+        if (r.width < 40) return;
+        S.splitPct = clamp(((ev.clientX - r.left) / r.width) * 100, 32, 80);
+        applyPanelLayout();
+        return;
+      }
+      var pr = panel.getBoundingClientRect();
+      var w = pr.width;
+      var h = pr.height;
+      if (dragging.indexOf("e") >= 0) w = ev.clientX - pr.left;
+      if (dragging.indexOf("s") >= 0) h = ev.clientY - pr.top;
+      S.panelW = w;
+      S.panelH = h;
+      applyPanelLayout();
+    }
+    function onUp() {
+      if (!dragging) return;
+      dragging = null;
+      setDragClass("");
+      savePanelLayout();
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    var split = $("bs-splitter");
+    if (split) {
+      split.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        dragging = "split";
+        setDragClass("split");
+        try { split.setPointerCapture(ev.pointerId); } catch (e) {}
+        ev.preventDefault();
+      });
+    }
+    Array.prototype.forEach.call(panel.querySelectorAll("[data-resize]"), function (h) {
+      h.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        dragging = h.getAttribute("data-resize");
+        setDragClass(dragging);
+        try { h.setPointerCapture(ev.pointerId); } catch (e2) {}
+        ev.preventDefault();
+      });
+    });
+    if (!bindPanelLayout._win) {
+      bindPanelLayout._win = true;
+      window.addEventListener("resize", function () { applyPanelLayout(); });
+    }
+  }
+
+  function bookmarkDisplayName(b) {
+    var n = String((b && b.name) || "").trim();
+    if (/^\[auto\]/i.test(n)) n = n.replace(/^\[auto\]\s*/i, "");
+    return n || (b && b.frequency ? fmtMhz(b.frequency) : "");
+  }
+
+  function tuneBookmark(freq, mode) {
+    freq = Number(freq);
+    if (!freq) return;
+    var hit = null;
+    for (var i = 0; i < hits.length; i++) {
+      if (Math.abs(hits[i].freq - freq) < 2500) {
+        hit = hits[i];
+        break;
+      }
+    }
+    if (hit) {
+      tuneTo(hit.freq, hit.pid);
+      return;
+    }
+    if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+    if (mode && window.UI && typeof UI.setModulation === "function") {
+      try { UI.setModulation(mode, ""); } catch (e) {}
+    }
+  }
+
+  function renderBookmarkPane() {
+    var host = $("bs-bmlist");
+    if (!host) return;
+    var list = localBookmarkList();
+    if (!list) list = [];
+    list = list.slice().sort(function (a, b) {
+      return (a.frequency || 0) - (b.frequency || 0);
+    });
+    var count = $("bs-bmcount");
+    if (count) count.textContent = list.length ? (list.length + " local") : "";
+    if (!list.length) {
+      host.innerHTML = '<p class="bs-empty">No blue bookmarks in this browser yet. Auto-bookmark or + on a peak adds them here.</p>';
+    } else {
+      host.innerHTML = '<ul class="bs-bm-ul">' + list.map(function (b) {
+        var freq = b.frequency;
+        var skipped = isIgnoredFreq(freq);
+        var auto = isAuto(b);
+        return '<li class="bs-bm-row' + (skipped ? " bs-bm-skipped" : "") +
+          '" data-bm-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
+          '" title="Tune to this bookmark.">' +
+          '<span class="bs-bm-name">' + escapeHtml(bookmarkDisplayName(b)) + "</span>" +
+          (auto ? '<span class="bs-bm-auto">[auto]</span>' : "") +
+          '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
+          (skipped
+            ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
+            : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Never land on this frequency again in this browser.">ign</button>') +
+          "</li>";
+      }).join("") + "</ul>";
+    }
+    var skipHead = $("bs-skiphead");
+    var skipHost = $("bs-skiplist");
+    var ign = (S.ignoredFreqs || []).slice().sort(function (a, b) { return a - b; });
+    if (skipHead) skipHead.textContent = ign.length ? ("Always skip (" + ign.length + ")") : "Always skip";
+    if (!skipHost) return;
+    if (!ign.length) {
+      skipHost.innerHTML = '<p class="bs-empty">None. Always skip or ign on a peak adds frequencies here.</p>';
+      return;
+    }
+    skipHost.innerHTML = ign.map(function (f) {
+      var known = existingName(f) || "";
+      return '<div class="bs-skip-row">' +
+        '<button type="button" class="bs-tune" data-skip-tune="' + f + '" title="Tune to this frequency.">' +
+        fmtMhz(f) + "</button>" +
+        (known ? '<span class="bs-bm-name">' + escapeHtml(known) + "</span>" : "") +
+        '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + f + '" title="Stop always-skipping this frequency.">un-ign</button></div>';
+    }).join("");
+  }
+
+  function onBookmarkPaneClick(ev) {
+    var t = ev.target;
+    if (!t) return;
+    var ign = t.getAttribute && t.getAttribute("data-bm-ign");
+    if (ign) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var f = Number(ign);
+      if (isIgnoredFreq(f)) {
+        unignoreFreq(f);
+        setStatus("Will land on " + fmtMhz(f) + " again.");
+      } else {
+        ignoreFreq(f);
+        setStatus("Always skip " + fmtMhz(f) + " (saved in this browser).");
+      }
+      renderBookmarkPane();
+      return;
+    }
+    var skipTune = t.getAttribute && t.getAttribute("data-skip-tune");
+    if (skipTune) {
+      tuneBookmark(Number(skipTune), "");
+      return;
+    }
+    var row = t.closest && t.closest("[data-bm-tune]");
+    if (row) {
+      tuneBookmark(Number(row.getAttribute("data-bm-tune")), row.getAttribute("data-bm-mode") || "");
+    }
   }
 
   function selectedValues() {
@@ -1515,6 +1837,7 @@ Plugins.band_survey.init = function () {
       id.textContent = p.id;
       var name = document.createElement("span");
       name.textContent = p.label;
+      lab.title = "Include this band when Continue or Fresh runs.";
       lab.appendChild(cb);
       lab.appendChild(id);
       lab.appendChild(name);
@@ -1557,11 +1880,13 @@ Plugins.band_survey.init = function () {
     if (!host) return;
     if (!hits.length) {
       host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Continue or Fresh.</p>';
+      renderBookmarkPane();
       return;
     }
     var shown = sortedHits();
     if (!shown.length) {
       host.innerHTML = '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick “Hide birdies” to un-ign, or Clear always-skip.</p>";
+      renderBookmarkPane();
       return;
     }
     var rows = shown.map(function (h) {
@@ -1571,7 +1896,7 @@ Plugins.band_survey.init = function () {
         ? ""
         : (known
           ? '<span title="' + escapeHtml(known) + '">bm</span>'
-          : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '">+</button>');
+          : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '" title="Save this peak as a blue bookmark in this browser.">+</button>');
       var tag = spur ? '<span class="bs-spur-tag" title="' + escapeHtml(h.spurWhy || "birdie") + '">birdie</span>' : "";
       var icao = icao833(h.freq);
       var ch = icao && icao !== fmtMhz(h.freq) ? '<span class="bs-icao">' + icao + "</span> " : "";
@@ -1585,7 +1910,7 @@ Plugins.band_survey.init = function () {
       return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
         '<td class="bs-n">' + h.seen + "</td>" +
         '<td>' + pri + newb + ch +
-        '<button type="button" class="bs-tune" data-tune="' + h.freq + '" data-pid="' + escapeHtml(h.pid) + '">' +
+        '<button type="button" class="bs-tune" data-tune="' + h.freq + '" data-pid="' + escapeHtml(h.pid) + '" title="Tune the receiver to this frequency.">' +
         fmtMhz(h.freq) + "</button> " + tag + "</td>" +
         '<td><button type="button" class="bs-tune" data-rename="' + h.freq + '" title="Rename bookmark">' +
         (nm ? escapeHtml(nm) : "name") + "</button></td>" +
@@ -1600,11 +1925,12 @@ Plugins.band_survey.init = function () {
       : "";
     host.innerHTML = extra +
       '<table class="bs-hits"><thead><tr>' +
-      '<th data-sort="seen"' + (sortKey === "seen" ? ' class="bs-sort"' : "") + ">Seen</th>" +
-      '<th data-sort="freq"' + (sortKey === "freq" ? ' class="bs-sort"' : "") + ">MHz</th>" +
+      '<th data-sort="seen"' + (sortKey === "seen" ? ' class="bs-sort"' : "") + ' title="Sort by how many times this peak was counted.">Seen</th>' +
+      '<th data-sort="freq"' + (sortKey === "freq" ? ' class="bs-sort"' : "") + ' title="Sort by frequency.">MHz</th>' +
       "<th>Name</th>" +
-      '<th data-sort="db"' + (sortKey === "db" ? ' class="bs-sort"' : "") + ">dB</th>" +
+      '<th data-sort="db"' + (sortKey === "db" ? ' class="bs-sort"' : "") + ' title="Sort by strongest reading.">dB</th>' +
       "<th>Band</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>";
+    renderBookmarkPane();
   }
 
   function escapeHtml(s) {
@@ -2419,82 +2745,95 @@ Plugins.band_survey.init = function () {
     panel.id = "bs-panel";
     panel.hidden = true;
     panel.innerHTML =
-      '<div class="bs-head" id="bs-drag"><b>Band survey</b>' +
-      '<button type="button" id="bs-help-btn" title="Help and install guide">Help</button>' +
-      '<button type="button" class="bs-x" id="bs-close" title="Close">×</button></div>' +
-      '<div class="bs-body">' +
+      '<div class="bs-head" id="bs-drag" title="Drag to move the panel."><b>Band survey</b>' +
+      '<button type="button" id="bs-help-btn" title="Help and install guide.">Help</button>' +
+      '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button></div>' +
+      '<div class="bs-split" id="bs-split">' +
+      '<div class="bs-left" id="bs-left">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
-      '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Click <b>Help</b> any time. Your blue bookmarks are backed up in this browser before the plugin writes.</p>' +
+      '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Hover a control for a tip. Blue bookmarks are on the right.</p>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-primary" id="bs-start">Continue</button>' +
-      '<button type="button" id="bs-fresh">Fresh</button>' +
-      '<button type="button" class="bs-stop" id="bs-stop">Stop</button>' +
-      '<button type="button" id="bs-jump">Jump loudest</button>' +
-      '<button type="button" id="bs-check">Check install</button>' +
+      '<button type="button" class="bs-primary" id="bs-start" title="Run another pass and add to Seen totals.">Continue</button>' +
+      '<button type="button" id="bs-fresh" title="Start over: zero Seen totals, then survey the ticked bands.">Fresh</button>' +
+      '<button type="button" class="bs-stop" id="bs-stop" title="Stop the survey or bookmark scan right now.">Stop</button>' +
+      '<button type="button" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
+      '<button type="button" id="bs-check" title="Check that this page can run Band survey and show any fix on screen.">Check install</button>' +
       '<span class="bs-count" id="bs-selcount"></span>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-hold">Hold</button>' +
-      '<button type="button" id="bs-skip">Skip</button>' +
-      '<button type="button" id="bs-lockout">Lockout</button>' +
-      '<button type="button" id="bs-alwaysskip" title="Never land on this MHz again (saved in this browser)">Always skip</button>' +
-      '<button type="button" id="bs-contscan">Continue scan</button>' +
+      '<button type="button" id="bs-hold" title="Stay on this frequency until you click Hold again or Skip.">Hold</button>' +
+      '<button type="button" id="bs-skip" title="Leave this frequency and go to the next bookmark.">Skip</button>' +
+      '<button type="button" id="bs-lockout" title="Skip this frequency for Lockout minutes (saved in this browser).">Lockout</button>' +
+      '<button type="button" id="bs-alwaysskip" title="Never land on this frequency again in this browser.">Always skip</button>' +
+      '<button type="button" id="bs-contscan" title="Leave this busy channel and keep scanning bookmarks.">Continue scan</button>' +
       '<span class="bs-hint" id="bs-hophint">busy waits · Always skip = never again · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
       '<div class="bs-progress"><i id="bs-bar"></i></div>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-tiny" data-preset="air">Air</button>' +
-      '<button type="button" class="bs-tiny" data-preset="vhf">VHF voice</button>' +
-      '<button type="button" class="bs-tiny" data-preset="ham">Ham</button>' +
-      '<button type="button" class="bs-tiny" data-preset="all">All</button>' +
-      '<button type="button" class="bs-tiny" data-preset="none">None</button>' +
-      '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px">' +
+      '<button type="button" class="bs-tiny" data-preset="air" title="Tick only airband profiles (air_1–air_7).">Air</button>' +
+      '<button type="button" class="bs-tiny" data-preset="vhf" title="Tick air, marine, 2m, and PMR voice profiles.">VHF voice</button>' +
+      '<button type="button" class="bs-tiny" data-preset="ham" title="Tick HF/VHF/UHF ham band profiles.">Ham</button>' +
+      '<button type="button" class="bs-tiny" data-preset="all" title="Tick every band profile.">All</button>' +
+      '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
+      '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px" title="Type to hide band names that do not match.">' +
       "</div>" +
       '<div class="bs-bands" id="bs-bands"></div>' +
       '<div class="bs-row">' +
-      "<label>Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"20\" step=\"1\" style=\"width:3.4em\"></label>" +
-      "<label>Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\"></label>" +
-      "<label>Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\"></label>" +
-      "<label>dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\"></label>" +
-      "<label>Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\" title=\"Fixed listen, or quiet-before-move when Hold while busy is on\"></label>" +
+      "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"20\" step=\"1\" style=\"width:3.4em\" title=\"How many times to walk the ticked bands in one run.\"></label>" +
+      "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each band while counting peaks.\"></label>" +
+      "<label title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\">Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\" title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\"></label>" +
+      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
+      "<label title=\"Fixed listen, or quiet-before-move when Hold while busy is on.\">Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\" title=\"Fixed listen, or quiet-before-move when Hold while busy is on.\"></label>" +
       "</div>" +
       '<div class="bs-row">' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-scanafter"> Scan new bookmarks when done</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-hideauto"> Hide auto bookmarks</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-mute"> Mute while running</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
+      '<label class="bs-chk" title="Save busy peaks as blue [auto] bookmarks in this browser."><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
+      '<label class="bs-chk" title="After a survey, hop through the new auto bookmarks."><input type="checkbox" id="bs-scanafter"> Scan new bookmarks when done</label>' +
+      '<label class="bs-chk" title="Hide [auto] bookmarks from the OpenWebRX bookmark bar (they still show on the right)."><input type="checkbox" id="bs-hideauto"> Hide auto bookmarks</label>' +
+      '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute while running</label>' +
+      '<label class="bs-chk" title="Hide always-skipped / birdie rows from the list."><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-record"> Record busy</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-notify"> Notify new</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-alone"> Only if alone</label>' +
-      '<label class="bs-chk"><input type="checkbox" id="bs-ownradio" title="This is my receiver. Profile changes ~1s instead of 11s. Public OpenWebRX sites can ban the client."> Own radio — fast hops</label>' +
+      '<label class="bs-chk" title="Stay on a live signal until it goes quiet, then move on."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
+      '<label class="bs-chk" title="Start OpenWebRX recording while parked on a busy channel."><input type="checkbox" id="bs-record"> Record busy</label>' +
+      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new</label>' +
+      '<label class="bs-chk" title="Don\'t retune if other listeners are connected."><input type="checkbox" id="bs-alone"> Only if alone</label>' +
+      '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<label>Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
-      '<label>Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em"></label>' +
-      '<label>Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
+      '<label title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically.">Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
+      '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
+      '<label title="0 = off. Runs Continue while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
       "</div>" +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
-      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay)">Clear always-skip</button></div>' +
+      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button></div>' +
       '<div id="bs-hitwrap"></div>' +
       '<div class="bs-row" style="margin-top:8px">' +
-      '<button type="button" id="bs-bmqual">Bookmark qualified</button>' +
-      '<button type="button" id="bs-listen">Scan bookmarks</button>' +
-      '<button type="button" id="bs-copy">Copy list</button>' +
-      '<button type="button" id="bs-csv">Export CSV</button>' +
-      '<button type="button" id="bs-json">Export JSON</button>' +
+      '<button type="button" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
+      '<button type="button" id="bs-listen" title="Hop through new auto bookmarks, or qualified peaks if none are new.">Scan bookmarks</button>' +
+      '<button type="button" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
+      '<button type="button" id="bs-csv" title="Download the peak list as a CSV file.">Export CSV</button>' +
+      '<button type="button" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
       '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
       '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
-      '<button type="button" id="bs-clearauto">Clear auto bookmarks</button>' +
-      '<button type="button" id="bs-clearhits">Clear list</button>' +
+      '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
+      '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       "</div>" +
-      "</div>";
+      "</div>" +
+      '<div class="bs-splitter" id="bs-splitter" title="Drag to resize the bookmarks pane." role="separator" aria-orientation="vertical"></div>' +
+      '<div class="bs-right" id="bs-right">' +
+      '<div class="bs-right-head"><b>Bookmarks</b><span class="bs-count" id="bs-bmcount"></span></div>' +
+      '<p class="bs-right-sub">this browser · blue local · click to tune</p>' +
+      '<div class="bs-bm-scroll" id="bs-bmlist"></div>' +
+      '<div class="bs-skip-block">' +
+      '<b id="bs-skiphead">Always skip</b>' +
+      '<div class="bs-skiplist" id="bs-skiplist"></div>' +
+      "</div></div></div>" +
+      '<div class="bs-resize-e" data-resize="e" title="Drag to make the panel wider or narrower."></div>' +
+      '<div class="bs-resize-s" data-resize="s" title="Drag to make the panel taller or shorter."></div>' +
+      '<div class="bs-resize-se" data-resize="se" title="Drag to resize the panel."></div>';
     document.body.appendChild(panel);
 
     $("bs-passes").value = S.passes;
@@ -2520,7 +2859,10 @@ Plugins.band_survey.init = function () {
     applyCaps();
     loadHits();
     classifyAll();
+    bindPanelLayout(panel);
     renderHits();
+    var right = $("bs-right");
+    if (right) right.onclick = onBookmarkPaneClick;
 
     $("bs-close").onclick = function () { panel.hidden = true; };
     $("bs-help-btn").onclick = openHelp;
@@ -2734,8 +3076,8 @@ Plugins.band_survey.init = function () {
       bar.id = "bs-fallback";
       document.body.appendChild(bar);
     }
-    bar.innerHTML = '<button type="button" id="bs-fallback-sv" class="bs-fallback-sv">SV</button> <span>' +
-      escapeHtml(msg) + '</span> <button type="button" id="bs-fallback-help">Help</button>';
+    bar.innerHTML = '<button type="button" id="bs-fallback-sv" class="bs-fallback-sv" title="Open the Band survey panel.">SV</button> <span>' +
+      escapeHtml(msg) + '</span> <button type="button" id="bs-fallback-help" title="Open the help overlay.">Help</button>';
     var sv = $("bs-fallback-sv");
     if (sv) {
       sv.onclick = function () {
@@ -2744,7 +3086,9 @@ Plugins.band_survey.init = function () {
         if (!p) return;
         p.hidden = !p.hidden;
         if (!p.hidden) {
+          applyPanelLayout();
           fillBands();
+          renderBookmarkPane();
           renderHealth({ all: true, toast: true });
         }
       };
@@ -2772,11 +3116,13 @@ Plugins.band_survey.init = function () {
       var p = $("bs-panel");
       if (!p) return;
       p.hidden = !p.hidden;
-      if (!p.hidden) {
-        fillBands();
-        renderHealth({ all: true, toast: true });
-        setStatus("Receiver toolbar not found. Open the SDR receiver page (not a map hub), then hard-refresh.");
-      }
+        if (!p.hidden) {
+          applyPanelLayout();
+          fillBands();
+          renderBookmarkPane();
+          renderHealth({ all: true, toast: true });
+          setStatus("Receiver toolbar not found. Open the SDR receiver page (not a map hub), then hard-refresh.");
+        }
     };
     document.body.appendChild(chip);
   }
@@ -2805,7 +3151,9 @@ Plugins.band_survey.init = function () {
         if (!panel) return;
         panel.hidden = !panel.hidden;
         if (!panel.hidden) {
+          applyPanelLayout();
           fillBands();
+          renderBookmarkPane();
           if (S.hideAuto !== $("bs-hideauto").checked) $("bs-hideauto").checked = !!S.hideAuto;
           renderHealth();
           applyCaps();
