@@ -3,6 +3,12 @@
 Standalone receiver plugin. Walks the bands you tick, counts real waterfall
 peaks, ranks the busiest, and can bookmark them.
 
+<p>
+  <img src="screenshot.png" alt="Band survey panel" width="640">
+</p>
+
+<p><em>Band survey panel</em></p>
+
 **It does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`.
 Those are optional extras if you already load them.
 
