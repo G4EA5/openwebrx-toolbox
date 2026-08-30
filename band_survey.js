@@ -1197,9 +1197,9 @@ Plugins.band_survey.init = function () {
       "<li><b>Every N hours</b> runs Scan bands while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Panel</h3>" +
-      "<p>The left side is survey controls and a scrollable band list, with Passes→Every N hours always visible in a fixed strip above the draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
+      "<p>The left side is survey controls and a scrollable band list, with Passes→Every N hours always visible in a fixed strip above the draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune; click <b>ren</b> to rename a label. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
-      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Save bookmarks</b> downloads local + <b>[load]</b> as JSON; <b>Load bookmarks</b> imports JSON/CSV (including that save file). <b>Scan bookmarks</b> hops through both. <b>Clear bookmarks</b> removes all blue local entries; <b>Clear loaded</b> removes only <b>[load]</b>; <b>Clear auto bookmarks</b> removes only <b>[auto]</b>.</p>" +
+      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Save bookmarks</b> downloads local + <b>[load]</b> as JSON; <b>Load bookmarks</b> imports JSON/CSV (including that save file). <b>Scan bookmarks</b> hops through both. Use <b>ren</b> on any local or loaded row to rename its label (saved in this browser). <b>Clear bookmarks</b> removes all blue local entries; <b>Clear loaded</b> removes only <b>[load]</b>; <b>Clear auto bookmarks</b> removes only <b>[auto]</b>.</p>" +
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
       "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
       "<h3>Audio clips</h3>" +
@@ -1766,6 +1766,7 @@ Plugins.band_survey.init = function () {
     list.forEach(function (b) {
       if (Math.abs(b.frequency - freq) < 2500) {
         b.name = name;
+        if (b.auto && !/^\[auto\]/i.test(name)) b.auto = false;
         found = true;
       }
     });
@@ -1784,14 +1785,55 @@ Plugins.band_survey.init = function () {
   }
 
   function askRename(freq) {
-    var cur = "";
-    hits.forEach(function (h) {
-      if (Math.abs(h.freq - freq) < 2500) cur = h.name || "";
+    askRenameBookmark(freq, "local");
+  }
+
+  function renameLoadedBookmark(freq, name) {
+    name = String(name || "").trim();
+    if (!name) return false;
+    var found = false;
+    loadedBookmarks.forEach(function (b) {
+      if (Math.abs(b.frequency - freq) < 2500) {
+        b.name = name;
+        found = true;
+      }
     });
-    if (!cur) cur = existingName(freq) || ("[auto] " + fmtMhz(freq));
+    if (!found) return false;
+    saveLoadedBookmarks();
+    hits.forEach(function (h) {
+      if (Math.abs(h.freq - freq) < 2500) h.name = name;
+    });
+    saveHits();
+    renderBookmarkPane();
+    renderHits();
+    return true;
+  }
+
+  function askRenameBookmark(freq, kind) {
+    kind = kind || "local";
+    var cur = "";
+    if (kind === "loaded") {
+      loadedBookmarks.forEach(function (b) {
+        if (Math.abs(b.frequency - freq) < 2500) cur = b.name || "";
+      });
+    } else {
+      var list = localBookmarkList() || [];
+      list.forEach(function (b) {
+        if (Math.abs(b.frequency - freq) < 2500) cur = b.name || bookmarkDisplayName(b);
+      });
+      if (!cur) {
+        hits.forEach(function (h) {
+          if (Math.abs(h.freq - freq) < 2500) cur = h.name || "";
+        });
+      }
+    }
+    if (!cur) cur = existingName(freq) || fmtMhz(freq);
     var next = window.prompt("Bookmark name for " + fmtMhz(freq), cur);
     if (next == null) return;
-    if (renameBookmark(freq, next)) setStatus("Renamed to “" + next.trim() + "”.");
+    next = next.trim();
+    if (!next) return;
+    var ok = kind === "loaded" ? renameLoadedBookmark(freq, next) : renameBookmark(freq, next);
+    if (ok) setStatus("Renamed to “" + next + "”.");
   }
 
   function levelAt(freq) {
@@ -2342,6 +2384,7 @@ Plugins.band_survey.init = function () {
           '<span class="bs-bm-name">' + escapeHtml(bookmarkDisplayName(b)) + "</span>" +
           (auto ? '<span class="bs-bm-auto">[auto]</span>' : "") +
           '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
+          '<button type="button" class="bs-tiny" data-bm-ren="' + freq + '" data-bm-kind="local" title="Rename this bookmark.">ren</button>' +
           '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
           "</li>";
       }).join("") + "</ul></div>";
@@ -2362,6 +2405,7 @@ Plugins.band_survey.init = function () {
               '<span class="bs-bm-name">' + escapeHtml(b.name || fmtMhz(freq)) + "</span>" +
               '<span class="bs-bm-load">[load]</span>' +
               '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
+              '<button type="button" class="bs-tiny" data-bm-ren="' + freq + '" data-bm-kind="loaded" title="Rename this loaded bookmark.">ren</button>' +
               '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
               "</li>";
           }).join("") + "</ul></div>";
@@ -2632,6 +2676,13 @@ Plugins.band_survey.init = function () {
   function onBookmarkPaneClick(ev) {
     var t = ev.target;
     if (!t) return;
+    var ren = t.getAttribute && t.getAttribute("data-bm-ren");
+    if (ren) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      askRenameBookmark(Number(ren), t.getAttribute("data-bm-kind") || "local");
+      return;
+    }
     var ign = t.getAttribute && t.getAttribute("data-bm-ign");
     if (ign) {
       ev.preventDefault();
@@ -3782,7 +3833,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-splitter" id="bs-splitter" title="Drag to resize the bookmarks pane." role="separator" aria-orientation="vertical"></div>' +
       '<div class="bs-right" id="bs-right">' +
       '<div class="bs-right-head"><b>Bookmarks</b><span class="bs-count" id="bs-bmcount"></span></div>' +
-      '<p class="bs-right-sub">Local = blue [auto] · Loaded = [load] import · click to tune</p>' +
+      '<p class="bs-right-sub">Local = blue [auto] · Loaded = [load] import · click to tune · ren to rename</p>' +
       '<div class="bs-right-stack" id="bs-right-stack">' +
       '<div class="bs-right-seg bs-bm-seg" id="bs-bm-seg">' +
       '<div class="bs-bm-scroll" id="bs-bmlist"></div>' +
