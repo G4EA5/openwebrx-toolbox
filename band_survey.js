@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 16;
+Plugins.band_survey._version = 17;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -1203,7 +1203,7 @@ Plugins.band_survey.init = function () {
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
       "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
       "<h3>Audio clips</h3>" +
-      "<p>Tick <b>Record busy</b> before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (bookmark-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the right. <b>Save audio</b> downloads them; <b>Load audio</b> adds files from disk to play in the panel (nothing is uploaded).</p>" +
+      "<p>Tick <b>Record busy</b> before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (bookmark-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the right. <b>Save all</b> downloads each clip separately; <b>Save all · ZIP</b> bundles them; <b>Load audio</b> adds files from disk (nothing is uploaded).</p>" +
       '<p><button type="button" id="bs-restore-first" title="Replace this browser’s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
       '<button type="button" id="bs-restore-last" title="Replace this browser’s blue bookmarks with the most recent backup.">Restore last backup</button> ' +
       '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
@@ -2479,16 +2479,87 @@ Plugins.band_survey.init = function () {
     downloadBlob(clip.file || clipFileName(clip), clip.blob);
   }
 
+  var jsZipLoadPromise = null;
+
+  function loadJSZip() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    if (jsZipLoadPromise) return jsZipLoadPromise;
+    jsZipLoadPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+      s.async = true;
+      s.onload = function () {
+        if (window.JSZip) resolve(window.JSZip);
+        else reject(new Error("JSZip did not load"));
+      };
+      s.onerror = function () { reject(new Error("Could not load JSZip from CDN")); };
+      document.head.appendChild(s);
+    });
+    return jsZipLoadPromise;
+  }
+
+  function zipStamp() {
+    var s = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    return s.slice(0, 8) + "-" + s.slice(8);
+  }
+
+  function uniqueZipEntry(name, used) {
+    var base = String(name || "clip.webm");
+    if (!used[base]) {
+      used[base] = 1;
+      return base;
+    }
+    used[base]++;
+    var dot = base.lastIndexOf(".");
+    if (dot > 0) return base.slice(0, dot) + "-" + used[base] + base.slice(dot);
+    return base + "-" + used[base];
+  }
+
   function saveAllAudioClips() {
     if (!audioClips.length) {
       setStatus("No clips to save. Tick Record busy and scan a busy channel, or Load audio first.");
       toast("No audio clips yet.");
       return;
     }
+    var n = 0;
     audioClips.forEach(function (c, i) {
+      if (!c || !c.blob) return;
+      n++;
       setTimeout(function () { saveAudioClip(c.id); }, i * 250);
     });
-    setStatus("Downloading " + audioClips.length + " audio clip" + (audioClips.length === 1 ? "" : "s") + ".");
+    if (!n) {
+      setStatus("No clip data to download.");
+      return;
+    }
+    setStatus("Downloading " + n + " audio clip" + (n === 1 ? "" : "s") + " as separate files.");
+  }
+
+  function saveAllAudioClipsZip() {
+    if (!audioClips.length) {
+      setStatus("No clips to save. Tick Record busy and scan a busy channel, or Load audio first.");
+      toast("No audio clips yet.");
+      return;
+    }
+    var clips = audioClips.filter(function (c) { return c && c.blob; });
+    if (!clips.length) {
+      setStatus("No clip data to pack.");
+      return;
+    }
+    setStatus("Building ZIP (" + clips.length + " clip" + (clips.length === 1 ? "" : "s") + ")…");
+    loadJSZip().then(function (JSZip) {
+      var zip = new JSZip();
+      var used = {};
+      clips.forEach(function (c) {
+        zip.file(uniqueZipEntry(c.file || clipFileName(c), used), c.blob);
+      });
+      return zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    }).then(function (blob) {
+      downloadBlob("sv-audio-clips-" + zipStamp() + ".zip", blob);
+      setStatus("Downloaded ZIP with " + clips.length + " audio clip" + (clips.length === 1 ? "" : "s") + ".");
+    }).catch(function (err) {
+      setStatus(friendlyError(err, "Save all · ZIP"));
+      toast("ZIP failed — try Save all for individual files.");
+    });
   }
 
   function removeAudioClip(id) {
@@ -3688,7 +3759,8 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
       '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
-      '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips (busy-channel recordings and files you loaded). Does not record the survey walk.">Save audio</button>' +
+      '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips as separate files (MHz/timestamp names). Includes busy recordings and files you loaded.">Save all</button>' +
+      '<button type="button" id="bs-aud-save-zip" title="Download all Audio clips as one ZIP file. Loads JSZip from jsDelivr on first use.">Save all · ZIP</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
       "</div>" +
       '<div class="bs-row" style="margin-top:4px;margin-bottom:8px">' +
@@ -3724,7 +3796,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-right-seg bs-audio-seg" id="bs-audio-seg">' +
       '<div class="bs-audio-block">' +
       '<b id="bs-audiohead">Audio clips</b>' +
-      '<p class="bs-right-sub">busy / held channels only · this session · Save / Load below Peaks</p>' +
+      '<p class="bs-right-sub">busy / held channels only · this session · Save all / ZIP below Peaks</p>' +
       '<div class="bs-audiolist" id="bs-audiolist"></div>' +
       "</div></div>" +
       '<div class="bs-splitter bs-splitter-h" id="bs-right-split3" data-split="r3" title="Drag to resize audio clips vs always skip." role="separator" aria-orientation="horizontal"></div>' +
@@ -3853,6 +3925,7 @@ Plugins.band_survey.init = function () {
     $("bs-csv-in").onclick = function (ev) { startImport("csv", ev); };
     $("bs-json-in").onclick = function (ev) { startImport("json", ev); };
     if ($("bs-aud-save")) $("bs-aud-save").onclick = saveAllAudioClips;
+    if ($("bs-aud-save-zip")) $("bs-aud-save-zip").onclick = saveAllAudioClipsZip;
     if ($("bs-aud-load")) $("bs-aud-load").onclick = function () {
       var inp = $("bs-aud-file");
       if (inp) inp.click();
