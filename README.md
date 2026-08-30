@@ -64,7 +64,7 @@ sudo systemctl restart varnish nginx
 2. Click orange **SV**.
 3. Click **Check install**. Green means ready. Red or yellow includes the fix
    on screen — not only in the browser console.
-4. Tick bands (or **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**) and press **Continue**.
+4. Tick bands (or **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**) and press **Scan bands**.
 
 To verify files on the radio without writing anything:
 
@@ -164,7 +164,7 @@ Typical `htdocs` paths:
 ## Usage (short)
 
 1. Tick bands, or tap **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**. Presets are **additive** (combine VHF+UHF; **None** clears all).
-2. **Continue** adds to Seen totals. **Fresh** starts at zero.
+2. **Scan bands** adds to Seen totals. **Fresh scan** starts at zero.
 3. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
 4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan** or **Always skip**. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** (never land there again and continue the scan; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip**. Bookmarks are not deleted.
 5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks

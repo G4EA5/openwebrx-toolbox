@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 15;
+Plugins.band_survey._version = 16;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -278,11 +278,11 @@ Plugins.band_survey.init = function () {
     }
     var start = $("bs-start");
     if (start) {
-      start.textContent = listenPaused ? "Continue scan" : "Continue";
+      start.textContent = listenPaused ? "Continue scan" : "Scan bands";
       start.classList.toggle("bs-on", listenPaused);
       start.title = listenPaused
         ? "Leave this busy channel and keep scanning bookmarks."
-        : "Run another pass and add to Seen totals.";
+        : "Walk ticked bands and add to Seen counts.";
     }
   }
 
@@ -1059,7 +1059,7 @@ Plugins.band_survey.init = function () {
     }
     var html = "";
     if (!hard.length && !warns.length) {
-      html += "<p><b>Install looks good.</b> Orange <b>SV</b> is this plugin. Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Continue. Help is always in the header.</p>";
+      html += "<p><b>Install looks good.</b> Orange <b>SV</b> is this plugin. Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Scan bands. Help is always in the header.</p>";
     }
     html += hard.concat(warns).map(renderIssueP).join("");
     if (showExtra && extras.length) {
@@ -1173,7 +1173,7 @@ Plugins.band_survey.init = function () {
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after you install or update.</li>" +
       "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
       "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
-      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
+      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) and press <b>Scan bands</b>.</li>" +
       "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Drag any grey bar between sections (controls vs peaks, survey vs bookmarks, each right-hand block) to adjust layout. Size is remembered in this browser.</li>" +
       "</ol>" +
       '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
@@ -1185,7 +1185,7 @@ Plugins.band_survey.init = function () {
       "<p>Manual: copy <code>band_survey/</code> into <code>htdocs/plugins/receiver/band_survey/</code> (typical htdocs: <code>/usr/lib/python3/dist-packages/htdocs</code> or <code>/opt/openwebrx/htdocs</code>), then add <code>await Plugins.load(\"band_survey\");</code> inside <code>plugins/receiver/init.js</code>.</p>" +
       "<h3>How to use</h3>" +
       "<ol>" +
-      "<li><b>Continue</b> adds to Seen totals; <b>Fresh</b> starts at zero.</li>" +
+      "<li><b>Scan bands</b> adds to Seen totals; <b>Fresh scan</b> starts at zero.</li>" +
       "<li>Band presets (<b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) are <b>additive</b> — they add ticks without clearing others. Combine <b>All VHF</b> + <b>All UHF</b> for both ranges. <b>None</b> unticks every band.</li>" +
       (ownerOverrideAllowed()
         ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
@@ -1194,7 +1194,7 @@ Plugins.band_survey.init = function () {
       "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ~30 min, <b>Always skip</b> never land there again and continue the scan (saved in this browser). A <b>busy</b> channel pauses until you click <b>Continue scan</b> or <b>Always skip</b>. Undo with <b>un-ign</b> on the peak (untick Hide birdies) or <b>Clear always-skip</b>.</li>" +
       "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
-      "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
+      "<li><b>Every N hours</b> runs Scan bands while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Panel</h3>" +
       "<p>The left side is survey controls and a scrollable band list, with Passes→Every N hours always visible in a fixed strip above the draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
@@ -1203,7 +1203,7 @@ Plugins.band_survey.init = function () {
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
       "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
       "<h3>Audio clips</h3>" +
-      "<p>Tick <b>Record busy</b> before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (Continue-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the right. <b>Save audio</b> downloads them; <b>Load audio</b> adds files from disk to play in the panel (nothing is uploaded).</p>" +
+      "<p>Tick <b>Record busy</b> before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (bookmark-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the right. <b>Save audio</b> downloads them; <b>Load audio</b> adds files from disk to play in the panel (nothing is uploaded).</p>" +
       '<p><button type="button" id="bs-restore-first" title="Replace this browser’s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
       '<button type="button" id="bs-restore-last" title="Replace this browser’s blue bookmarks with the most recent backup.">Restore last backup</button> ' +
       '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
@@ -1262,7 +1262,7 @@ Plugins.band_survey.init = function () {
           var issues = renderHealth({ all: true, toast: true, ok: true });
           var hard = issues.filter(function (x) { return x.level === "error"; }).length;
           var notes = issues.filter(function (x) { return x.level === "warn"; }).length;
-          if (!hard && !notes) setStatus("Install looks good. Tick bands and press Continue.");
+          if (!hard && !notes) setStatus("Install looks good. Tick bands and press Scan bands.");
         };
       }
     }
@@ -1284,7 +1284,7 @@ Plugins.band_survey.init = function () {
     S.seenHelp = true;
     saveSettings();
     if ($("bs-panel") && !$("bs-panel").hidden && !hits.length) {
-      setStatus("Next: tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Continue. Check install if anything looks wrong.");
+      setStatus("Next: tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Scan bands. Check install if anything looks wrong.");
     }
   }
 
@@ -2676,7 +2676,7 @@ Plugins.band_survey.init = function () {
       id.textContent = p.id;
       var name = document.createElement("span");
       name.textContent = p.label;
-      lab.title = "Include this band when Continue or Fresh runs.";
+      lab.title = "Include this band when Scan bands or Fresh scan runs.";
       lab.appendChild(cb);
       lab.appendChild(id);
       lab.appendChild(name);
@@ -2718,7 +2718,7 @@ Plugins.band_survey.init = function () {
     var host = $("bs-hitwrap");
     if (!host) return;
     if (!hits.length) {
-      host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Continue or Fresh.</p>';
+      host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Scan bands or Fresh scan.</p>';
       renderBookmarkPane();
       return;
     }
@@ -3617,10 +3617,10 @@ Plugins.band_survey.init = function () {
       '<div class="bs-left-top" id="bs-left-top">' +
       '<div class="bs-left-controls" id="bs-left-controls">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
-      '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Hover a control for a tip. Blue bookmarks are on the right.</p>' +
+      '<p class="bs-note">Tick bands, then Scan bands (add to Seen) or Fresh scan (start over). Hover a control for a tip. Blue bookmarks are on the right.</p>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-primary" id="bs-start" title="Run another pass and add to Seen totals.">Continue</button>' +
-      '<button type="button" id="bs-fresh" title="Start over: zero Seen totals, then survey the ticked bands.">Fresh</button>' +
+      '<button type="button" class="bs-primary" id="bs-start" title="Walk ticked bands and add to Seen counts.">Scan bands</button>' +
+      '<button type="button" id="bs-fresh" title="Clear peak list and scan from scratch.">Fresh scan</button>' +
       '<button type="button" class="bs-stop" id="bs-stop" title="Stop the survey or bookmark scan right now.">Stop</button>' +
       '<button type="button" class="bs-scan-top" id="bs-listen-top" title="Hop through new auto bookmarks, or qualified peaks if none are new.">Scan bookmarks</button>' +
       '<button type="button" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
@@ -3667,7 +3667,7 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-row">' +
       '<label class="bs-chk" title="Stay on a live signal until it goes quiet, then move on."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
-      '<label class="bs-chk" title="Record demod audio only while Scan bookmarks is parked on a busy or held channel (Continue-scan pause). Does not record the survey walk or quiet hops. Clips appear under Audio clips on the right."><input type="checkbox" id="bs-record"> Record busy</label>' +
+      '<label class="bs-chk" title="Record demod audio only while Scan bookmarks is parked on a busy or held channel (bookmark-scan pause). Does not record the survey walk or quiet hops. Clips appear under Audio clips on the right."><input type="checkbox" id="bs-record"> Record busy</label>' +
       '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new</label>' +
       '<label class="bs-chk" title="Don\'t retune if other listeners are connected."><input type="checkbox" id="bs-alone"> Only if alone</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
@@ -3675,7 +3675,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<label title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically.">Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
       '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
-      '<label title="0 = off. Runs Continue while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
+      '<label title="0 = off. Runs Scan bands while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Scan bands while this tab stays open."></label>' +
       "</div>" +
       "</div></div>" +
       '<div class="bs-splitter bs-splitter-h" id="bs-left-splitter" title="Drag to resize controls vs peaks table." role="separator" aria-orientation="horizontal"></div>' +
