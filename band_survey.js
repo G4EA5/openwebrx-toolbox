@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 7;
+Plugins.band_survey._version = 8;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -33,6 +33,7 @@ Plugins.band_survey.init = function () {
   var lastCreated = [];
   var listenCmd = "";
   var listenPaused = false;
+  var listenFreq = 0;
   var lastProfileSwitchAt = 0;
   var PROFILE_GAP_MS = 11000;
   var PROFILE_GAP_OWN_MS = 1200;
@@ -129,6 +130,10 @@ Plugins.band_survey.init = function () {
       if (Math.abs(list[i] - freq) < 4000) return true;
     }
     return false;
+  }
+
+  function shouldSkipTune(freq) {
+    return isLocked(freq) || isIgnoredFreq(freq);
   }
 
   function isSpur(h) {
@@ -722,8 +727,8 @@ Plugins.band_survey.init = function () {
       (ownerOverrideAllowed()
         ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
         : "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> — the operator locked fast hops on this public receiver (visitors cannot tick the override). Server bot-ban still applies if it is enabled.</li>") +
-      "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to ignore a birdie.</li>" +
-      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ignore. A <b>busy</b> channel pauses until you click <b>Continue scan</b>.</li>" +
+      "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to always skip a birdie (click again to undo).</li>" +
+      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ~30 min, <b>Always skip</b> never land there again (saved in this browser). A <b>busy</b> channel pauses until you click <b>Continue scan</b>. Undo with <b>un-ign</b> on the peak (untick Hide birdies) or <b>Clear always-skip</b>.</li>" +
       "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
@@ -1264,6 +1269,26 @@ Plugins.band_survey.init = function () {
     return null;
   }
 
+  function consumeListenAbort(freq, name) {
+    if (listenCmd === "always") {
+      ignoreFreq(freq);
+      listenCmd = "";
+      setStatus("Always skip " + (name || fmtMhz(freq)) + " — will not land here again");
+      return true;
+    }
+    if (listenCmd === "lock") {
+      lockout(freq);
+      listenCmd = "";
+      setStatus("Locked out " + (name || fmtMhz(freq)) + " for " + (S.lockoutMin || 30) + " min");
+      return true;
+    }
+    if (listenCmd === "skip" || listenCmd === "continue") {
+      listenCmd = "";
+      return true;
+    }
+    return shouldSkipTune(freq);
+  }
+
   async function listenBookmarks(items) {
     try {
     if (!items || !items.length) {
@@ -1273,10 +1298,10 @@ Plugins.band_survey.init = function () {
     if (courtesyBlocked("listening / retuning")) return;
     items = sortListenPriority(items.filter(function (row) {
       var f = (row.hit || row).freq || row.frequency;
-      return !isLocked(f);
+      return !shouldSkipTune(f);
     }));
     if (!items.length) {
-      setStatus("Everything is locked out right now.");
+      setStatus("Everything is locked out or always-skipped right now.");
       return;
     }
     if (window.fs_scanner_state && fs_scanner_state.running && typeof fs_stop_scanner === "function") {
@@ -1294,34 +1319,43 @@ Plugins.band_survey.init = function () {
       var freq = it.freq || it.frequency;
       var pid = it.pid;
       var name = it.name || existingName(freq) || icao833(freq) || fmtMhz(freq);
-      if (isLocked(freq)) continue;
+      listenFreq = freq;
+      if (shouldSkipTune(freq)) continue;
       var value = profileValueForPid(pid);
       var onThisTile = freqInVisibleRange(freq);
       if (!onThisTile && value && currentProfileValue() !== value) {
-        await waitProfileGap("Listen wait");
+        if (lastProfileSwitchAt) {
+          var waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
+          var why = ownerHopsOn() ? "fast hops (own radio)" : "anti-ban, profile change";
+          while (waitMore > 0 && !stopFlag) {
+            setStatus("Listen wait " + Math.ceil(waitMore / 1000) + "s (" + why + ")");
+            if (consumeListenAbort(freq, name)) break;
+            await sleep(Math.min(200, waitMore));
+            waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
+          }
+        }
         if (stopFlag) break;
+        if (consumeListenAbort(freq, name)) continue;
         await switchProfile(value);
         lastProfileSwitchAt = Date.now();
       }
+      if (consumeListenAbort(freq, name)) continue;
       if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
       if (it.mode && window.UI && typeof UI.setModulation === "function") {
         try { UI.setModulation(it.mode, ""); } catch (e3) {}
       }
-      setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Continue scan]");
-      await sleep(HOP_SETTLE_MS);
+      setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Always skip / Continue scan]");
+      var settled = Date.now() + HOP_SETTLE_MS;
+      var abortHop = false;
+      while (Date.now() < settled && !stopFlag) {
+        if (consumeListenAbort(freq, name)) { abortHop = true; break; }
+        await sleep(Math.min(150, settled - Date.now()));
+      }
+      if (abortHop || stopFlag) continue;
       var floor = noiseFloor(wf());
       var busyThr = floor + Math.max(4, (Number(S.threshDb) || 7) - 2);
       var lvl = levelAt(freq);
-      if (listenCmd === "skip" || listenCmd === "continue") {
-        listenCmd = "";
-        continue;
-      }
-      if (listenCmd === "lock") {
-        lockout(freq);
-        listenCmd = "";
-        setStatus("Locked out " + name + " for " + (S.lockoutMin || 30) + " min");
-        continue;
-      }
+      if (consumeListenAbort(freq, name)) continue;
       if (lvl < busyThr && listenCmd !== "hold") {
         setStatus("Listen " + (i + 1) + "/" + items.length + " · quiet, skip · " + name);
         await sleep(400);
@@ -1334,18 +1368,9 @@ Plugins.band_survey.init = function () {
         recOn = true;
       }
       setListenPaused(true);
-      setStatus("ACTIVE · " + name + " · " + fmtMhz(freq) + " — click Continue scan");
+      setStatus("ACTIVE · " + name + " · " + fmtMhz(freq) + " — Continue scan or Always skip");
       while (!stopFlag) {
-        if (listenCmd === "skip" || listenCmd === "continue") {
-          listenCmd = "";
-          break;
-        }
-        if (listenCmd === "lock") {
-          lockout(freq);
-          listenCmd = "";
-          setStatus("Locked out " + name + " for " + (S.lockoutMin || 30) + " min");
-          break;
-        }
+        if (consumeListenAbort(freq, name)) break;
         lvl = levelAt(freq);
         var extra = listenCmd === "hold" ? " · HOLD" : (lvl >= busyThr ? " · busy" : " · quiet");
         setStatus("ACTIVE · " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + extra + " — Continue scan");
@@ -1355,12 +1380,14 @@ Plugins.band_survey.init = function () {
       if (recOn) setRecording(false);
     }
     listenCmd = "";
+    listenFreq = 0;
     setListenPaused(false);
     setRecording(false);
     if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
     if (stopFlag) setStatus("Listen stopped after " + heard + " busy bookmarks.");
     else setStatus("Listen done. " + heard + " busy / " + items.length + " bookmarks.");
     } catch (err) {
+      listenFreq = 0;
       setRecording(false);
       setListenPaused(false);
       setStatus(friendlyError(err, "Listen"));
@@ -1516,7 +1543,16 @@ Plugins.band_survey.init = function () {
     return copy;
   }
 
+  function updateClearSkipBtn() {
+    var skipN = (S.ignoredFreqs || []).length;
+    var clr = $("bs-clearskip");
+    if (!clr) return;
+    clr.hidden = !skipN;
+    clr.textContent = skipN ? ("Clear always-skip (" + skipN + ")") : "Clear always-skip";
+  }
+
   function renderHits() {
+    updateClearSkipBtn();
     var host = $("bs-hitwrap");
     if (!host) return;
     if (!hits.length) {
@@ -1525,7 +1561,7 @@ Plugins.band_survey.init = function () {
     }
     var shown = sortedHits();
     if (!shown.length) {
-      host.innerHTML = '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick “Hide birdies” to see them.</p>";
+      host.innerHTML = '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick “Hide birdies” to un-ign, or Clear always-skip.</p>";
       return;
     }
     var rows = shown.map(function (h) {
@@ -1542,6 +1578,10 @@ Plugins.band_survey.init = function () {
       var newb = h.isNew && !spur ? '<span class="bs-new">new</span> ' : "";
       var pri = isPriority(h.freq) && !spur ? '<span class="bs-pri">pri</span> ' : "";
       var nm = h.name || known || "";
+      var alwaysOn = isIgnoredFreq(h.freq) || !!h.ignored;
+      var ignBtn = alwaysOn
+        ? ' <button type="button" class="bs-tiny bs-on" data-ignore="' + h.freq + '" title="Stop always-skipping this MHz">un-ign</button>'
+        : ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Always skip this MHz on future scans">ign</button>';
       return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
         '<td class="bs-n">' + h.seen + "</td>" +
         '<td>' + pri + newb + ch +
@@ -1551,12 +1591,12 @@ Plugins.band_survey.init = function () {
         (nm ? escapeHtml(nm) : "name") + "</button></td>" +
         "<td>" + Math.round(h.maxDb) + "</td>" +
         "<td>" + escapeHtml(h.label || h.pid) + "</td>" +
-        "<td>" + bm +
-        ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Ignore this line">ign</button></td>' +
+        "<td>" + bm + ignBtn + "</td>" +
         "</tr>";
     }).join("");
+    updateClearSkipBtn();
     var extra = S.hideSpurs && spurCount()
-      ? '<p class="bs-empty">' + spurCount() + " birdies hidden.</p>"
+      ? '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick Hide birdies to un-ign, or Clear always-skip.</p>"
       : "";
     host.innerHTML = extra +
       '<table class="bs-hits"><thead><tr>' +
@@ -1656,6 +1696,8 @@ Plugins.band_survey.init = function () {
   }
 
   function ignoreFreq(freq) {
+    freq = Number(freq);
+    if (!freq) return;
     S.ignoredFreqs = S.ignoredFreqs || [];
     if (!isIgnoredFreq(freq)) S.ignoredFreqs.push(Math.round(freq));
     hits.forEach(function (h) {
@@ -1668,6 +1710,64 @@ Plugins.band_survey.init = function () {
     saveSettings();
     saveHits();
     renderHits();
+  }
+
+  function unignoreFreq(freq) {
+    freq = Number(freq);
+    S.ignoredFreqs = (S.ignoredFreqs || []).filter(function (f) {
+      return Math.abs(f - freq) >= 4000;
+    });
+    hits.forEach(function (h) {
+      if (Math.abs(h.freq - freq) < 4000) {
+        h.ignored = false;
+        if (h.spurWhy === "ignored") {
+          h.spur = false;
+          h.spurWhy = "";
+        }
+      }
+    });
+    classifyAll();
+    saveSettings();
+    saveHits();
+    renderHits();
+  }
+
+  function clearAlwaysSkips() {
+    var n = (S.ignoredFreqs || []).length;
+    S.ignoredFreqs = [];
+    hits.forEach(function (h) {
+      if (h.ignored) {
+        h.ignored = false;
+        if (h.spurWhy === "ignored") {
+          h.spur = false;
+          h.spurWhy = "";
+        }
+      }
+    });
+    classifyAll();
+    saveSettings();
+    saveHits();
+    renderHits();
+    setStatus(n ? ("Cleared " + n + " always-skip frequenc" + (n === 1 ? "y." : "ies.")) : "No always-skip frequencies.");
+  }
+
+  function currentTuneHz() {
+    if (listenFreq) return listenFreq;
+    try {
+      if (window.UI && typeof UI.getFrequency === "function") {
+        var u = UI.getFrequency();
+        if (u) return u;
+      }
+    } catch (e) {}
+    try {
+      if (window.dems) {
+        var ids = Object.keys(window.dems);
+        if (ids.length && window.dems[ids[0]] && typeof window.dems[ids[0]].get_offset_frequency === "function") {
+          return window.center_freq + window.dems[ids[0]].get_offset_frequency();
+        }
+      }
+    } catch (e2) {}
+    return 0;
   }
 
   async function runSurvey(fresh) {
@@ -2337,8 +2437,9 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-hold">Hold</button>' +
       '<button type="button" id="bs-skip">Skip</button>' +
       '<button type="button" id="bs-lockout">Lockout</button>' +
+      '<button type="button" id="bs-alwaysskip" title="Never land on this MHz again (saved in this browser)">Always skip</button>' +
       '<button type="button" id="bs-contscan">Continue scan</button>' +
-      '<span class="bs-hint" id="bs-hophint">busy channel waits here · same-band ~1s · other band 11s unless Own radio is on</span>' +
+      '<span class="bs-hint" id="bs-hophint">busy waits · Always skip = never again · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
       '<div class="bs-progress"><i id="bs-bar"></i></div>' +
@@ -2377,7 +2478,8 @@ Plugins.band_survey.init = function () {
       '<label>Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em"></label>' +
       '<label>Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
       "</div>" +
-      "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = ignore</div>" +
+      "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
+      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay)">Clear always-skip</button></div>' +
       '<div id="bs-hitwrap"></div>' +
       '<div class="bs-row" style="margin-top:8px">' +
       '<button type="button" id="bs-bmqual">Bookmark qualified</button>' +
@@ -2453,7 +2555,16 @@ Plugins.band_survey.init = function () {
     };
     $("bs-skip").onclick = function () { listenCmd = "skip"; };
     $("bs-lockout").onclick = function () { listenCmd = "lock"; };
+    $("bs-alwaysskip").onclick = function () {
+      var f = currentTuneHz();
+      listenCmd = "skip";
+      if (f) {
+        ignoreFreq(f);
+        setStatus("Always skip " + fmtMhz(f) + " — next scan will not land here.");
+      }
+    };
     $("bs-contscan").onclick = resumeListenScan;
+    if ($("bs-clearskip")) $("bs-clearskip").onclick = clearAlwaysSkips;
     $("bs-filter").oninput = filterBands;
     $("bs-autobm").onchange = readForm;
     $("bs-scanafter").onchange = readForm;
@@ -2557,8 +2668,14 @@ Plugins.band_survey.init = function () {
         return;
       }
       if (t.getAttribute("data-ignore")) {
-        ignoreFreq(Number(t.getAttribute("data-ignore")));
-        setStatus("Ignoring " + fmtMhz(Number(t.getAttribute("data-ignore"))) + " (birdie).");
+        var ignF = Number(t.getAttribute("data-ignore"));
+        if (isIgnoredFreq(ignF)) {
+          unignoreFreq(ignF);
+          setStatus("Will land on " + fmtMhz(ignF) + " again.");
+        } else {
+          ignoreFreq(ignF);
+          setStatus("Always skip " + fmtMhz(ignF) + " (saved in this browser).");
+        }
         return;
       }
       if (t.getAttribute("data-bm")) {

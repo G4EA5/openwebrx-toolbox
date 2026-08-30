@@ -165,8 +165,8 @@ Typical `htdocs` paths:
 
 1. Tick bands, or tap **Air** / **VHF voice** / **Ham**.
 2. **Continue** adds to Seen totals. **Fresh** starts at zero.
-3. Click a frequency to tune, click a name to rename, **ign** to ignore a birdie.
-4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout**.
+3. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
+4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** (never land there again; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip**. Bookmarks are not deleted.
 5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
    (there is no regular-user API to write those). **Import CSV** / **Import JSON**
    restores Peaks/Seen in this browser (file picker; Shift-click to paste).
