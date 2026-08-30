@@ -106,8 +106,35 @@
 #bs-panel .bs-left-top,
 #bs-panel .bs-left-bottom {
   min-height: 72px;
-  overflow: auto;
   padding: 8px;
+}
+
+#bs-panel .bs-left-top {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#bs-panel .bs-left-bottom {
+  overflow: auto;
+}
+
+#bs-panel .bs-left-controls {
+  flex: 0 0 auto;
+}
+
+#bs-panel .bs-bands-wrap {
+  flex: 1 1 auto;
+  min-height: 48px;
+  overflow: auto;
+  margin-bottom: 4px;
+}
+
+#bs-panel .bs-settings {
+  flex: 0 0 auto;
+  padding-top: 6px;
+  border-top: 1px solid #444;
+  background: #111;
 }
 
 #bs-panel .bs-right-seg {
@@ -350,12 +377,10 @@
 }
 
 #bs-panel .bs-bands {
-  max-height: 168px;
-  overflow: auto;
   border: 1px solid #444;
   border-radius: 4px;
   padding: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   background: #0a0a0a;
 }
 
