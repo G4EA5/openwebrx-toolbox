@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 14;
+Plugins.band_survey._version = 15;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -1197,7 +1197,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Panel</h3>" +
-      "<p>The left side is survey controls, bands, and settings above a draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
+      "<p>The left side is survey controls and a scrollable band list, with Passes→Every N hours always visible in a fixed strip above the draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
       "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Save bookmarks</b> downloads local + <b>[load]</b> as JSON; <b>Load bookmarks</b> imports JSON/CSV (including that save file). <b>Scan bookmarks</b> hops through both. <b>Clear bookmarks</b> removes all blue local entries; <b>Clear loaded</b> removes only <b>[load]</b>; <b>Clear auto bookmarks</b> removes only <b>[auto]</b>.</p>" +
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
@@ -1994,6 +1994,23 @@ Plugins.band_survey.init = function () {
     return Math.max(lo, Math.min(hi, n));
   }
 
+  function leftControlsSettingsMinPx() {
+    var controls = $("bs-left-controls");
+    var settings = $("bs-settings");
+    var h = 0;
+    if (controls) h += controls.offsetHeight;
+    if (settings) h += settings.offsetHeight;
+    return h + 20;
+  }
+
+  function leftSplitMinPct() {
+    var stack = $("bs-left-stack");
+    if (!stack) return 28;
+    var sh = stack.getBoundingClientRect().height;
+    if (sh < 80) return 28;
+    return clamp(Math.ceil((leftControlsSettingsMinPx() / sh) * 100), 28, 78);
+  }
+
   function applyPanelLayout() {
     var p = $("bs-panel");
     if (!p) return;
@@ -2026,8 +2043,10 @@ Plugins.band_survey.init = function () {
     S.splitPct = pct;
     var leftEl = $("bs-left");
     if (leftEl) leftEl.style.flex = "0 0 " + pct + "%";
+    var minLsp = leftSplitMinPct();
     var lsp = Number(S.leftSplitPct);
-    if (!(lsp >= 22 && lsp <= 78)) lsp = 42;
+    if (!(lsp >= minLsp && lsp <= 78)) lsp = Math.max(42, minLsp);
+    if (lsp < minLsp) lsp = minLsp;
     S.leftSplitPct = lsp;
     var leftTop = $("bs-left-top");
     if (leftTop) leftTop.style.flex = lsp + " 1 0";
@@ -2180,7 +2199,7 @@ Plugins.band_survey.init = function () {
         if (!lbox) return;
         var lr = lbox.getBoundingClientRect();
         if (lr.height < 80) return;
-        S.leftSplitPct = clamp(((ev.clientY - lr.top) / lr.height) * 100, 22, 78);
+        S.leftSplitPct = clamp(((ev.clientY - lr.top) / lr.height) * 100, leftSplitMinPct(), 78);
         applyPanelLayout();
         return;
       }
@@ -3596,6 +3615,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-left" id="bs-left">' +
       '<div class="bs-left-stack" id="bs-left-stack">' +
       '<div class="bs-left-top" id="bs-left-top">' +
+      '<div class="bs-left-controls" id="bs-left-controls">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
       '<p class="bs-note">Tick bands, then Continue (add to Seen) or Fresh (start over). Hover a control for a tip. Blue bookmarks are on the right.</p>' +
       '<div class="bs-row">' +
@@ -3626,8 +3646,11 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-tiny" data-preset="all" title="Tick every band profile.">All</button>' +
       '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
       '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px" title="Type to hide band names that do not match.">' +
-      "</div>" +
+      "</div></div>" +
+      '<div class="bs-bands-wrap" id="bs-bands-wrap">' +
       '<div class="bs-bands" id="bs-bands"></div>' +
+      "</div>" +
+      '<div class="bs-settings" id="bs-settings">' +
       '<div class="bs-row">' +
       "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"20\" step=\"1\" style=\"width:3.4em\" title=\"How many times to walk the ticked bands in one run.\"></label>" +
       "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each band while counting peaks.\"></label>" +
@@ -3654,7 +3677,7 @@ Plugins.band_survey.init = function () {
       '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
       '<label title="0 = off. Runs Continue while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Continue while this tab stays open."></label>' +
       "</div>" +
-      "</div>" +
+      "</div></div>" +
       '<div class="bs-splitter bs-splitter-h" id="bs-left-splitter" title="Drag to resize controls vs peaks table." role="separator" aria-orientation="horizontal"></div>' +
       '<div class="bs-left-bottom" id="bs-left-bottom">' +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo) " +
