@@ -699,6 +699,43 @@ body.bs-layout-drag.bs-resize-nwse {
   padding: 0 4px;
 }
 
+#bs-panel .bs-bm-load {
+  font-size: 10px;
+  font-weight: 700;
+  color: #111;
+  background: #fbbf24;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+#bs-panel .bs-bm-section-head {
+  display: block;
+  padding: 4px 8px 2px;
+  color: #9ca3af;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#bs-panel .bs-bm-row.bs-bm-loaded {
+  border-left: 3px solid #fbbf24;
+}
+
+#bs-panel .bs-loaded-block {
+  flex: 0 1 auto;
+  max-height: 34%;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #374151;
+  background: #0f0f0f;
+}
+
+#bs-panel .bs-loaded-scroll {
+  overflow: auto;
+  padding: 0 0 8px;
+}
+
 #bs-panel .bs-skip-block {
   flex: 0 1 auto;
   max-height: 38%;
