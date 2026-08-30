@@ -1944,13 +1944,15 @@ Plugins.band_survey.init = function () {
     if (!(lsp >= 22 && lsp <= 78)) lsp = 42;
     S.leftSplitPct = lsp;
     var leftTop = $("bs-left-top");
-    if (leftTop) leftTop.style.flex = "0 0 " + lsp + "%";
+    if (leftTop) leftTop.style.flex = lsp + " 1 0";
+    var leftBottom = $("bs-left-bottom");
+    if (leftBottom) leftBottom.style.flex = (100 - lsp) + " 1 0";
     var rs1 = Number(S.rightSplit1);
     var rs2 = Number(S.rightSplit2);
     var rs3 = Number(S.rightSplit3);
     if (!(rs1 >= 12 && rs1 <= 70)) rs1 = 38;
     if (!(rs2 >= rs1 + 10 && rs2 <= 85)) rs2 = Math.max(rs1 + 10, 56);
-    if (!(rs3 >= rs2 + 10 && rs3 <= 95)) rs3 = Math.max(rs2 + 10, 78);
+    if (!(rs3 >= rs2 + 10 && rs3 <= 92)) rs3 = Math.max(rs2 + 10, 78);
     S.rightSplit1 = rs1;
     S.rightSplit2 = rs2;
     S.rightSplit3 = rs3;
@@ -1962,7 +1964,7 @@ Plugins.band_survey.init = function () {
     ];
     segMap.forEach(function (pair) {
       var el = $(pair[0]);
-      if (el) el.style.flex = "0 0 " + pair[1] + "%";
+      if (el) el.style.flex = pair[1] + " 1 0";
     });
   }
 
@@ -2108,7 +2110,7 @@ Plugins.band_survey.init = function () {
         } else if (dragging === "r2") {
           S.rightSplit2 = clamp(yPct, S.rightSplit1 + 10, Math.min(85, S.rightSplit3 - 10));
         } else if (dragging === "r3") {
-          S.rightSplit3 = clamp(yPct, S.rightSplit2 + 10, 95);
+          S.rightSplit3 = clamp(yPct, S.rightSplit2 + 10, 92);
         }
         applyPanelLayout();
         return;
