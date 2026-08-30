@@ -8,7 +8,7 @@
 // Help is always available from the panel (and on first run).
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 5;
+Plugins.band_survey._version = 6;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -27,6 +27,10 @@ Plugins.band_survey.init = function () {
   var savedVol = null;
   var lastCreated = [];
   var listenCmd = "";
+  var listenPaused = false;
+  var lastProfileSwitchAt = 0;
+  var PROFILE_GAP_MS = 11000;
+  var HOP_SETTLE_MS = 700;
   var schedTimer = null;
   var LS_LOCK = "owrx_band_survey_lock_v1";
   var LS_SNAP = "owrx_band_survey_snap_v1";
@@ -214,16 +218,61 @@ Plugins.band_survey.init = function () {
   }
 
   function sortListenPriority(items) {
-    return (items || []).slice().sort(function (a, b) {
-      var fa = (a.hit || a).freq || a.frequency;
-      var fb = (b.hit || b).freq || b.frequency;
-      var pa = isPriority(fa) ? 0 : 1;
-      var pb = isPriority(fb) ? 0 : 1;
-      if (pa !== pb) return pa - pb;
-      var sa = (a.hit && a.hit.seen) || a.seen || 0;
-      var sb = (b.hit && b.hit.seen) || b.seen || 0;
-      return sb - sa;
+    var scored = (items || []).map(function (row, idx) {
+      var it = row.hit || row;
+      var freq = it.freq || it.frequency || row.frequency;
+      return {
+        row: row,
+        idx: idx,
+        pri: isPriority(freq) ? 0 : 1,
+        pid: String(it.pid || ""),
+        seen: (row.hit && row.hit.seen) || row.seen || 0
+      };
     });
+    var pidPri = {};
+    scored.forEach(function (s) {
+      if (s.pri === 0 && typeof pidPri[s.pid] === "undefined") pidPri[s.pid] = s.idx;
+    });
+    scored.sort(function (a, b) {
+      var ap = typeof pidPri[a.pid] !== "undefined" ? 0 : 1;
+      var bp = typeof pidPri[b.pid] !== "undefined" ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      if (a.pid !== b.pid) {
+        if (ap === 0) return pidPri[a.pid] - pidPri[b.pid];
+        return a.pid < b.pid ? -1 : a.pid > b.pid ? 1 : 0;
+      }
+      if (a.pri !== b.pri) return a.pri - b.pri;
+      if (b.seen !== a.seen) return b.seen - a.seen;
+      return a.idx - b.idx;
+    });
+    return scored.map(function (s) { return s.row; });
+  }
+
+  function setListenPaused(on) {
+    listenPaused = !!on;
+    var cont = $("bs-contscan");
+    if (cont) {
+      cont.classList.toggle("bs-on", listenPaused);
+      cont.classList.toggle("bs-primary", listenPaused);
+    }
+    var start = $("bs-start");
+    if (start) {
+      start.textContent = listenPaused ? "Continue scan" : "Continue";
+      start.classList.toggle("bs-on", listenPaused);
+    }
+  }
+
+  function resumeListenScan() {
+    listenCmd = "continue";
+  }
+
+  async function waitProfileGap(label) {
+    if (!lastProfileSwitchAt) return;
+    var waitMore = PROFILE_GAP_MS - (Date.now() - lastProfileSwitchAt);
+    if (waitMore > 0) {
+      setStatus((label || "waiting") + " " + Math.ceil(waitMore / 1000) + "s (anti-ban, profile change)");
+      await sleep(waitMore);
+    }
   }
 
   function clientCount() {
@@ -614,9 +663,9 @@ Plugins.band_survey.init = function () {
       "<h3>How to use</h3>" +
       "<ol>" +
       "<li><b>Continue</b> adds to Seen totals; <b>Fresh</b> starts at zero.</li>" +
-      "<li>Profile changes are spaced ~<b>11 seconds</b> (anti-ban).</li>" +
+      "<li>Profile changes stay ~<b>11 seconds</b> (anti-ban). Same-band bookmark hops skip that wait.</li>" +
       "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to ignore a birdie.</li>" +
-      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ignore for Lockout min.</li>" +
+      "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ignore. A <b>busy</b> channel pauses until you click <b>Continue scan</b>.</li>" +
       "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks.</li>" +
@@ -634,7 +683,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Local bookmarks API missing</b> — auto-bookmark is off; Export JSON still works.</li>" +
       "<li><b>Other listeners online</b> — untick Only if alone.</li>" +
       "<li><b>Nothing counted</b> — lower “dB over noise”, pick a busier band, or wait until the waterfall is moving.</li>" +
-      "<li><b>Banned / kicked</b> — leave the 11s gap on; ask the admin about bot-ban if needed.</li>" +
+      "<li><b>Banned / kicked</b> — leave the 11s gap on profile changes; same-band hops are already faster. Ask the admin about bot-ban if needed.</li>" +
       "</ul>" +
       "<p>Press <b>Esc</b> or click outside this card to close. Click <b>Check install</b> any time — messages include the fix.</p>" +
       "<h3>Privacy</h3>" +
@@ -1177,8 +1226,7 @@ Plugins.band_survey.init = function () {
     }
     muteOff();
     listenCmd = "";
-    var listenMs = Math.max(1, Math.min(20, Number(S.listenSec) || 4)) * 1000;
-    var lastSwitchAt = 0;
+    setListenPaused(false);
     var heard = 0;
     for (var i = 0; i < items.length && !stopFlag; i++) {
       var it = items[i].hit || items[i];
@@ -1189,27 +1237,21 @@ Plugins.band_survey.init = function () {
       var value = profileValueForPid(pid);
       var sel = $("openwebrx-sdr-profiles-listbox");
       if (value && sel && sel.value !== value) {
-        if (lastSwitchAt) {
-          var waitMore = 11000 - (Date.now() - lastSwitchAt);
-          if (waitMore > 0) {
-            setStatus("Listen wait " + Math.ceil(waitMore / 1000) + "s · " + name);
-            await sleep(waitMore);
-          }
-        }
+        await waitProfileGap("Listen wait");
         if (stopFlag) break;
         await switchProfile(value);
-        lastSwitchAt = Date.now();
+        lastProfileSwitchAt = Date.now();
       }
       if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
       if (it.mode && window.UI && typeof UI.setModulation === "function") {
         try { UI.setModulation(it.mode, ""); } catch (e3) {}
       }
-      setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Lockout]");
-      await sleep(700);
+      setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Continue scan]");
+      await sleep(HOP_SETTLE_MS);
       var floor = noiseFloor(wf());
       var busyThr = floor + Math.max(4, (Number(S.threshDb) || 7) - 2);
       var lvl = levelAt(freq);
-      if (listenCmd === "skip") {
+      if (listenCmd === "skip" || listenCmd === "continue") {
         listenCmd = "";
         continue;
       }
@@ -1225,11 +1267,15 @@ Plugins.band_survey.init = function () {
         continue;
       }
       heard++;
-      var until = Date.now() + listenMs;
-      var quietMs = 0;
       var recOn = false;
+      if (S.recordBusy) {
+        setRecording(true);
+        recOn = true;
+      }
+      setListenPaused(true);
+      setStatus("ACTIVE · " + name + " · " + fmtMhz(freq) + " — click Continue scan");
       while (!stopFlag) {
-        if (listenCmd === "skip") {
+        if (listenCmd === "skip" || listenCmd === "continue") {
           listenCmd = "";
           break;
         }
@@ -1240,32 +1286,22 @@ Plugins.band_survey.init = function () {
           break;
         }
         lvl = levelAt(freq);
-        var busy = lvl >= busyThr;
-        if (busy && S.recordBusy && !recOn) {
-          setRecording(true);
-          recOn = true;
-        }
-        var holding = listenCmd === "hold";
-        if (S.holdBusy || holding) {
-          if (busy) quietMs = 0;
-          else quietMs += 250;
-          if (!holding && quietMs >= listenMs) break;
-        } else if (Date.now() >= until) {
-          break;
-        }
-        var extra = holding ? " · HOLD" : (S.holdBusy ? (busy ? " · busy" : " · quiet") : "");
-        setStatus("Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + extra);
+        var extra = listenCmd === "hold" ? " · HOLD" : (lvl >= busyThr ? " · busy" : " · quiet");
+        setStatus("ACTIVE · " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + extra + " — Continue scan");
         await sleep(250);
       }
+      setListenPaused(false);
       if (recOn) setRecording(false);
     }
     listenCmd = "";
+    setListenPaused(false);
     setRecording(false);
     if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
     if (stopFlag) setStatus("Listen stopped after " + heard + " busy bookmarks.");
     else setStatus("Listen done. " + heard + " busy / " + items.length + " bookmarks.");
     } catch (err) {
       setRecording(false);
+      setListenPaused(false);
       setStatus(friendlyError(err, "Listen"));
       toast(friendlyError(err, "Listen"));
       renderHealth();
@@ -1621,8 +1657,6 @@ Plugins.band_survey.init = function () {
     muteOn();
     var total = S.selected.length * S.passes;
     var step = 0;
-    var lastSwitchAt = 0;
-    var minGap = 11000;
     try {
       for (var pass = 1; pass <= S.passes && !stopFlag; pass++) {
         for (var i = 0; i < S.selected.length && !stopFlag; i++) {
@@ -1630,16 +1664,10 @@ Plugins.band_survey.init = function () {
           var p = profileByValue(value) || { id: value, label: value };
           setStatus("Pass " + pass + "/" + S.passes + " · " + p.label);
           setProgress(step / total);
-          if (lastSwitchAt) {
-            var waitMore = minGap - (Date.now() - lastSwitchAt);
-            if (waitMore > 0) {
-              setStatus("Pass " + pass + "/" + S.passes + " · waiting " + Math.ceil(waitMore / 1000) + "s (anti-ban) · " + p.label);
-              await sleep(waitMore);
-            }
-          }
+          await waitProfileGap("Pass " + pass + "/" + S.passes + " · " + p.label + " · waiting");
           if (stopFlag) break;
           await switchProfile(value);
-          lastSwitchAt = Date.now();
+          lastProfileSwitchAt = Date.now();
           var until = Date.now() + S.dwell * 1000;
           var lastNoise = "";
           while (Date.now() < until && !stopFlag) {
@@ -1867,7 +1895,8 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-hold">Hold</button>' +
       '<button type="button" id="bs-skip">Skip</button>' +
       '<button type="button" id="bs-lockout">Lockout</button>' +
-      '<span class="bs-hint">while listening: stay / next / ignore ~30 min</span>' +
+      '<button type="button" id="bs-contscan">Continue scan</button>' +
+      '<span class="bs-hint">busy channel waits here · same-band hops ~1s · profile change 11s</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
       '<div class="bs-progress"><i id="bs-bar"></i></div>' +
@@ -1958,7 +1987,13 @@ Plugins.band_survey.init = function () {
           "Read the box above, or open Help.");
       }
     };
-    $("bs-start").onclick = function () { runSurvey(false); };
+    $("bs-start").onclick = function () {
+      if (listenPaused) {
+        resumeListenScan();
+        return;
+      }
+      runSurvey(false);
+    };
     $("bs-fresh").onclick = function () { runSurvey(true); };
     $("bs-stop").onclick = stopSurvey;
     $("bs-jump").onclick = function () { jumpLoudest(); };
@@ -1969,6 +2004,7 @@ Plugins.band_survey.init = function () {
     };
     $("bs-skip").onclick = function () { listenCmd = "skip"; };
     $("bs-lockout").onclick = function () { listenCmd = "lock"; };
+    $("bs-contscan").onclick = resumeListenScan;
     $("bs-filter").oninput = filterBands;
     $("bs-autobm").onchange = readForm;
     $("bs-scanafter").onchange = readForm;

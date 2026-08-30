@@ -160,7 +160,7 @@ Typical `htdocs` paths:
 1. Tick bands, or tap **Air** / **VHF voice** / **Ham**.
 2. **Continue** adds to Seen totals. **Fresh** starts at zero.
 3. Click a frequency to tune, click a name to rename, **ign** to ignore a birdie.
-4. **Scan bookmarks** walks the busy ones. While listening: **Hold** / **Skip** / **Lockout**.
+4. **Scan bookmarks** hops on the same band in about a second; profile changes stay ~11s (anti-ban). A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout**.
 5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
    (there is no regular-user API to write those).
 
