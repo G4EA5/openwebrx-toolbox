@@ -171,7 +171,7 @@ Typical `htdocs` paths:
    (there is no regular-user API to write those). **Import CSV** / **Import JSON**
    restores Peaks/Seen in this browser (file picker; Shift-click to paste).
 
-Blue (local) bookmarks live in **this browser**. The plugin copies them before
+Blue (local) bookmarks live in **this browser** (right-hand pane: named vs **[auto]**, plus always-skip). Hover any control for a tip. Drag the panel edges or corner to resize, and the vertical bar to grow the bookmarks pane — size is remembered here. The plugin copies bookmarks before
 it writes, and on first run. Restore from **Help**.
 
 **Only if alone** refuses to retune when another listener is connected. Untick
