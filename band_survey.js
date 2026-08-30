@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 12;
+Plugins.band_survey._version = 13;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -1568,6 +1568,7 @@ Plugins.band_survey.init = function () {
       }
     } catch (e) {}
     list = list.concat(allBookmarks());
+    list = list.concat(loadedBookmarks || []);
     for (var i = 0; i < list.length; i++) {
       if (list[i] && Math.abs(list[i].frequency - freq) < 2500) return list[i].name;
     }
@@ -2208,53 +2209,56 @@ Plugins.band_survey.init = function () {
     if (!host) return;
     var list = localBookmarkList();
     if (!list) list = [];
-    list = list.slice().sort(function (a, b) {
+    var skipN = (S.ignoredFreqs || []).length;
+    var visibleLocal = list.slice().sort(function (a, b) {
       return (a.frequency || 0) - (b.frequency || 0);
-    });
+    }).filter(function (b) { return !isIgnoredFreq(b.frequency); });
+    var visibleLoaded = loadedBookmarks.slice().sort(function (a, b) {
+      return a.frequency - b.frequency;
+    }).filter(function (b) { return !isIgnoredFreq(b.frequency); });
     var count = $("bs-bmcount");
     if (count) {
       var parts = [];
-      if (list.length) parts.push(list.length + " local");
-      if (loadedBookmarks.length) parts.push(loadedBookmarks.length + " loaded");
+      if (visibleLocal.length) parts.push(visibleLocal.length + " local");
+      if (visibleLoaded.length) parts.push(visibleLoaded.length + " loaded");
+      if (skipN) parts.push(skipN + " skipped");
       count.textContent = parts.length ? parts.join(" · ") : "";
     }
-    if (!list.length) {
-      host.innerHTML = '<p class="bs-empty">No blue bookmarks in this browser yet. Auto-bookmark or + on a peak adds them here.</p>';
+    if (!visibleLocal.length) {
+      host.innerHTML = list.length && skipN
+        ? '<p class="bs-empty">All local bookmarks are always-skipped — see Always skip below.</p>'
+        : '<p class="bs-empty">No blue bookmarks in this browser yet. Auto-bookmark or + on a peak adds them here.</p>';
     } else {
-      host.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Local</b><ul class="bs-bm-ul">' + list.map(function (b) {
+      host.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Local</b><ul class="bs-bm-ul">' + visibleLocal.map(function (b) {
         var freq = b.frequency;
-        var skipped = isIgnoredFreq(freq);
         var auto = isAuto(b);
-        return '<li class="bs-bm-row' + (skipped ? " bs-bm-skipped" : "") +
+        return '<li class="bs-bm-row' +
           '" data-bm-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
           '" title="Tune to this bookmark.">' +
           '<span class="bs-bm-name">' + escapeHtml(bookmarkDisplayName(b)) + "</span>" +
           (auto ? '<span class="bs-bm-auto">[auto]</span>' : "") +
           '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
-          (skipped
-            ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
-            : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>') +
+          '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
           "</li>";
       }).join("") + "</ul></div>";
     }
     var loadedHost = $("bs-loadedlist");
     if (loadedHost) {
-      if (!loadedBookmarks.length) {
-        loadedHost.innerHTML = '<p class="bs-empty">Load bookmarks from JSON/CSV — tagged [load], scanned separately from [auto].</p>';
+      if (!visibleLoaded.length) {
+        loadedHost.innerHTML = loadedBookmarks.length && skipN
+          ? '<p class="bs-empty">All loaded bookmarks are always-skipped — see Always skip below.</p>'
+          : '<p class="bs-empty">Load bookmarks from JSON/CSV — tagged [load], scanned separately from [auto].</p>';
       } else {
         loadedHost.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Loaded</b><ul class="bs-bm-ul">' +
-          loadedBookmarks.slice().sort(function (a, b) { return a.frequency - b.frequency; }).map(function (b) {
+          visibleLoaded.map(function (b) {
             var freq = b.frequency;
-            var skipped = isIgnoredFreq(freq);
-            return '<li class="bs-bm-row bs-bm-loaded' + (skipped ? " bs-bm-skipped" : "") +
+            return '<li class="bs-bm-row bs-bm-loaded' +
               '" data-loaded-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
               '" title="Tune to this loaded bookmark.">' +
               '<span class="bs-bm-name">' + escapeHtml(b.name || fmtMhz(freq)) + "</span>" +
               '<span class="bs-bm-load">[load]</span>' +
               '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
-              (skipped
-                ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
-                : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>') +
+              '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
               "</li>";
           }).join("") + "</ul></div>";
       }
