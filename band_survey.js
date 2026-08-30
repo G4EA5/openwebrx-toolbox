@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 10;
+Plugins.band_survey._version = 11;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -43,6 +43,8 @@ Plugins.band_survey.init = function () {
   var LS_SNAP = "owrx_band_survey_snap_v1";
   var LS_BM_FIRST = "owrx_band_survey_bm_backup_v1";
   var LS_BM_LAST = "owrx_band_survey_bm_backup_last_v1";
+  var LS_LOADED_BM = "owrx_band_survey_loaded_bm_v1";
+  var loadedBookmarks = [];
 
   function loadSettings() {
     var d = {
@@ -576,6 +578,203 @@ Plugins.band_survey.init = function () {
       }
     } catch (e) {}
     return null;
+  }
+
+  function loadLoadedBookmarks() {
+    try {
+      var raw = window.localStorage.getItem(LS_LOADED_BM);
+      if (!raw) return [];
+      var o = JSON.parse(raw);
+      if (!Array.isArray(o)) return [];
+      return o.map(normalizeLoadedBookmark).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveLoadedBookmarks() {
+    try {
+      window.localStorage.setItem(LS_LOADED_BM, JSON.stringify(loadedBookmarks || []));
+    } catch (e) {}
+  }
+
+  function guessPidForFreq(freq) {
+    var list = profiles();
+    var best = null;
+    var bestSpan = Infinity;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var r = parseMhzRange(list[i].label);
+      if (!r) continue;
+      var lo = r.lo * 1e6;
+      var hi = r.hi * 1e6;
+      if (freq >= lo && freq <= hi) {
+        var span = hi - lo;
+        if (span < bestSpan) {
+          bestSpan = span;
+          best = list[i].id;
+        }
+      }
+    }
+    return best || "imported";
+  }
+
+  function normalizeLoadedBookmark(b) {
+    if (!b || typeof b !== "object") return null;
+    var freq = Number(b.frequency || b.freq || 0);
+    if (!isFinite(freq) || freq <= 0) return null;
+    if (freq < 1e5) freq = Math.round(freq * 1e6);
+    else freq = Math.round(freq);
+    var name = String(b.name || "").trim();
+    name = name.replace(/^\[(load|auto)\]\s*/i, "");
+    var pid = String(b.pid || "").trim() || guessPidForFreq(freq);
+    return {
+      frequency: freq,
+      name: name || fmtMhz(freq),
+      modulation: b.modulation || b.mode || guessMode(pid),
+      pid: pid
+    };
+  }
+
+  function parseLoadedBookmarkFile(text, fname) {
+    text = String(text || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!text) throw new Error("File is empty");
+    var lower = String(fname || "").toLowerCase();
+    var rows = [];
+    if (lower.endsWith(".csv") || (/^seen,/i.test(text) && text.indexOf("MHz") >= 0)) {
+      var parsed = parseImportCsv(text);
+      parsed.hits.forEach(function (h) {
+        rows.push(normalizeLoadedBookmark({
+          frequency: h.freq,
+          name: h.name || existingName(h.freq) || fmtMhz(h.freq),
+          modulation: h.mode,
+          pid: h.pid
+        }));
+      });
+    } else {
+      var o;
+      try {
+        o = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Not valid JSON");
+      }
+      var isBackup = o && Array.isArray(o.bookmarks) && o.when && (o.reason || o.when) &&
+        !Array.isArray(o.hits) && o.kind !== "owrx-band-survey";
+      if (isBackup) {
+        throw new Error("This is a blue-bookmark backup. Use Help → Restore, or Load bookmarks after exporting a bookmark list.");
+      }
+      var arr = null;
+      if (Array.isArray(o)) arr = o;
+      else if (o && Array.isArray(o.bookmarks)) arr = o.bookmarks;
+      if (!arr) throw new Error("Need a JSON array or { bookmarks: [...] }");
+      arr.forEach(function (b) {
+        var n = normalizeLoadedBookmark(b);
+        if (n) rows.push(n);
+      });
+    }
+    rows = rows.filter(Boolean);
+    if (!rows.length) throw new Error("No bookmark frequencies found");
+    return rows;
+  }
+
+  function applyLoadedBookmarks(rows, source) {
+    var replace = !loadedBookmarks.length;
+    if (loadedBookmarks.length) {
+      replace = window.confirm(
+        "Replace " + loadedBookmarks.length + " loaded bookmark(s) with " + rows.length + " from " +
+        (source || "file") + "? OK = replace. Cancel = merge new frequencies only."
+      );
+    }
+    if (replace) loadedBookmarks = rows.slice();
+    else {
+      var seen = {};
+      loadedBookmarks.forEach(function (b) { seen[b.frequency] = true; });
+      rows.forEach(function (b) {
+        if (!seen[b.frequency]) {
+          loadedBookmarks.push(b);
+          seen[b.frequency] = true;
+        }
+      });
+    }
+    saveLoadedBookmarks();
+    renderBookmarkPane();
+    setStatus("Loaded " + rows.length + " bookmark(s) — look for [load] on the right. Scan bookmarks includes them.");
+  }
+
+  function clearLoadedBookmarks() {
+    if (!loadedBookmarks.length) {
+      setStatus("No loaded bookmarks to clear.");
+      return;
+    }
+    if (!window.confirm("Remove all " + loadedBookmarks.length + " loaded bookmark(s)? Local [auto] bookmarks are not touched.")) return;
+    loadedBookmarks = [];
+    saveLoadedBookmarks();
+    renderBookmarkPane();
+    setStatus("Cleared loaded bookmarks.");
+  }
+
+  function scanTargetItems() {
+    if (lastCreated.length) return lastCreated.slice();
+    var rows = [];
+    var seen = {};
+    function add(row) {
+      var f = Number(row.freq || row.frequency);
+      if (!f || seen[f]) return;
+      seen[f] = true;
+      rows.push(row);
+    }
+    (localBookmarkList() || []).forEach(function (b) {
+      var nm = String(b.name || "").trim();
+      if (!nm) nm = bookmarkDisplayName(b);
+      add({
+        freq: b.frequency,
+        frequency: b.frequency,
+        pid: guessPidForFreq(b.frequency),
+        mode: b.modulation || guessMode(guessPidForFreq(b.frequency)),
+        name: nm
+      });
+    });
+    (loadedBookmarks || []).forEach(function (b) {
+      add({
+        freq: b.frequency,
+        frequency: b.frequency,
+        pid: b.pid || guessPidForFreq(b.frequency),
+        mode: b.modulation || guessMode(b.pid || guessPidForFreq(b.frequency)),
+        name: "[load] " + (b.name || fmtMhz(b.frequency))
+      });
+    });
+    if (rows.length) return rows;
+    return qualifiedHits().map(function (h) {
+      return { freq: h.freq, pid: h.pid, mode: h.mode, name: bookmarkNameFor(h) };
+    });
+  }
+
+  function startLoadBookmarks(ev) {
+    var inp = $("bs-bm-file");
+    if (!inp) return;
+    inp.click();
+  }
+
+  function onLoadBookmarkFile(ev) {
+    var inp = ev && ev.target;
+    var file = inp && inp.files && inp.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var rows = parseLoadedBookmarkFile(reader.result, file.name);
+        applyLoadedBookmarks(rows, file.name);
+      } catch (err) {
+        setStatus(importError(err, "Load bookmarks"));
+        toast(importError(err, "Load bookmarks"));
+      }
+      if (inp) inp.value = "";
+    };
+    reader.onerror = function () {
+      setStatus("Could not read that file.");
+      if (inp) inp.value = "";
+    };
+    reader.readAsText(file);
   }
 
   function backupLocalBookmarks(reason, forceFirst) {
@@ -1933,11 +2132,16 @@ Plugins.band_survey.init = function () {
       return (a.frequency || 0) - (b.frequency || 0);
     });
     var count = $("bs-bmcount");
-    if (count) count.textContent = list.length ? (list.length + " local") : "";
+    if (count) {
+      var parts = [];
+      if (list.length) parts.push(list.length + " local");
+      if (loadedBookmarks.length) parts.push(loadedBookmarks.length + " loaded");
+      count.textContent = parts.length ? parts.join(" · ") : "";
+    }
     if (!list.length) {
       host.innerHTML = '<p class="bs-empty">No blue bookmarks in this browser yet. Auto-bookmark or + on a peak adds them here.</p>';
     } else {
-      host.innerHTML = '<ul class="bs-bm-ul">' + list.map(function (b) {
+      host.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Local</b><ul class="bs-bm-ul">' + list.map(function (b) {
         var freq = b.frequency;
         var skipped = isIgnoredFreq(freq);
         var auto = isAuto(b);
@@ -1951,7 +2155,29 @@ Plugins.band_survey.init = function () {
             ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
             : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>') +
           "</li>";
-      }).join("") + "</ul>";
+      }).join("") + "</ul></div>";
+    }
+    var loadedHost = $("bs-loadedlist");
+    if (loadedHost) {
+      if (!loadedBookmarks.length) {
+        loadedHost.innerHTML = '<p class="bs-empty">Load bookmarks from JSON/CSV — tagged [load], scanned separately from [auto].</p>';
+      } else {
+        loadedHost.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Loaded</b><ul class="bs-bm-ul">' +
+          loadedBookmarks.slice().sort(function (a, b) { return a.frequency - b.frequency; }).map(function (b) {
+            var freq = b.frequency;
+            var skipped = isIgnoredFreq(freq);
+            return '<li class="bs-bm-row bs-bm-loaded' + (skipped ? " bs-bm-skipped" : "") +
+              '" data-loaded-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
+              '" title="Tune to this loaded bookmark.">' +
+              '<span class="bs-bm-name">' + escapeHtml(b.name || fmtMhz(freq)) + "</span>" +
+              '<span class="bs-bm-load">[load]</span>' +
+              '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
+              (skipped
+                ? '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + freq + '" title="Stop always-skipping this frequency.">un-ign</button>'
+                : '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>') +
+              "</li>";
+          }).join("") + "</ul></div>";
+      }
     }
     var skipHead = $("bs-skiphead");
     var skipHost = $("bs-skiplist");
@@ -2174,6 +2400,11 @@ Plugins.band_survey.init = function () {
     var row = t.closest && t.closest("[data-bm-tune]");
     if (row) {
       tuneBookmark(Number(row.getAttribute("data-bm-tune")), row.getAttribute("data-bm-mode") || "");
+      return;
+    }
+    row = t.closest && t.closest("[data-loaded-tune]");
+    if (row) {
+      tuneBookmark(Number(row.getAttribute("data-loaded-tune")), row.getAttribute("data-bm-mode") || "");
     }
   }
 
@@ -2188,18 +2419,26 @@ Plugins.band_survey.init = function () {
   function applyPreset(kind) {
     var box = $("bs-bands");
     if (!box) return;
-    Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function (el) {
-      var id = el.dataset.id || "";
-      var on = false;
-      if (kind === "air") on = /^air_[1-7]$/.test(id);
-      else if (kind === "vhf") on = /^(air_|marine_|2m_|pmr)/.test(id);
-      else if (kind === "allvhf") on = profileInAllVhf(findProfileForEl(el));
-      else if (kind === "alluhf") on = profileInAllUhf(findProfileForEl(el));
-      else if (kind === "ham") on = /^(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m_|70c_)/.test(id);
-      else if (kind === "all") on = true;
-      else on = false;
-      el.checked = on;
-    });
+    if (kind === "none") {
+      Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function (el) {
+        el.checked = false;
+      });
+    } else if (kind === "all") {
+      Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function (el) {
+        el.checked = true;
+      });
+    } else {
+      Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function (el) {
+        var id = el.dataset.id || "";
+        var match = false;
+        if (kind === "air") match = /^air_[1-7]$/.test(id);
+        else if (kind === "vhf") match = /^(air_|marine_|2m_|pmr)/.test(id);
+        else if (kind === "allvhf") match = profileInAllVhf(findProfileForEl(el));
+        else if (kind === "alluhf") match = profileInAllUhf(findProfileForEl(el));
+        else if (kind === "ham") match = /^(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m_|70c_)/.test(id);
+        if (match) el.checked = true;
+      });
+    }
     S.selected = selectedValues();
     saveSettings();
     updateCount();
@@ -3183,11 +3422,11 @@ Plugins.band_survey.init = function () {
       '<div class="bs-status" id="bs-status"></div>' +
       '<div class="bs-progress"><i id="bs-bar"></i></div>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-tiny" data-preset="air" title="Tick only airband profiles (air_1–air_7).">Air</button>' +
-      '<button type="button" class="bs-tiny" data-preset="vhf" title="Tick air, marine, 2m, and PMR voice profiles.">VHF voice</button>' +
-      '<button type="button" class="bs-tiny" data-preset="allvhf" title="Tick every local profile whose label range or centre is 30–300 MHz (air, marine, 2m, FM, VOR, DAB, 6m, 4m, …). A tile that crosses 300 MHz is ticked here and under All UHF. Not the same as VHF voice.">All VHF</button>' +
-      '<button type="button" class="bs-tiny" data-preset="alluhf" title="Tick every local profile whose label range or centre is 300–1000 MHz (70cm, PMR446, TETRA, ISM 868, …), plus 70c_/pmr/uhf/dmr/gmrs IDs if the label has no MHz. 23cm / ADS-B / GPS stay off. A tile that crosses 300 MHz is ticked here and under All VHF.">All UHF</button>' +
-      '<button type="button" class="bs-tiny" data-preset="ham" title="Tick HF/VHF/UHF ham band profiles.">Ham</button>' +
+      '<button type="button" class="bs-tiny" data-preset="air" title="Add airband profiles (air_1–air_7). Does not untick others — use None to clear first.">Air</button>' +
+      '<button type="button" class="bs-tiny" data-preset="vhf" title="Add air, marine, 2m, and PMR voice profiles. Does not untick others.">VHF voice</button>' +
+      '<button type="button" class="bs-tiny" data-preset="allvhf" title="Add every local profile 30–300 MHz. Combine with All UHF. Does not untick others.">All VHF</button>' +
+      '<button type="button" class="bs-tiny" data-preset="alluhf" title="Add every local profile 300–1000 MHz. Combine with All VHF. Does not untick others.">All UHF</button>' +
+      '<button type="button" class="bs-tiny" data-preset="ham" title="Add HF/VHF/UHF ham band profiles. Does not untick others.">Ham</button>' +
       '<button type="button" class="bs-tiny" data-preset="all" title="Tick every band profile.">All</button>' +
       '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
       '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px" title="Type to hide band names that do not match.">' +
@@ -3232,9 +3471,12 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips (busy-channel recordings and files you loaded). Does not record the survey walk.">Save audio</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
+      '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list on the right. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks.">Load bookmarks</button>' +
+      '<button type="button" id="bs-bm-clearload" title="Remove all [load] bookmarks from this browser. Local blue bookmarks stay.">Clear loaded</button>' +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
       '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
       '<input type="file" id="bs-aud-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.opus" multiple hidden>' +
+      '<input type="file" id="bs-bm-file" accept=".json,.csv,.txt,application/json,text/csv" hidden>' +
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       "</div>" +
@@ -3242,8 +3484,11 @@ Plugins.band_survey.init = function () {
       '<div class="bs-splitter" id="bs-splitter" title="Drag to resize the bookmarks pane." role="separator" aria-orientation="vertical"></div>' +
       '<div class="bs-right" id="bs-right">' +
       '<div class="bs-right-head"><b>Bookmarks</b><span class="bs-count" id="bs-bmcount"></span></div>' +
-      '<p class="bs-right-sub">this browser · blue local · click to tune</p>' +
+      '<p class="bs-right-sub">Local = blue [auto] · Loaded = [load] import · click to tune</p>' +
       '<div class="bs-bm-scroll" id="bs-bmlist"></div>' +
+      '<div class="bs-loaded-block">' +
+      '<div class="bs-loaded-scroll" id="bs-loadedlist"></div>' +
+      "</div>" +
       '<div class="bs-audio-block">' +
       '<b id="bs-audiohead">Audio clips</b>' +
       '<p class="bs-right-sub">busy / held channels only · this session · Save / Load below Peaks</p>' +
@@ -3279,6 +3524,7 @@ Plugins.band_survey.init = function () {
     $("bs-sched").value = S.scheduleHrs || 0;
     fillBands();
     applyCaps();
+    loadedBookmarks = loadLoadedBookmarks();
     loadHits();
     classifyAll();
     bindPanelLayout(panel);
@@ -3368,11 +3614,7 @@ Plugins.band_survey.init = function () {
       if (running) return;
       S.listenSec = $("bs-listensec") ? Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4)) : S.listenSec;
       saveSettings();
-      var list = lastCreated.length
-        ? lastCreated
-        : qualifiedHits().map(function (h) {
-          return { freq: h.freq, pid: h.pid, mode: h.mode, name: bookmarkNameFor(h) };
-        });
+      var list = scanTargetItems();
       if (!list.length) {
         setStatus("No bookmarks or qualified peaks to scan.");
         return;
@@ -3406,6 +3648,9 @@ Plugins.band_survey.init = function () {
       this.value = "";
     };
     if ($("bs-audiolist")) $("bs-audiolist").onclick = onAudioPaneClick;
+    if ($("bs-bm-load")) $("bs-bm-load").onclick = startLoadBookmarks;
+    if ($("bs-bm-clearload")) $("bs-bm-clearload").onclick = clearLoadedBookmarks;
+    if ($("bs-bm-file")) $("bs-bm-file").onchange = onLoadBookmarkFile;
     $("bs-clearauto").onclick = function () {
       var n = clearAutoBookmarks();
       setStatus("Removed " + n + " auto bookmarks.");
