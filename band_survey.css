@@ -727,3 +727,37 @@ body.bs-layout-drag.bs-resize-nwse {
   gap: 6px;
   padding: 3px 0;
 }
+
+#bs-panel .bs-audio-block {
+  flex: 0 1 auto;
+  max-height: 36%;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #374151;
+  background: #0a0a0a;
+}
+
+#bs-panel .bs-audio-block b {
+  display: block;
+  padding: 6px 8px 2px;
+  color: #93c5fd;
+  font-size: 12px;
+}
+
+#bs-panel .bs-audiolist {
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+#bs-panel .bs-audio-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+#bs-panel .bs-audio-row.bs-audio-on {
+  background: #1e3a5f;
+}

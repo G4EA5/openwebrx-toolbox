@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 9;
+Plugins.band_survey._version = 10;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -386,15 +386,153 @@ Plugins.band_survey.init = function () {
   }
 
   var recordingOn = false;
-  function setRecording(on) {
-    if (on === recordingOn) return;
-    if (on && !S.recordBusy) return;
+  var audioClips = [];
+  var clipSeq = 1;
+  var clipPlaying = null;
+  var recCap = { rec: null, chunks: [], meta: null, mime: "", usingOwrx: false };
+
+  function recorderMime() {
+    var types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+    if (!window.MediaRecorder) return "";
+    for (var i = 0; i < types.length; i++) {
+      try {
+        if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(types[i])) return types[i];
+      } catch (e) {}
+    }
+    return "";
+  }
+
+  function extForMime(mime) {
+    if (/ogg/.test(mime || "")) return "ogg";
+    if (/mp4|aac|m4a/.test(mime || "")) return "m4a";
+    if (/mpeg|mp3/.test(mime || "")) return "mp3";
+    if (/wav/.test(mime || "")) return "wav";
+    return "webm";
+  }
+
+  function ensureAudioTap() {
+    var eng = window.audioEngine;
+    if (!eng || !eng.audioContext) return null;
+    if (eng._bs_tap) return eng._bs_tap;
+    var src = eng.audioNode || eng.gainNode;
+    if (!src || typeof src.connect !== "function") return null;
+    try {
+      var dest = eng.audioContext.createMediaStreamDestination();
+      src.connect(dest);
+      eng._bs_tap = dest;
+      return dest;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clipFileName(clip) {
+    var mhz = ((clip.freq || 0) / 1e6).toFixed(3).replace(".", "p");
+    var t = new Date(clip.at || Date.now());
+    var stamp = t.toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    stamp = stamp.slice(0, 8) + "-" + stamp.slice(8);
+    return "sv-" + mhz + "MHz-" + stamp + "." + (clip.ext || "webm");
+  }
+
+  function addAudioClip(clip) {
+    audioClips.unshift(clip);
+    if (audioClips.length > 40) {
+      var drop = audioClips.pop();
+      if (drop && drop.url) {
+        try { URL.revokeObjectURL(drop.url); } catch (e) {}
+      }
+    }
+    renderAudioClips();
+  }
+
+  function startBusyCapture(meta) {
+    if (recCap.rec || recCap.usingOwrx) return;
+    recCap.meta = meta || {};
+    recCap.chunks = [];
+    recCap.mime = recorderMime();
+    var dest = recCap.mime ? ensureAudioTap() : null;
+    if (dest && dest.stream) {
+      try {
+        recCap.rec = recCap.mime
+          ? new MediaRecorder(dest.stream, { mimeType: recCap.mime })
+          : new MediaRecorder(dest.stream);
+        recCap.mime = recCap.rec.mimeType || recCap.mime;
+        recCap.rec.ondataavailable = function (ev) {
+          if (ev && ev.data && ev.data.size) recCap.chunks.push(ev.data);
+        };
+        recCap.rec.onerror = function () { recCap.rec = null; };
+        recCap.rec.start(400);
+        recordingOn = true;
+        return;
+      } catch (e) {
+        recCap.rec = null;
+      }
+    }
     try {
       if (window.UI && typeof UI.toggleRecording === "function") {
-        UI.toggleRecording(!!on);
-        recordingOn = !!on;
+        UI.toggleRecording(true);
+        recCap.usingOwrx = true;
+        recordingOn = true;
       }
-    } catch (e) {}
+    } catch (e2) {}
+  }
+
+  function finishClipFromChunks() {
+    var meta = recCap.meta || {};
+    var mime = recCap.mime || "audio/webm";
+    var chunks = recCap.chunks.slice();
+    recCap.rec = null;
+    recCap.chunks = [];
+    recCap.meta = null;
+    if (!chunks.length) return;
+    var blob = new Blob(chunks, { type: mime });
+    if (!blob.size) return;
+    var url = URL.createObjectURL(blob);
+    var clip = {
+      id: clipSeq++,
+      freq: Number(meta.freq) || 0,
+      name: meta.name || "",
+      pid: meta.pid || "",
+      at: Date.now(),
+      blob: blob,
+      url: url,
+      mime: mime,
+      ext: extForMime(mime),
+      loaded: false
+    };
+    addAudioClip(clip);
+    setStatus("Saved clip · " + (clip.name || fmtMhz(clip.freq)) + " · Audio clips on the right.");
+  }
+
+  function stopBusyCapture() {
+    var rec = recCap.rec;
+    if (rec) {
+      recCap.rec = null;
+      try {
+        rec.onstop = function () { finishClipFromChunks(); };
+        if (rec.state !== "inactive") rec.stop();
+        else finishClipFromChunks();
+      } catch (e) {
+        finishClipFromChunks();
+      }
+    }
+    if (recCap.usingOwrx) {
+      recCap.usingOwrx = false;
+      try {
+        if (window.UI && typeof UI.toggleRecording === "function") UI.toggleRecording(false);
+      } catch (e2) {}
+    }
+    recordingOn = false;
+  }
+
+  function setRecording(on, meta) {
+    if (on && !S.recordBusy) return;
+    if (on) {
+      if (recordingOn) return;
+      startBusyCapture(meta || {});
+    } else {
+      stopBusyCapture();
+    }
   }
 
   function applySchedule() {
@@ -483,7 +621,7 @@ Plugins.band_survey.init = function () {
       bandwidth: typeof window.bandwidth === "number" && window.bandwidth > 0,
       tune: !!(window.UI && typeof UI.setFrequency === "function"),
       bookmarks: typeof BookmarkLocalStorage === "function",
-      record: !!(window.UI && typeof UI.toggleRecording === "function"),
+      record: !!window.MediaRecorder || !!(window.UI && typeof UI.toggleRecording === "function"),
       mute: !!(window.UI && typeof UI.setVolume === "function") ||
         !!(window.audioEngine && typeof audioEngine.setVolume === "function"),
       clients: !!$("openwebrx-bar-clients"),
@@ -538,7 +676,7 @@ Plugins.band_survey.init = function () {
     }
     if (!c.record) {
       add("info", "Record busy unavailable.",
-        "This page has no UI.toggleRecording. Untick Record busy — survey still works.");
+        "This browser has no MediaRecorder and no UI.toggleRecording. Untick Record busy — survey still works. Save/Load audio still play files you pick.");
     }
     if (!c.mute) {
       add("info", "Mute-while-running unavailable.",
@@ -612,7 +750,7 @@ Plugins.band_survey.init = function () {
     }
     var html = "";
     if (!hard.length && !warns.length) {
-      html += "<p><b>Install looks good.</b> Orange <b>SV</b> is this plugin. Tick bands (or Air / VHF / Ham) and press Continue. Help is always in the header.</p>";
+      html += "<p><b>Install looks good.</b> Orange <b>SV</b> is this plugin. Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Continue. Help is always in the header.</p>";
     }
     html += hard.concat(warns).map(renderIssueP).join("");
     if (showExtra && extras.length) {
@@ -683,7 +821,7 @@ Plugins.band_survey.init = function () {
       S.autoBm = false;
       if ($("bs-autobm")) $("bs-autobm").checked = false;
     }
-    setOpt("bs-record", c.record, "Record busy unavailable — this page has no UI.toggleRecording.");
+    setOpt("bs-record", c.record, "Record busy unavailable — no MediaRecorder and no UI.toggleRecording on this page.");
     if (!c.record) {
       S.recordBusy = false;
       if ($("bs-record")) $("bs-record").checked = false;
@@ -726,7 +864,7 @@ Plugins.band_survey.init = function () {
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after you install or update.</li>" +
       "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
       "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
-      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
+      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) and press <b>Continue</b>.</li>" +
       "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Drag the vertical bar to grow the bookmarks pane on the right. Size is remembered in this browser.</li>" +
       "</ol>" +
       '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
@@ -833,7 +971,7 @@ Plugins.band_survey.init = function () {
     S.seenHelp = true;
     saveSettings();
     if ($("bs-panel") && !$("bs-panel").hidden && !hits.length) {
-      setStatus("Next: tick bands (or Air / VHF / Ham) and press Continue. Check install if anything looks wrong.");
+      setStatus("Next: tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Continue. Check install if anything looks wrong.");
     }
   }
 
@@ -852,6 +990,80 @@ Plugins.band_survey.init = function () {
       out.push({ value: value, id: id, label: opt.text || id });
     }
     return out;
+  }
+
+  // ITU VHF is 30–300 MHz. "UHF" here is the operator band 300–1000 MHz
+  // (70cm / PMR / GMRS / TETRA / ISM 868), not 23cm / ADS-B / GPS.
+  // A tile whose range crosses 300 MHz is ticked by both All VHF and All UHF.
+  var VHF_MHZ_LO = 30;
+  var VHF_MHZ_HI = 300;
+  var UHF_MHZ_LO = 300;
+  var UHF_MHZ_HI = 1000;
+
+  function parseMhzRange(label) {
+    var s = String(label || "").replace(/[–—−]/g, "-");
+    var m;
+    var last = null;
+    var reRange = /(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)(?:\s*(GHz|MHz))?/gi;
+    while ((m = reRange.exec(s))) last = m;
+    if (last) {
+      var a = parseFloat(last[1]);
+      var b = parseFloat(last[2]);
+      var mul = last[3] && /ghz/i.test(last[3]) ? 1000 : 1;
+      if (!last[3]) {
+        if (a >= 10000) a /= 1e6;
+        if (b >= 10000) b /= 1e6;
+      }
+      return { lo: Math.min(a, b) * mul, hi: Math.max(a, b) * mul };
+    }
+    m = /(\d+(?:\.\d+)?)\s*(GHz|MHz)\b/i.exec(s);
+    if (m) {
+      var v = parseFloat(m[1]) * (/ghz/i.test(m[2]) ? 1000 : 1);
+      return { lo: v, hi: v };
+    }
+    return null;
+  }
+
+  function mhzOverlapsVhf(lo, hi) {
+    return lo < VHF_MHZ_HI && hi >= VHF_MHZ_LO;
+  }
+
+  function mhzOverlapsUhf(lo, hi) {
+    return lo <= UHF_MHZ_HI && hi >= UHF_MHZ_LO;
+  }
+
+  function idLooksVhf(id) {
+    return /^(air_|marine_|2m_|vor|vdl|ais|dab_|fm_|6m|4m)/i.test(id || "");
+  }
+
+  function idLooksUhf(id) {
+    return /^(70c_|pmr|uhf|dmr|gmrs|gmsr)/i.test(id || "");
+  }
+
+  function findProfileForEl(el) {
+    var val = (el && el.value) || "";
+    var id = (el && el.dataset && el.dataset.id) || "";
+    var list = profiles();
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].value === val) return list[i];
+    }
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return { id: id, label: (el && el.dataset && el.dataset.label) || "", value: val };
+  }
+
+  function profileInAllVhf(p) {
+    var r = parseMhzRange(p && p.label);
+    if (r) return mhzOverlapsVhf(r.lo, r.hi);
+    return idLooksVhf(p && p.id);
+  }
+
+  function profileInAllUhf(p) {
+    var r = parseMhzRange(p && p.label);
+    if (r) return mhzOverlapsUhf(r.lo, r.hi);
+    return idLooksUhf(p && p.id);
   }
 
   function defaultSelected() {
@@ -1381,7 +1593,7 @@ Plugins.band_survey.init = function () {
       heard++;
       var recOn = false;
       if (S.recordBusy) {
-        setRecording(true);
+        setRecording(true, { freq: freq, name: name, pid: pid });
         recOn = true;
       }
       setListenPaused(true);
@@ -1737,6 +1949,178 @@ Plugins.band_survey.init = function () {
         (known ? '<span class="bs-bm-name">' + escapeHtml(known) + "</span>" : "") +
         '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + f + '" title="Stop always-skipping this frequency.">un-ign</button></div>';
     }).join("");
+    renderAudioClips();
+  }
+
+  function clipLabel(clip) {
+    return clip.name || (clip.freq ? fmtMhz(clip.freq) : (clip.file || "clip"));
+  }
+
+  function renderAudioClips() {
+    var host = $("bs-audiolist");
+    var head = $("bs-audiohead");
+    if (head) head.textContent = audioClips.length ? ("Audio clips (" + audioClips.length + ")") : "Audio clips";
+    if (!host) return;
+    if (!audioClips.length) {
+      host.innerHTML = '<p class="bs-empty">None this session. Tick Record busy, then Scan bookmarks — clips are saved only while parked on a busy/held channel, not during the survey walk. Load audio adds files from disk.</p>';
+      return;
+    }
+    host.innerHTML = audioClips.map(function (c) {
+      var when = new Date(c.at || Date.now()).toLocaleTimeString();
+      var playing = clipPlaying && clipPlaying.id === c.id;
+      return '<div class="bs-audio-row' + (playing ? " bs-audio-on" : "") + '">' +
+        '<button type="button" class="bs-tiny" data-clip-play="' + c.id + '" title="' +
+        (playing ? "Stop this clip." : "Play this clip in the panel.") + '">' +
+        (playing ? "Stop" : "Play") + "</button>" +
+        '<span class="bs-bm-mhz">' + (c.freq ? fmtMhz(c.freq) : "—") + "</span>" +
+        '<span class="bs-bm-name" title="' + escapeHtml(clipLabel(c)) + '">' + escapeHtml(clipLabel(c)) + "</span>" +
+        '<span class="bs-hint">' + when + (c.loaded ? " · loaded" : "") + "</span>" +
+        '<button type="button" class="bs-tiny" data-clip-save="' + c.id + '" title="Download this clip.">Save</button>' +
+        '<button type="button" class="bs-tiny" data-clip-del="' + c.id + '" title="Remove this clip from the list (does not delete a file you already saved).">×</button>' +
+        "</div>";
+    }).join("");
+  }
+
+  function stopClipPlayback() {
+    if (clipPlaying && clipPlaying.el) {
+      try { clipPlaying.el.pause(); } catch (e) {}
+    }
+    clipPlaying = null;
+  }
+
+  function playAudioClip(id) {
+    var clip = null;
+    for (var i = 0; i < audioClips.length; i++) {
+      if (audioClips[i].id === id) clip = audioClips[i];
+    }
+    if (!clip || !clip.url) return;
+    if (clipPlaying && clipPlaying.id === id) {
+      stopClipPlayback();
+      renderAudioClips();
+      return;
+    }
+    stopClipPlayback();
+    var el = new Audio(clip.url);
+    clipPlaying = { id: id, el: el };
+    el.onended = function () {
+      clipPlaying = null;
+      renderAudioClips();
+    };
+    el.onerror = function () {
+      setStatus("Could not play that clip in this browser.");
+      clipPlaying = null;
+      renderAudioClips();
+    };
+    var go = el.play();
+    if (go && typeof go.catch === "function") {
+      go.catch(function () {
+        setStatus("Playback blocked — click Play again after interacting with the page.");
+        clipPlaying = null;
+        renderAudioClips();
+      });
+    }
+    renderAudioClips();
+  }
+
+  function downloadBlob(name, blob) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} }, 1500);
+  }
+
+  function saveAudioClip(id) {
+    var clip = null;
+    for (var i = 0; i < audioClips.length; i++) {
+      if (audioClips[i].id === id) clip = audioClips[i];
+    }
+    if (!clip || !clip.blob) {
+      setStatus("That clip is gone.");
+      return;
+    }
+    downloadBlob(clip.file || clipFileName(clip), clip.blob);
+  }
+
+  function saveAllAudioClips() {
+    if (!audioClips.length) {
+      setStatus("No clips to save. Tick Record busy and scan a busy channel, or Load audio first.");
+      toast("No audio clips yet.");
+      return;
+    }
+    audioClips.forEach(function (c, i) {
+      setTimeout(function () { saveAudioClip(c.id); }, i * 250);
+    });
+    setStatus("Downloading " + audioClips.length + " audio clip" + (audioClips.length === 1 ? "" : "s") + ".");
+  }
+
+  function removeAudioClip(id) {
+    audioClips = audioClips.filter(function (c) {
+      if (c.id !== id) return true;
+      if (clipPlaying && clipPlaying.id === id) stopClipPlayback();
+      if (c.url) {
+        try { URL.revokeObjectURL(c.url); } catch (e) {}
+      }
+      return false;
+    });
+    renderAudioClips();
+  }
+
+  function parseFreqFromAudioName(name) {
+    var s = String(name || "");
+    var m = /(?:^|[^\d])(\d{2,4}(?:[p.]\d{1,3})?)MHz/i.exec(s);
+    if (m) return Math.round(parseFloat(m[1].replace("p", ".")) * 1e6);
+    m = /REC-[^-]+-(\d{4,7})\.mp3/i.exec(s);
+    if (m) return Number(m[1]) * 1000;
+    return 0;
+  }
+
+  function loadAudioFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    var n = 0;
+    list.forEach(function (file) {
+      if (!file) return;
+      var url = URL.createObjectURL(file);
+      addAudioClip({
+        id: clipSeq++,
+        freq: parseFreqFromAudioName(file.name),
+        name: file.name.replace(/\.[^.]+$/, ""),
+        file: file.name,
+        at: (file.lastModified) || Date.now(),
+        blob: file,
+        url: url,
+        mime: file.type || "audio/*",
+        ext: (file.name.split(".").pop() || "webm").toLowerCase(),
+        loaded: true
+      });
+      n++;
+    });
+    if (n) setStatus("Loaded " + n + " audio file" + (n === 1 ? "" : "s") + " — Play on the right.");
+  }
+
+  function onAudioPaneClick(ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute) return;
+    var play = t.getAttribute("data-clip-play");
+    if (play) {
+      ev.preventDefault();
+      playAudioClip(Number(play));
+      return;
+    }
+    var save = t.getAttribute("data-clip-save");
+    if (save) {
+      ev.preventDefault();
+      saveAudioClip(Number(save));
+      return;
+    }
+    var del = t.getAttribute("data-clip-del");
+    if (del) {
+      ev.preventDefault();
+      removeAudioClip(Number(del));
+    }
   }
 
   function onBookmarkPaneClick(ev) {
@@ -1784,6 +2168,8 @@ Plugins.band_survey.init = function () {
       var on = false;
       if (kind === "air") on = /^air_[1-7]$/.test(id);
       else if (kind === "vhf") on = /^(air_|marine_|2m_|pmr)/.test(id);
+      else if (kind === "allvhf") on = profileInAllVhf(findProfileForEl(el));
+      else if (kind === "alluhf") on = profileInAllUhf(findProfileForEl(el));
       else if (kind === "ham") on = /^(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m_|70c_)/.test(id);
       else if (kind === "all") on = true;
       else on = false;
@@ -1831,6 +2217,7 @@ Plugins.band_survey.init = function () {
       cb.type = "checkbox";
       cb.value = p.value;
       cb.dataset.id = p.id;
+      cb.dataset.label = p.label;
       cb.checked = !!chosenSet[p.value];
       var id = document.createElement("span");
       id.className = "bs-id";
@@ -2114,7 +2501,7 @@ Plugins.band_survey.init = function () {
       var noProfiles = !profiles().length;
       var msg = noProfiles
         ? "No bands to pick yet. Wait for the radio to finish loading, then click Check install. See Help if this stays empty."
-        : "Pick at least one band (or tap Air / VHF / Ham).";
+        : "Pick at least one band (or tap Air / VHF voice / All VHF / All UHF / Ham).";
       setStatus(msg);
       toast(msg);
       renderHealth({ ok: true });
@@ -2773,6 +3160,8 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<button type="button" class="bs-tiny" data-preset="air" title="Tick only airband profiles (air_1–air_7).">Air</button>' +
       '<button type="button" class="bs-tiny" data-preset="vhf" title="Tick air, marine, 2m, and PMR voice profiles.">VHF voice</button>' +
+      '<button type="button" class="bs-tiny" data-preset="allvhf" title="Tick every local profile whose label range or centre is 30–300 MHz (air, marine, 2m, FM, VOR, DAB, 6m, 4m, …). A tile that crosses 300 MHz is ticked here and under All UHF. Not the same as VHF voice.">All VHF</button>' +
+      '<button type="button" class="bs-tiny" data-preset="alluhf" title="Tick every local profile whose label range or centre is 300–1000 MHz (70cm, PMR446, TETRA, ISM 868, …), plus 70c_/pmr/uhf/dmr/gmrs IDs if the label has no MHz. 23cm / ADS-B / GPS stay off. A tile that crosses 300 MHz is ticked here and under All VHF.">All UHF</button>' +
       '<button type="button" class="bs-tiny" data-preset="ham" title="Tick HF/VHF/UHF ham band profiles.">Ham</button>' +
       '<button type="button" class="bs-tiny" data-preset="all" title="Tick every band profile.">All</button>' +
       '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
@@ -2795,7 +3184,7 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-row">' +
       '<label class="bs-chk" title="Stay on a live signal until it goes quiet, then move on."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
-      '<label class="bs-chk" title="Start OpenWebRX recording while parked on a busy channel."><input type="checkbox" id="bs-record"> Record busy</label>' +
+      '<label class="bs-chk" title="Record demod audio only while Scan bookmarks is parked on a busy or held channel (Continue-scan pause). Does not record the survey walk or quiet hops. Clips appear under Audio clips on the right."><input type="checkbox" id="bs-record"> Record busy</label>' +
       '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new</label>' +
       '<label class="bs-chk" title="Don\'t retune if other listeners are connected."><input type="checkbox" id="bs-alone"> Only if alone</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
@@ -2816,8 +3205,11 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
       '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
+      '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips (busy-channel recordings and files you loaded). Does not record the survey walk.">Save audio</button>' +
+      '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
       '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
+      '<input type="file" id="bs-aud-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.opus" multiple hidden>' +
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       "</div>" +
@@ -2827,6 +3219,11 @@ Plugins.band_survey.init = function () {
       '<div class="bs-right-head"><b>Bookmarks</b><span class="bs-count" id="bs-bmcount"></span></div>' +
       '<p class="bs-right-sub">this browser · blue local · click to tune</p>' +
       '<div class="bs-bm-scroll" id="bs-bmlist"></div>' +
+      '<div class="bs-audio-block">' +
+      '<b id="bs-audiohead">Audio clips</b>' +
+      '<p class="bs-right-sub">busy / held channels only · this session · Save / Load below Peaks</p>' +
+      '<div class="bs-audiolist" id="bs-audiolist"></div>' +
+      "</div>" +
       '<div class="bs-skip-block">' +
       '<b id="bs-skiphead">Always skip</b>' +
       '<div class="bs-skiplist" id="bs-skiplist"></div>' +
@@ -2981,6 +3378,16 @@ Plugins.band_survey.init = function () {
     $("bs-json").onclick = function () { exportServerJson(); };
     $("bs-csv-in").onclick = function (ev) { startImport("csv", ev); };
     $("bs-json-in").onclick = function (ev) { startImport("json", ev); };
+    if ($("bs-aud-save")) $("bs-aud-save").onclick = saveAllAudioClips;
+    if ($("bs-aud-load")) $("bs-aud-load").onclick = function () {
+      var inp = $("bs-aud-file");
+      if (inp) inp.click();
+    };
+    if ($("bs-aud-file")) $("bs-aud-file").onchange = function () {
+      loadAudioFiles(this.files);
+      this.value = "";
+    };
+    if ($("bs-audiolist")) $("bs-audiolist").onclick = onAudioPaneClick;
     $("bs-clearauto").onclick = function () {
       var n = clearAutoBookmarks();
       setStatus("Removed " + n + " auto bookmarks.");
