@@ -1097,6 +1097,7 @@ Plugins.band_survey.init = function () {
       "<h3>How to use</h3>" +
       "<ol>" +
       "<li><b>Continue</b> adds to Seen totals; <b>Fresh</b> starts at zero.</li>" +
+      "<li>Band presets (<b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) are <b>additive</b> — they add ticks without clearing others. Combine <b>All VHF</b> + <b>All UHF</b> for both ranges. <b>None</b> unticks every band.</li>" +
       (ownerOverrideAllowed()
         ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
         : "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> — the operator locked fast hops on this public receiver (visitors cannot tick the override). Server bot-ban still applies if it is enabled.</li>") +
@@ -1107,10 +1108,13 @@ Plugins.band_survey.init = function () {
       "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Panel</h3>" +
-      "<p>The left side is survey controls, bands, settings, and the peaks table. The <b>right side</b> lists this browser’s blue bookmarks (<b>[auto]</b> vs named) and always-skip frequencies. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
+      "<p>The left side is survey controls, bands, settings, and the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, always-skip frequencies, and audio clips. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
-      "<p><b>Blue</b> bookmarks are local to this browser. Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
-      "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue bookmarks are not changed.</p>" +
+      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Load bookmarks</b> imports JSON/CSV into a separate amber <b>[load]</b> list — it does not overwrite blue bookmarks. <b>Scan bookmarks</b> hops through both. <b>Clear loaded</b> removes only <b>[load]</b> entries.</p>" +
+      "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
+      "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
+      "<h3>Audio clips</h3>" +
+      "<p>Tick <b>Record busy</b> before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (Continue-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the right. <b>Save audio</b> downloads them; <b>Load audio</b> adds files from disk to play in the panel (nothing is uploaded).</p>" +
       '<p><button type="button" id="bs-restore-first" title="Replace this browser’s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
       '<button type="button" id="bs-restore-last" title="Replace this browser’s blue bookmarks with the most recent backup.">Restore last backup</button> ' +
       '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
