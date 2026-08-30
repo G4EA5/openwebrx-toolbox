@@ -31,6 +31,12 @@ chmod +x install.sh
 Then hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**).
 Click orange **SV** → **Check install**.
 
+On a **public** shared receiver (hide **Own radio — fast hops** from visitors):
+
+```bash
+./install.sh --public
+```
+
 **B — load from URL** (if you already have `htdocs/plugins/receiver/init.js`)
 
 Add one line inside your existing `async` block (do not delete other plugins):
@@ -160,9 +166,10 @@ Typical `htdocs` paths:
 1. Tick bands, or tap **Air** / **VHF voice** / **Ham**.
 2. **Continue** adds to Seen totals. **Fresh** starts at zero.
 3. Click a frequency to tune, click a name to rename, **ign** to ignore a birdie.
-4. **Scan bookmarks** hops on the same band in about a second; profile changes stay ~11s (anti-ban). A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout**.
+4. **Scan bookmarks** hops on the same band (or already in this waterfall) in about a second; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan**. While listening: **Hold** / **Skip** / **Lockout**.
 5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
-   (there is no regular-user API to write those).
+   (there is no regular-user API to write those). **Import CSV** / **Import JSON**
+   restores Peaks/Seen in this browser (file picker; Shift-click to paste).
 
 Blue (local) bookmarks live in **this browser**. The plugin copies them before
 it writes, and on first run. Restore from **Help**.
@@ -170,7 +177,30 @@ it writes, and on first run. Restore from **Help**.
 **Only if alone** refuses to retune when another listener is connected. Untick
 it if you are sure you may hop profiles.
 
+## Public vs own radio
+
+Personal / own-PC installs leave the default. You can tick **Own radio — fast hops**
+to skip the 11s profile gap.
+
+On a **public shared** OpenWebRX, lock that so visitors cannot:
+
+```bash
+./install.sh --public
+```
+
+Or edit `band_survey.js` on the host:
+
+```js
+var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false;
+```
+
+That hides the checkbox and always uses the 11s gap. It is not a hard security
+fence (DevTools can still change the wait in the browser). Turn on OpenWebRX
+**bot-ban** if you need the server to kick hoppers.
+
 ## Restore backups
+
+**Peaks/Seen list:** SV → **Import CSV** or **Import JSON** (replaces or merges the table in this browser; does not change blue bookmarks).
 
 **Browser (blue bookmarks):** SV → Help → Restore first-run / last backup.
 

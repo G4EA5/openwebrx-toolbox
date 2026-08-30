@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Install Band survey into OpenWebRX+ and back up the user's files first.
+#
+# Personal / own-PC:  ./install.sh
+# Public shared RX:   ./install.sh --public
+#   --public sets BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false so visitors cannot
+#   tick "Own radio — fast hops" (11s profile gap stays on).
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -174,6 +179,11 @@ Set it yourself:
   else
     die "init.js does not load band_survey. Run ./install.sh (it appends one line and does not remove your other plugins)."
   fi
+  if [[ -f "$dest/band_survey.js" ]] && grep -q 'BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false' "$dest/band_survey.js"; then
+    say "OK  public lock — visitors cannot tick Own radio — fast hops"
+  elif [[ -f "$dest/band_survey.js" ]] && grep -q 'BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true' "$dest/band_survey.js"; then
+    say "OK  owner override allowed (personal). Public site: ./install.sh --public"
+  fi
   if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet varnish 2>/dev/null; then
     warn "Varnish is running. After install: sudo systemctl restart varnish nginx"
   fi
@@ -183,10 +193,24 @@ Set it yourself:
 }
 
 need
-if [[ "${1:-}" == "--check" || "${1:-}" == "check" ]]; then
-  check_only
-fi
+PUBLIC=0
+for arg in "$@"; do
+  case "$arg" in
+    --check|check) check_only ;;
+    --public|public) PUBLIC=1 ;;
+    -h|--help|help)
+      say "Install Band survey into OpenWebRX+ (backs up your files first)."
+      say "  ./install.sh           personal / own-PC (owner can tick fast hops)"
+      say "  ./install.sh --public  public shared receiver (lock fast hops off)"
+      say "  ./install.sh --check   verify an existing copy, write nothing"
+      exit 0
+      ;;
+  esac
+done
 say "Band survey installer"
+if [[ "$PUBLIC" == 1 ]]; then
+  say "Mode: public (visitors cannot tick Own radio — fast hops)"
+fi
 say "Plugin source: $SRC"
 
 HTDOCS="$(find_htdocs)" || die "Could not find OpenWebRX+ htdocs (no openwebrx.js).
@@ -223,12 +247,24 @@ say "Wrote $BACKUP/RESTORE.txt"
 
 sudo_mkdir "$RX"
 sudo_mkdir "$DEST"
-sudo_cp "$SRC/band_survey.js" "$DEST/band_survey.js"
+JS_FROM="$SRC/band_survey.js"
+JS_TMP=""
+if [[ "$PUBLIC" == 1 ]]; then
+  JS_TMP="$(mktemp)"
+  sed 's/var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;/var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false;/' \
+    "$SRC/band_survey.js" >"$JS_TMP"
+  JS_FROM="$JS_TMP"
+fi
+sudo_cp "$JS_FROM" "$DEST/band_survey.js"
+rm -f "$JS_TMP"
 sudo_cp "$SRC/band_survey.css" "$DEST/band_survey.css"
 [[ -f "$SRC/README.md" ]] && sudo_cp "$SRC/README.md" "$DEST/README.md" || true
 [[ -f "$SRC/LICENSE" ]] && sudo_cp "$SRC/LICENSE" "$DEST/LICENSE" || true
 [[ -f "$SRC/install.sh" ]] && sudo_cp "$SRC/install.sh" "$DEST/install.sh" || true
 say "Copied plugin into $DEST"
+if [[ "$PUBLIC" == 1 ]]; then
+  say "OK  public lock: BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false"
+fi
 
 append_load_line "$INIT"
 

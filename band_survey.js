@@ -6,9 +6,14 @@
 // init.js, bookmarks, and any previous copy, then loads the plugin.
 // Manual: see README.md. Orange SV button is on the right-hand panel.
 // Help is always available from the panel (and on first run).
+//
+// Public shared OpenWebRX: set the next line to false (or run ./install.sh --public)
+// so visitors cannot tick "Own radio — fast hops". Personal / own-PC installs leave true.
+
+var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 6;
+Plugins.band_survey._version = 7;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -30,6 +35,7 @@ Plugins.band_survey.init = function () {
   var listenPaused = false;
   var lastProfileSwitchAt = 0;
   var PROFILE_GAP_MS = 11000;
+  var PROFILE_GAP_OWN_MS = 1200;
   var HOP_SETTLE_MS = 700;
   var schedTimer = null;
   var LS_LOCK = "owrx_band_survey_lock_v1";
@@ -58,6 +64,7 @@ Plugins.band_survey.init = function () {
       lockoutMin: 30,
       scheduleHrs: 0,
       priority: "121.5",
+      ownRadio: false,
       seenHelp: false
     };
     try {
@@ -266,11 +273,37 @@ Plugins.band_survey.init = function () {
     listenCmd = "continue";
   }
 
+  function ownerOverrideAllowed() {
+    return BAND_SURVEY_ALLOW_OWNER_OVERRIDE !== false;
+  }
+
+  function ownerHopsOn() {
+    return ownerOverrideAllowed() && !!S.ownRadio;
+  }
+
+  function profileGapMs() {
+    return ownerHopsOn() ? PROFILE_GAP_OWN_MS : PROFILE_GAP_MS;
+  }
+
+  function freqInVisibleRange(freq, center, bw) {
+    center = center || window.center_freq;
+    bw = bw || window.bandwidth;
+    if (!freq || !center || !bw) return false;
+    var pad = bw * EDGE_FRAC;
+    return freq >= (center - bw / 2 + pad) && freq <= (center + bw / 2 - pad);
+  }
+
+  function currentProfileValue() {
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    return (sel && sel.value) ? sel.value : "";
+  }
+
   async function waitProfileGap(label) {
     if (!lastProfileSwitchAt) return;
-    var waitMore = PROFILE_GAP_MS - (Date.now() - lastProfileSwitchAt);
+    var waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
     if (waitMore > 0) {
-      setStatus((label || "waiting") + " " + Math.ceil(waitMore / 1000) + "s (anti-ban, profile change)");
+      var why = ownerHopsOn() ? "fast hops (own radio)" : "anti-ban, profile change";
+      setStatus((label || "waiting") + " " + Math.ceil(waitMore / 1000) + "s (" + why + ")");
       await sleep(waitMore);
     }
   }
@@ -639,6 +672,29 @@ Plugins.band_survey.init = function () {
     }
     setOpt("bs-mute", c.mute, "Mute-while-running unavailable — no volume API on this page.");
     setOpt("bs-alone", c.clients, "Courtesy / alone check unavailable — client count bar not found.");
+    applyOwnerLock();
+  }
+
+  function applyOwnerLock() {
+    var el = $("bs-ownradio");
+    var lab = el && el.parentElement;
+    var hint = $("bs-hophint");
+    if (!ownerOverrideAllowed()) {
+      S.ownRadio = false;
+      if (el) {
+        el.checked = false;
+        el.disabled = true;
+      }
+      if (lab) {
+        lab.hidden = true;
+        lab.title = "The site operator locked fast hops on this receiver.";
+      }
+      if (hint) hint.textContent = "busy channel waits here · same-band ~1s · other band 11s (operator locked fast hops)";
+    } else if (el && lab) {
+      el.disabled = false;
+      lab.hidden = false;
+      if (hint) hint.textContent = "busy channel waits here · same-band ~1s · other band 11s unless Own radio is on";
+    }
   }
 
   function helpHtml() {
@@ -658,20 +714,23 @@ Plugins.band_survey.init = function () {
       "<p>A <b>standalone OpenWebRX+ receiver plugin</b>. It walks the bands you tick, counts real waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>.</p>" +
       "<p>It does <b>not</b> need freq_scanner, scan_hunt, rx_bands, uikit, or notify. Those are optional extras if they are already loaded.</p>" +
       "<h3>Install (new machine)</h3>" +
-      "<p>Preferred: from this folder run <code>./install.sh</code>. It backs up your files, copies the plugin, and adds one load line. Then hard-refresh. To only verify an existing copy: <code>./install.sh --check</code>.</p>" +
+      "<p>Preferred: from this folder run <code>./install.sh</code>. It backs up your files, copies the plugin, and adds one load line. Then hard-refresh. To only verify an existing copy: <code>./install.sh --check</code>. On a public shared receiver, use <code>./install.sh --public</code> so visitors cannot skip the 11s gap.</p>" +
       "<p>Manual: copy <code>band_survey/</code> into <code>htdocs/plugins/receiver/band_survey/</code> (typical htdocs: <code>/usr/lib/python3/dist-packages/htdocs</code> or <code>/opt/openwebrx/htdocs</code>), then add <code>await Plugins.load(\"band_survey\");</code> inside <code>plugins/receiver/init.js</code>.</p>" +
       "<h3>How to use</h3>" +
       "<ol>" +
       "<li><b>Continue</b> adds to Seen totals; <b>Fresh</b> starts at zero.</li>" +
-      "<li>Profile changes stay ~<b>11 seconds</b> (anti-ban). Same-band bookmark hops skip that wait.</li>" +
+      (ownerOverrideAllowed()
+        ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
+        : "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> — the operator locked fast hops on this public receiver (visitors cannot tick the override). Server bot-ban still applies if it is enabled.</li>") +
       "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to ignore a birdie.</li>" +
       "<li>While listening: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ignore. A <b>busy</b> channel pauses until you click <b>Continue scan</b>.</li>" +
       "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
       "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
-      "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks.</li>" +
+      "<li><b>Every N hours</b> runs Continue while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
       "</ol>" +
       "<h3>Bookmarks</h3>" +
-      "<p><b>Blue</b> bookmarks are local to this browser. Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge that file on the radio host.</p>" +
+      "<p><b>Blue</b> bookmarks are local to this browser. Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
+      "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue bookmarks are not changed.</p>" +
       '<p><button type="button" id="bs-restore-first">Restore first-run bookmarks</button> ' +
       '<button type="button" id="bs-restore-last">Restore last backup</button> ' +
       '<button type="button" id="bs-dl-backup">Download bookmark backup</button></p>' +
@@ -683,7 +742,9 @@ Plugins.band_survey.init = function () {
       "<li><b>Local bookmarks API missing</b> — auto-bookmark is off; Export JSON still works.</li>" +
       "<li><b>Other listeners online</b> — untick Only if alone.</li>" +
       "<li><b>Nothing counted</b> — lower “dB over noise”, pick a busier band, or wait until the waterfall is moving.</li>" +
-      "<li><b>Banned / kicked</b> — leave the 11s gap on profile changes; same-band hops are already faster. Ask the admin about bot-ban if needed.</li>" +
+      (ownerOverrideAllowed()
+        ? "<li><b>Banned / kicked</b> — leave <b>Own radio — fast hops</b> off on shared/public receivers (11s gap). Same-band hops and frequencies already on this waterfall skip that wait.</li>"
+        : "<li><b>Banned / kicked</b> — this site locked fast hops (11s profile gap). Same-band hops still ~1s. Hiding the checkbox is not a hard security fence (DevTools can still change the wait), but <b>server bot-ban</b> still kicks clients if the admin has it on.</li>") +
       "</ul>" +
       "<p>Press <b>Esc</b> or click outside this card to close. Click <b>Check install</b> any time — messages include the fix.</p>" +
       "<h3>Privacy</h3>" +
@@ -1235,8 +1296,8 @@ Plugins.band_survey.init = function () {
       var name = it.name || existingName(freq) || icao833(freq) || fmtMhz(freq);
       if (isLocked(freq)) continue;
       var value = profileValueForPid(pid);
-      var sel = $("openwebrx-sdr-profiles-listbox");
-      if (value && sel && sel.value !== value) {
+      var onThisTile = freqInVisibleRange(freq);
+      if (!onThisTile && value && currentProfileValue() !== value) {
         await waitProfileGap("Listen wait");
         if (stopFlag) break;
         await switchProfile(value);
@@ -1664,10 +1725,15 @@ Plugins.band_survey.init = function () {
           var p = profileByValue(value) || { id: value, label: value };
           setStatus("Pass " + pass + "/" + S.passes + " · " + p.label);
           setProgress(step / total);
-          await waitProfileGap("Pass " + pass + "/" + S.passes + " · " + p.label + " · waiting");
-          if (stopFlag) break;
-          await switchProfile(value);
-          lastProfileSwitchAt = Date.now();
+          var needSwitch = currentProfileValue() !== value;
+          if (needSwitch) {
+            await waitProfileGap("Pass " + pass + "/" + S.passes + " · " + p.label + " · waiting");
+            if (stopFlag) break;
+            await switchProfile(value);
+            lastProfileSwitchAt = Date.now();
+          } else {
+            await switchProfile(value);
+          }
           var until = Date.now() + S.dwell * 1000;
           var lastNoise = "";
           while (Date.now() < until && !stopFlag) {
@@ -1773,10 +1839,38 @@ Plugins.band_survey.init = function () {
     setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} }, 1500);
   }
 
+  function hitForExport(h) {
+    return {
+      freq: h.freq,
+      raw: h.raw,
+      seen: h.seen,
+      looks: h.looks,
+      maxDb: h.maxDb,
+      lastDb: h.lastDb,
+      pid: h.pid,
+      label: h.label,
+      first: h.first,
+      last: h.last,
+      mode: h.mode,
+      samples: (h.samples || []).slice(-48),
+      width: h.width,
+      offset: h.offset,
+      spur: !!h.spur,
+      spurWhy: h.spurWhy || "",
+      ignored: !!h.ignored,
+      dongle: !!h.dongle,
+      name: h.name || "",
+      isNew: !!h.isNew
+    };
+  }
+
   function exportCsv() {
     try {
-    var lines = ["seen,MHz,ch833,dB,band,name,new,birdie,last"];
-    sortedHits().forEach(function (h) {
+    var lines = ["seen,MHz,ch833,dB,band,name,new,birdie,last,pid,looks,mode"];
+    hits.slice().sort(function (a, b) {
+      if (a.seen !== b.seen) return b.seen - a.seen;
+      return (b.maxDb || 0) - (a.maxDb || 0);
+    }).forEach(function (h) {
       lines.push([
         h.seen,
         fmtMhz(h.freq),
@@ -1786,20 +1880,22 @@ Plugins.band_survey.init = function () {
         JSON.stringify(h.name || existingName(h.freq) || ""),
         h.isNew ? "yes" : "",
         isSpur(h) ? (h.spurWhy || "yes") : "",
-        h.last ? new Date(h.last).toISOString() : ""
+        h.last ? new Date(h.last).toISOString() : "",
+        JSON.stringify(h.pid || ""),
+        h.looks || "",
+        JSON.stringify(h.mode || "")
       ].join(","));
     });
     downloadFile("band-survey.csv", lines.join("\n"), "text/csv");
-    setStatus("Exported CSV.");
+    setStatus("Exported CSV (" + hits.length + " peaks).");
     } catch (err) {
       setStatus(friendlyError(err, "Export CSV"));
       toast(friendlyError(err, "Export CSV"));
     }
   }
 
-  function exportServerJson() {
-    try {
-    var arr = qualifiedHits().map(function (h) {
+  function bookmarkRowsForExport() {
+    return qualifiedHits().map(function (h) {
       return {
         name: bookmarkNameFor(h),
         frequency: Math.round(h.freq),
@@ -1807,12 +1903,357 @@ Plugins.band_survey.init = function () {
         description: "survey seen " + h.seen + (h.isNew ? " (new)" : "")
       };
     });
-    downloadFile("bookmarks-survey.json", JSON.stringify(arr, null, 2), "application/json");
-    setStatus("Exported " + arr.length + " bookmarks.json rows. Yellow server bookmarks are admin-only — merge this file on the radio host.");
+  }
+
+  function exportServerJson() {
+    try {
+    var bookmarks = bookmarkRowsForExport();
+    var payload = {
+      kind: "owrx-band-survey",
+      version: 1,
+      exported: new Date().toISOString(),
+      bookmarks: bookmarks,
+      hits: hits.map(hitForExport),
+      tileLooks: tileLooks
+    };
+    downloadFile("bookmarks-survey.json", JSON.stringify(payload, null, 2), "application/json");
+    setStatus("Exported " + bookmarks.length + " bookmark rows plus " + hits.length + " peaks. For yellow server bookmarks, merge the bookmarks array on the radio host.");
     } catch (err) {
       setStatus(friendlyError(err, "Export JSON"));
       toast(friendlyError(err, "Export JSON"));
     }
+  }
+
+  function parseCsvLine(line) {
+    var out = [];
+    var cur = "";
+    var i = 0;
+    var inQ = false;
+    while (i < line.length) {
+      var c = line.charAt(i);
+      if (inQ) {
+        if (c === "\\" && line.charAt(i + 1) === '"') {
+          cur += '"';
+          i += 2;
+          continue;
+        }
+        if (c === '"') {
+          if (line.charAt(i + 1) === '"') {
+            cur += '"';
+            i += 2;
+            continue;
+          }
+          inQ = false;
+          i++;
+          continue;
+        }
+        cur += c;
+        i++;
+        continue;
+      }
+      if (c === '"') {
+        inQ = true;
+        i++;
+        continue;
+      }
+      if (c === ",") {
+        out.push(cur);
+        cur = "";
+        i++;
+        continue;
+      }
+      cur += c;
+      i++;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  function hzFromCell(raw) {
+    var n = Number(String(raw || "").replace(/[^\d.eE+-]/g, ""));
+    if (!isFinite(n) || n <= 0) return 0;
+    if (n < 1e5) return Math.round(n * 1e6);
+    return Math.round(n);
+  }
+
+  function pidFromBand(band, pidCell) {
+    var wantPid = String(pidCell || "").trim();
+    var wantBand = String(band || "").trim();
+    var list = profiles();
+    var i;
+    if (wantPid) {
+      for (i = 0; i < list.length; i++) {
+        if (list[i].id === wantPid || list[i].label === wantPid) return list[i].id;
+      }
+      return wantPid;
+    }
+    if (wantBand) {
+      for (i = 0; i < list.length; i++) {
+        if (list[i].id === wantBand || list[i].label === wantBand) return list[i].id;
+      }
+      return wantBand;
+    }
+    return "imported";
+  }
+
+  function normalizeHit(h) {
+    if (!h || typeof h !== "object") return null;
+    var freq = Number(h.freq || h.frequency || 0);
+    if (!isFinite(freq) || freq <= 0) return null;
+    if (freq < 1e5) freq = Math.round(freq * 1e6);
+    else freq = Math.round(freq);
+    var pid = String(h.pid || "").trim() || "imported";
+    var seen = Math.max(1, Math.round(Number(h.seen) || 1));
+    var last = h.last;
+    if (typeof last === "string" && last) {
+      var t = Date.parse(last);
+      last = isFinite(t) ? t : Date.now();
+    }
+    if (!last) last = Date.now();
+    var first = h.first;
+    if (typeof first === "string" && first) {
+      var t2 = Date.parse(first);
+      first = isFinite(t2) ? t2 : last;
+    }
+    if (!first) first = last;
+    var maxDb = Number(h.maxDb != null ? h.maxDb : (h.db != null ? h.db : h.lastDb));
+    if (!isFinite(maxDb)) maxDb = 0;
+    var spurWhy = String(h.spurWhy || "");
+    var spur = !!(h.spur || h.ignored);
+    if (h.birdie && String(h.birdie) !== "no") {
+      spur = true;
+      if (!spurWhy) spurWhy = String(h.birdie) === "yes" ? "birdie" : String(h.birdie);
+    }
+    var isNew = h.isNew === true || h.isNew === "yes" || h.isNew === "true";
+    return {
+      freq: freq,
+      raw: Number(h.raw) || freq,
+      seen: seen,
+      looks: Math.max(Number(h.looks) || 0, seen),
+      maxDb: maxDb,
+      lastDb: Number(h.lastDb) || maxDb,
+      pid: pid,
+      label: String(h.label || pid),
+      first: first,
+      last: last,
+      mode: h.mode || guessMode(pid),
+      samples: Array.isArray(h.samples) ? h.samples.slice(-48) : [],
+      width: Number(h.width) || 1,
+      offset: h.offset != null && h.offset !== "" ? Number(h.offset) : undefined,
+      spur: spur,
+      spurWhy: spurWhy,
+      ignored: !!h.ignored,
+      dongle: !!h.dongle,
+      name: h.name != null ? String(h.name) : "",
+      isNew: isNew
+    };
+  }
+
+  function hitFromBookmarkRow(b) {
+    if (!b || typeof b !== "object") return null;
+    var freq = Number(b.frequency || b.freq || 0);
+    if (!isFinite(freq) || freq <= 0) return null;
+    var desc = String(b.description || "");
+    var m = desc.match(/seen\s+(\d+)/i);
+    var seen = Number(b.seen);
+    if (!isFinite(seen) || seen < 1) seen = m ? Number(m[1]) : 1;
+    return normalizeHit({
+      freq: freq,
+      seen: seen,
+      looks: b.looks || seen,
+      maxDb: b.maxDb,
+      lastDb: b.lastDb,
+      pid: b.pid || "",
+      label: b.label || b.pid || "imported",
+      mode: b.modulation || b.mode,
+      name: String(b.name || "").replace(/^\[auto\]\s*/i, ""),
+      isNew: b.isNew || /\(new\)/i.test(desc),
+      last: b.last,
+      first: b.first,
+      spur: b.spur,
+      spurWhy: b.spurWhy,
+      ignored: b.ignored
+    });
+  }
+
+  function parseImportCsv(text) {
+    text = String(text || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!text) throw new Error("File is empty");
+    var lines = text.split("\n").filter(function (l) { return l.trim(); });
+    if (!lines.length) throw new Error("No rows");
+    var delim = (lines[0].indexOf("\t") >= 0 && lines[0].split("\t").length >= 3) ? "\t" : ",";
+    var header = delim === "\t" ? lines[0].split("\t") : parseCsvLine(lines[0]);
+    var keys = header.map(function (k) { return String(k || "").trim().toLowerCase(); });
+    function col() {
+      var names = arguments;
+      var i, j;
+      for (i = 0; i < names.length; i++) {
+        j = keys.indexOf(names[i]);
+        if (j >= 0) return j;
+      }
+      return -1;
+    }
+    var iSeen = col("seen", "n", "count");
+    var iMhz = col("mhz", "frequency", "freq", "hz");
+    var iDb = col("db", "maxdb", "dB".toLowerCase());
+    var iBand = col("band", "label", "profile");
+    var iName = col("name");
+    var iNew = col("new", "isnew");
+    var iBird = col("birdie", "spur");
+    var iLast = col("last", "lastseen");
+    var iPid = col("pid");
+    var iLooks = col("looks");
+    var iMode = col("mode", "modulation");
+    if (iMhz < 0 && iSeen < 0) throw new Error("CSV needs a header with MHz (and usually seen)");
+    if (iMhz < 0) throw new Error("CSV has no MHz / frequency column");
+    var out = [];
+    for (var r = 1; r < lines.length; r++) {
+      var cells = delim === "\t" ? lines[r].split("\t") : parseCsvLine(lines[r]);
+      var freq = hzFromCell(cells[iMhz]);
+      if (!freq) continue;
+      var band = iBand >= 0 ? cells[iBand] : "";
+      var pidCell = iPid >= 0 ? cells[iPid] : "";
+      var pid = pidFromBand(band, pidCell);
+      var hit = normalizeHit({
+        freq: freq,
+        seen: iSeen >= 0 ? cells[iSeen] : 1,
+        maxDb: iDb >= 0 ? cells[iDb] : 0,
+        pid: pid,
+        label: band || pid,
+        name: iName >= 0 ? cells[iName] : "",
+        isNew: iNew >= 0 ? cells[iNew] : "",
+        birdie: iBird >= 0 ? cells[iBird] : "",
+        last: iLast >= 0 ? cells[iLast] : "",
+        looks: iLooks >= 0 ? cells[iLooks] : "",
+        mode: iMode >= 0 ? cells[iMode] : ""
+      });
+      if (hit) out.push(hit);
+    }
+    if (!out.length) throw new Error("No peak rows found in that CSV");
+    return { hits: out, tileLooks: {} };
+  }
+
+  function parseImportJson(text) {
+    var o;
+    try {
+      o = JSON.parse(text);
+    } catch (e) {
+      throw new Error("Not valid JSON");
+    }
+    var isBackup = o && Array.isArray(o.bookmarks) && o.when && (o.reason || o.when) &&
+      !Array.isArray(o.hits) && o.kind !== "owrx-band-survey";
+    if (isBackup) {
+      throw new Error("This is a blue-bookmark backup. Restore it from Help, not Import");
+    }
+    if (o && Array.isArray(o.hits)) {
+      var fromHits = o.hits.map(normalizeHit).filter(Boolean);
+      if (!fromHits.length) throw new Error("JSON hits array had no usable peaks");
+      return { hits: fromHits, tileLooks: (o.tileLooks && typeof o.tileLooks === "object") ? o.tileLooks : {} };
+    }
+    if (Array.isArray(o)) {
+      if (!o.length) throw new Error("JSON array is empty");
+      var mapped;
+      if (o[0] && (o[0].freq || o[0].seen != null) && o[0].frequency == null) {
+        mapped = o.map(normalizeHit).filter(Boolean);
+      } else {
+        mapped = o.map(hitFromBookmarkRow).filter(Boolean);
+      }
+      if (!mapped.length) throw new Error("JSON array had no frequencies");
+      return { hits: mapped, tileLooks: {} };
+    }
+    if (o && Array.isArray(o.bookmarks)) {
+      var fromBm = o.bookmarks.map(hitFromBookmarkRow).filter(Boolean);
+      if (!fromBm.length) throw new Error("JSON bookmarks array had no frequencies");
+      return { hits: fromBm, tileLooks: (o.tileLooks && typeof o.tileLooks === "object") ? o.tileLooks : {} };
+    }
+    throw new Error("JSON is not a Band survey export (need hits, bookmarks, or a bookmark array)");
+  }
+
+  function mergeImportedHits(incoming) {
+    incoming.forEach(function (h) {
+      var exist = findHit(h.freq, h.pid);
+      if (!exist) {
+        hits.push(h);
+        return;
+      }
+      exist.seen = Math.max(exist.seen || 0, h.seen || 0);
+      exist.looks = Math.max(exist.looks || 0, h.looks || 0);
+      exist.maxDb = Math.max(exist.maxDb || -999, h.maxDb || -999);
+      if (h.name && !exist.name) exist.name = h.name;
+      if (h.last && (!exist.last || h.last > exist.last)) exist.last = h.last;
+      if (h.mode && !exist.mode) exist.mode = h.mode;
+    });
+  }
+
+  function applyImportedPeaks(parsed, source) {
+    var incoming = parsed.hits || [];
+    if (!incoming.length) throw new Error("Nothing to import");
+    if (!window.confirm("Import " + incoming.length + " peaks into Peaks/Seen? Bookmarks are not changed.")) return;
+    var replace = true;
+    if (hits.length) {
+      replace = window.confirm("Replace the current list (" + hits.length + " peaks)? OK = replace. Cancel = merge.");
+    }
+    if (replace) {
+      hits = incoming;
+      tileLooks = parsed.tileLooks && typeof parsed.tileLooks === "object" ? parsed.tileLooks : {};
+    } else {
+      mergeImportedHits(incoming);
+      if (parsed.tileLooks) {
+        Object.keys(parsed.tileLooks).forEach(function (k) {
+          tileLooks[k] = Math.max(tileLooks[k] || 0, parsed.tileLooks[k] || 0);
+        });
+      }
+    }
+    classifyAll();
+    saveHits();
+    renderHits();
+    setStatus("Imported " + incoming.length + " peaks from " + (source || "file") +
+      (replace ? " (replaced list)" : " (merged)") + ".");
+  }
+
+  function importError(err, action) {
+    var msg = (err && err.message) ? err.message : String(err || "unknown error");
+    msg = msg.replace(/\s+/g, " ").slice(0, 180);
+    setStatus(action + " failed: " + msg);
+    toast(action + " failed: " + msg);
+  }
+
+  function runImportText(kind, text, source) {
+    try {
+      var parsed = kind === "csv" ? parseImportCsv(text) : parseImportJson(text);
+      applyImportedPeaks(parsed, source);
+    } catch (err) {
+      importError(err, kind === "csv" ? "Import CSV" : "Import JSON");
+    }
+  }
+
+  function startImport(kind, ev) {
+    if (ev && ev.shiftKey) {
+      var pasted = window.prompt(kind === "csv" ? "Paste Export CSV:" : "Paste Export JSON:");
+      if (pasted == null) return;
+      if (!String(pasted).trim()) {
+        setStatus("Nothing pasted.");
+        return;
+      }
+      runImportText(kind, pasted, "paste");
+      return;
+    }
+    var inp = $(kind === "csv" ? "bs-csv-file" : "bs-json-file");
+    if (!inp) return;
+    inp.value = "";
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        runImportText(kind, String(reader.result || ""), f.name);
+      };
+      reader.onerror = function () {
+        importError(new Error("Could not read that file"), kind === "csv" ? "Import CSV" : "Import JSON");
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
   }
 
   function jumpLoudest() {
@@ -1861,6 +2302,7 @@ Plugins.band_survey.init = function () {
     S.recordBusy = $("bs-record") ? $("bs-record").checked : S.recordBusy;
     S.notifyNew = $("bs-notify") ? $("bs-notify").checked : S.notifyNew;
     S.aloneOnly = $("bs-alone") ? $("bs-alone").checked : S.aloneOnly;
+    S.ownRadio = ownerOverrideAllowed() && $("bs-ownradio") ? $("bs-ownradio").checked : false;
     if ($("bs-listensec")) S.listenSec = Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4));
     if ($("bs-priority")) S.priority = $("bs-priority").value || "";
     if ($("bs-lockmin")) S.lockoutMin = Math.max(1, Math.min(240, Number($("bs-lockmin").value) || 30));
@@ -1896,7 +2338,7 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-skip">Skip</button>' +
       '<button type="button" id="bs-lockout">Lockout</button>' +
       '<button type="button" id="bs-contscan">Continue scan</button>' +
-      '<span class="bs-hint">busy channel waits here · same-band hops ~1s · profile change 11s</span>' +
+      '<span class="bs-hint" id="bs-hophint">busy channel waits here · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
       '<div class="bs-progress"><i id="bs-bar"></i></div>' +
@@ -1928,6 +2370,7 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk"><input type="checkbox" id="bs-record"> Record busy</label>' +
       '<label class="bs-chk"><input type="checkbox" id="bs-notify"> Notify new</label>' +
       '<label class="bs-chk"><input type="checkbox" id="bs-alone"> Only if alone</label>' +
+      '<label class="bs-chk"><input type="checkbox" id="bs-ownradio" title="This is my receiver. Profile changes ~1s instead of 11s. Public OpenWebRX sites can ban the client."> Own radio — fast hops</label>' +
       "</div>" +
       '<div class="bs-row">' +
       '<label>Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
@@ -1942,6 +2385,10 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-copy">Copy list</button>' +
       '<button type="button" id="bs-csv">Export CSV</button>' +
       '<button type="button" id="bs-json">Export JSON</button>' +
+      '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
+      '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
+      '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
+      '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
       '<button type="button" id="bs-clearauto">Clear auto bookmarks</button>' +
       '<button type="button" id="bs-clearhits">Clear list</button>' +
       "</div>" +
@@ -1962,6 +2409,8 @@ Plugins.band_survey.init = function () {
     $("bs-record").checked = !!S.recordBusy;
     $("bs-notify").checked = S.notifyNew !== false;
     $("bs-alone").checked = S.aloneOnly !== false;
+    $("bs-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
+    applyOwnerLock();
     $("bs-priority").value = S.priority || "121.5";
     $("bs-lockmin").value = S.lockoutMin || 30;
     $("bs-sched").value = S.scheduleHrs || 0;
@@ -2015,6 +2464,7 @@ Plugins.band_survey.init = function () {
     $("bs-record").onchange = readForm;
     $("bs-notify").onchange = function () { readForm(); askNotifyPerm(); };
     $("bs-alone").onchange = readForm;
+    $("bs-ownradio").onchange = readForm;
     $("bs-priority").onchange = readForm;
     $("bs-lockmin").onchange = readForm;
     $("bs-sched").onchange = readForm;
@@ -2076,6 +2526,8 @@ Plugins.band_survey.init = function () {
     $("bs-copy").onclick = copyResults;
     $("bs-csv").onclick = function () { exportCsv(); };
     $("bs-json").onclick = function () { exportServerJson(); };
+    $("bs-csv-in").onclick = function (ev) { startImport("csv", ev); };
+    $("bs-json-in").onclick = function (ev) { startImport("json", ev); };
     $("bs-clearauto").onclick = function () {
       var n = clearAutoBookmarks();
       setStatus("Removed " + n + " auto bookmarks.");
