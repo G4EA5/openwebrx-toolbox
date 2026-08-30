@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 13;
+Plugins.band_survey._version = 14;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -759,6 +759,89 @@ Plugins.band_survey.init = function () {
     inp.click();
   }
 
+  function restoreLocalBookmarkList(list, source) {
+    if (!list || !list.length) return false;
+    if (typeof BookmarkLocalStorage !== "function") {
+      setStatus("This page cannot write local bookmarks.");
+      return false;
+    }
+    if (!window.confirm("Replace blue (local) bookmarks with " + list.length + " from " + (source || "file") + "? Yellow server bookmarks are not touched.")) {
+      return false;
+    }
+    try {
+      backupLocalBookmarks("before-restore-file");
+      var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+      store.setBookmarks(list);
+      if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+        bookmarks.loadLocalBookmarks();
+      }
+      refreshBookmarks();
+      setStatus("Restored " + list.length + " local blue bookmark(s) from " + (source || "file") + ".");
+      return true;
+    } catch (e) {
+      setStatus("Restore failed: " + (e && e.message ? e.message : e));
+      return false;
+    }
+  }
+
+  function importSavedBookmarkFile(text, fname) {
+    var o;
+    try {
+      o = JSON.parse(String(text || "").replace(/^\uFEFF/, "").trim());
+    } catch (e) {
+      throw new Error("Not valid JSON");
+    }
+    if (!o || o.kind !== "owrx-band-survey") return false;
+    var loadedRows = (o.loaded || []).map(normalizeLoadedBookmark).filter(Boolean);
+    var localRows = Array.isArray(o.local) ? o.local.filter(function (b) {
+      return b && (b.frequency || b.freq);
+    }) : [];
+    if (!loadedRows.length && !localRows.length) throw new Error("No bookmarks in this save file");
+    if (loadedRows.length) applyLoadedBookmarks(loadedRows, fname);
+    if (localRows.length) restoreLocalBookmarkList(localRows, fname);
+    else if (!loadedRows.length) setStatus("No bookmarks imported.");
+    return true;
+  }
+
+  function saveBookmarks() {
+    var local = localBookmarkList() || [];
+    var loaded = (loadedBookmarks || []).slice();
+    if (!local.length && !loaded.length) {
+      setStatus("No bookmarks to save.");
+      return;
+    }
+    var payload = {
+      kind: "owrx-band-survey",
+      when: Date.now(),
+      local: local,
+      loaded: loaded
+    };
+    var ts = new Date().toISOString().slice(0, 10);
+    downloadFile("band-survey-bookmarks-" + ts + ".json", JSON.stringify(payload, null, 2), "application/json");
+    setStatus("Saved " + local.length + " local and " + loaded.length + " loaded bookmark(s) to JSON.");
+  }
+
+  function clearLocalBookmarks() {
+    if (typeof BookmarkLocalStorage !== "function") {
+      setStatus("No local bookmark store on this page. Nothing to clear.");
+      return;
+    }
+    var list = localBookmarkList() || [];
+    if (!list.length) {
+      setStatus("No local blue bookmarks to clear.");
+      return;
+    }
+    if (!window.confirm("Remove all " + list.length + " local blue bookmark(s) from this browser? [load] imports and always-skip are not touched.")) return;
+    backupLocalBookmarks("before-clear-all");
+    var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+    store.setBookmarks([]);
+    if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+      bookmarks.loadLocalBookmarks();
+    }
+    refreshBookmarks();
+    setStatus("Cleared " + list.length + " local blue bookmark(s).");
+  }
+
   function onLoadBookmarkFile(ev) {
     var inp = ev && ev.target;
     var file = inp && inp.files && inp.files[0];
@@ -766,8 +849,10 @@ Plugins.band_survey.init = function () {
     var reader = new FileReader();
     reader.onload = function () {
       try {
-        var rows = parseLoadedBookmarkFile(reader.result, file.name);
-        applyLoadedBookmarks(rows, file.name);
+        if (!importSavedBookmarkFile(reader.result, file.name)) {
+          var rows = parseLoadedBookmarkFile(reader.result, file.name);
+          applyLoadedBookmarks(rows, file.name);
+        }
       } catch (err) {
         setStatus(importError(err, "Load bookmarks"));
         toast(importError(err, "Load bookmarks"));
@@ -1114,7 +1199,7 @@ Plugins.band_survey.init = function () {
       "<h3>Panel</h3>" +
       "<p>The left side is survey controls, bands, and settings above a draggable bar, then the peaks table. The <b>right side</b> lists blue local bookmarks (<b>[auto]</b> vs named), amber <b>[load]</b> imports, audio clips, and always-skip frequencies — drag the bars between them to resize each block. Click a row to tune. Hover any checkbox, field, or button for a one-line tip.</p>" +
       "<h3>Bookmarks</h3>" +
-      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Load bookmarks</b> imports JSON/CSV into a separate amber <b>[load]</b> list — it does not overwrite blue bookmarks. <b>Scan bookmarks</b> hops through both. <b>Clear loaded</b> removes only <b>[load]</b> entries.</p>" +
+      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Save bookmarks</b> downloads local + <b>[load]</b> as JSON; <b>Load bookmarks</b> imports JSON/CSV (including that save file). <b>Scan bookmarks</b> hops through both. <b>Clear bookmarks</b> removes all blue local entries; <b>Clear loaded</b> removes only <b>[load]</b>; <b>Clear auto bookmarks</b> removes only <b>[auto]</b>.</p>" +
       "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
       "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
       "<h3>Audio clips</h3>" +
@@ -3585,8 +3670,10 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips (busy-channel recordings and files you loaded). Does not record the survey walk.">Save audio</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
-      '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list on the right. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks.">Load bookmarks</button>' +
+      '<button type="button" id="bs-bm-save" title="Download local blue bookmarks and [load] imports as one JSON file. Load bookmarks can re-import it.">Save bookmarks</button>' +
+      '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list on the right. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks unless the file is a Save bookmarks export.">Load bookmarks</button>' +
       '<button type="button" id="bs-bm-clearload" title="Remove all [load] bookmarks from this browser. Local blue bookmarks stay.">Clear loaded</button>' +
+      '<button type="button" id="bs-bm-clearlocal" title="Remove all local blue bookmarks from this browser. [load] imports and always-skip are not touched.">Clear bookmarks</button>' +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
       '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
       '<input type="file" id="bs-aud-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.opus" multiple hidden>' +
@@ -3750,8 +3837,10 @@ Plugins.band_survey.init = function () {
       this.value = "";
     };
     if ($("bs-audiolist")) $("bs-audiolist").onclick = onAudioPaneClick;
+    if ($("bs-bm-save")) $("bs-bm-save").onclick = saveBookmarks;
     if ($("bs-bm-load")) $("bs-bm-load").onclick = startLoadBookmarks;
     if ($("bs-bm-clearload")) $("bs-bm-clearload").onclick = clearLoadedBookmarks;
+    if ($("bs-bm-clearlocal")) $("bs-bm-clearlocal").onclick = clearLocalBookmarks;
     if ($("bs-bm-file")) $("bs-bm-file").onchange = onLoadBookmarkFile;
     $("bs-clearauto").onclick = function () {
       var n = clearAutoBookmarks();
