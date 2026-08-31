@@ -7,10 +7,45 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 
 
 <p>
-  <img src="screenshot.png" alt="Band survey panel" width="640">
+  <img src="screenshot.png" alt="Bands tab — band survey panel" width="640">
 </p>
 
-<p><em>Band survey panel — orange SV button on the right-hand receiver panel</em></p>
+<p><em>Orange <strong>SV</strong> on the right-hand receiver panel opens the survey.</em></p>
+
+### All tabs
+
+<p>
+  <strong>Bands</strong><br>
+  <img src="screenshots/bands.png" alt="Bands tab" width="640">
+</p>
+<p>
+  <strong>Range</strong><br>
+  <img src="screenshots/range.png" alt="Range tab" width="640">
+</p>
+<p>
+  <strong>Peaks</strong><br>
+  <img src="screenshots/peaks.png" alt="Peaks tab" width="640">
+</p>
+<p>
+  <strong>Bookmarks</strong><br>
+  <img src="screenshots/bookmarks.png" alt="Bookmarks tab" width="640">
+</p>
+<p>
+  <strong>Audio</strong><br>
+  <img src="screenshots/audio.png" alt="Audio tab" width="640">
+</p>
+<p>
+  <strong>Skip</strong><br>
+  <img src="screenshots/skip.png" alt="Skip tab" width="640">
+</p>
+<p>
+  <strong>Settings</strong><br>
+  <img src="screenshots/settings.png" alt="Settings tab" width="640">
+</p>
+<p>
+  <strong>Help</strong><br>
+  <img src="screenshots/help.png" alt="Help tab" width="640">
+</p>
 
 **Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
 optional extras if you already load them.
