@@ -13,10 +13,11 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 41;
+Plugins.band_survey._version = 56;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
+  var LS_REC_MIGRATE = "owrx_band_survey_rec_migrate_v53";
   var LS_HITS = "owrx_band_survey_hits_v1";
   var SAMPLE_MS = 400;
   var MAX_PASSES = 100;
@@ -35,11 +36,24 @@ Plugins.band_survey.init = function () {
   var lastCreated = [];
   var listenCmd = "";
   var listenPaused = false;
+  var listenScanRunning = false;
+  var surveyRunning = false;
   var listenFreq = 0;
   var lastProfileSwitchAt = 0;
   var PROFILE_GAP_MS = 11000;
   var PROFILE_GAP_OWN_MS = 1200;
   var HOP_SETTLE_MS = 700;
+  var LISTEN_SAMPLE_MS = 250;
+  var QUIET_HOLD_MS = 1500;
+  var MIN_RECORD_MS = 2000;
+  var REC_SIGNAL_QUIET_MS = 800;
+  var REC_SIGNAL_DEBOUNCE_MS = 450;
+  var MIN_CLIP_ACTIVE_MS = 900;
+  var MIN_CLIP_ACTIVE_RATIO = 0.18;
+  var REC_MODE_ORIGINAL = "original";
+  var REC_MODE_BALANCED = "balanced";
+  var REC_MODE_STRICT = "strict";
+  var SMETER_TRACK_N = 14;
   var schedTimer = null;
   var LS_LOCK = "owrx_band_survey_lock_v1";
   var LS_SNAP = "owrx_band_survey_snap_v1";
@@ -47,8 +61,15 @@ Plugins.band_survey.init = function () {
   var LS_BM_LAST = "owrx_band_survey_bm_backup_last_v1";
   var LS_LOADED_BM = "owrx_band_survey_loaded_bm_v1";
   var SS_TAB = "owrx_band_survey_tab_v1";
+  var LS_CHECK_DISMISS = "owrx_band_survey_check_dismiss_v1";
+  var LS_SETTINGS_FILE = "band-survey-settings.json";
   var TAB_IDS = ["bands", "range", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+  var bsInternalTune = false;
+  var lastManualTuneAt = 0;
+  var SCHED_IDLE_MS = 10 * 60 * 1000;
   var loadedBookmarks = [];
+  var rangeSpectrum = { startMhz: 0, endMhz: 0, peaks: [] };
+  var rangeSpectrumBound = false;
 
   function loadSettings() {
     var d = {
@@ -65,7 +86,15 @@ Plugins.band_survey.init = function () {
       scanAfter: false,
       listenSec: 4,
       holdBusy: true,
+      continuousBmScan: true,
       recordBusy: false,
+      recMode: REC_MODE_ORIGINAL,
+      recSquelchOnly: true,
+      recMinSnrDb: 0,
+      recSquelchHeadroomDb: 0,
+      recMinClipRatioPct: 0,
+      recDebounceMs: 0,
+      recQuietMs: 0,
       notifyNew: true,
       aloneOnly: true,
       lockoutMin: 30,
@@ -85,15 +114,45 @@ Plugins.band_survey.init = function () {
       rightSplit3: 76,
       rangeStartMhz: 109,
       rangeEndMhz: 200,
-      rangeStepKhz: 0
+      rangeStepKhz: 0,
+      rememberTab: true,
+      defaultTab: "last",
+      switchPeaksOnDone: false,
+      notifyScanDone: false,
+      soundNewPeak: true,
+      schedAction: "band",
+      schedIdleOnly: false,
+      quietStart: "",
+      quietEnd: "",
+      pauseOnManualTune: false,
+      profileSettleMs: 0,
+      maxPeaks: 0,
+      maxAudioClips: 40,
+      webhookUrl: "",
+      copyPeaksOnDone: false,
+      alertFreqs: "",
+      alertOffsetKhz: 25,
+      uiTextSize: "default"
     };
     try {
       var raw = window.localStorage.getItem(LS);
+      var hadStored = false;
       if (raw) {
+        hadStored = true;
         var o = JSON.parse(raw);
         Object.keys(d).forEach(function (k) {
           if (typeof o[k] !== "undefined") d[k] = o[k];
         });
+      }
+      if (!window.localStorage.getItem(LS_REC_MIGRATE)) {
+        if (!hadStored || !d.recMode || d.recMode === "balanced" || d.recMode === "simple") {
+          d.recMode = REC_MODE_ORIGINAL;
+        }
+        window.localStorage.setItem(LS_REC_MIGRATE, "1");
+      } else if (!d.recMode || d.recMode === "simple") {
+        d.recMode = REC_MODE_ORIGINAL;
+      } else if (d.recMode !== REC_MODE_BALANCED && d.recMode !== REC_MODE_STRICT && d.recMode !== REC_MODE_ORIGINAL) {
+        d.recMode = REC_MODE_ORIGINAL;
       }
     } catch (e) {}
     return sanitizeLayoutSettings(d);
@@ -295,27 +354,70 @@ Plugins.band_survey.init = function () {
     return scored.map(function (s) { return s.row; });
   }
 
+  function continuousBmScanOn() {
+    return S.continuousBmScan !== false;
+  }
+
+  function listenScanIdleTitle() {
+    return continuousBmScanOn()
+      ? "Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded."
+      : "Loop bookmarks until Stop — pauses on busy channels (Continue / Skip / Hold). New auto bookmarks first, then all local and loaded.";
+  }
+
+  function setListenScanRunning(on) {
+    listenScanRunning = !!on;
+    if (on && listenPaused && !continuousBmScanOn()) {
+      setListenPaused(true);
+      return;
+    }
+    var label = listenScanRunning
+      ? (listenPaused && !continuousBmScanOn() ? "Continue scan bookmarks" : "Scanning bookmarks")
+      : "Scan bookmarks";
+    var title = listenScanRunning
+      ? (listenPaused && !continuousBmScanOn()
+        ? "Leave this busy channel and continue hopping through bookmarks."
+        : "Bookmark scan is running — click Stop to end.")
+      : listenScanIdleTitle();
+    var btn = $("bs-listen-top");
+    if (!btn) return;
+    btn.textContent = label;
+    btn.title = title;
+    btn.disabled = listenScanRunning && (continuousBmScanOn() || !listenPaused);
+    btn.classList.toggle("bs-on", listenScanRunning || listenPaused);
+    btn.classList.toggle("bs-running", listenScanRunning && (continuousBmScanOn() || !listenPaused));
+  }
+
+  function setSurveyRunning(on) {
+    surveyRunning = !!on;
+    var label = surveyRunning ? "Scanning bands" : "Scan bands";
+    var title = surveyRunning
+      ? "Band survey is running — click Stop to end."
+      : "Walk ticked bands and add to Seen counts.";
+    var btn = $("bs-start");
+    if (!btn) return;
+    btn.textContent = label;
+    btn.title = title;
+    btn.disabled = surveyRunning;
+    btn.classList.toggle("bs-on", surveyRunning);
+    btn.classList.toggle("bs-running", surveyRunning);
+  }
+
   function setListenPaused(on) {
     listenPaused = !!on;
-    var cont = $("bs-contscan");
-    if (cont) {
-      cont.classList.toggle("bs-on", listenPaused);
-      cont.classList.toggle("bs-primary", listenPaused);
-      cont.title = listenPaused
-        ? "Leave this busy channel and continue hopping through bookmarks (same as Continue scan bookmarks)."
-        : "Leave this busy channel and keep scanning bookmarks.";
-    }
-    var listenLabel = listenPaused ? "Continue scan bookmarks" : "Scan bookmarks";
+    if (listenScanRunning && continuousBmScanOn()) return;
+    var listenLabel = listenPaused
+      ? "Continue scan bookmarks"
+      : (listenScanRunning ? "Scanning bookmarks" : "Scan bookmarks");
     var listenTitle = listenPaused
       ? "Leave this busy channel and continue hopping through bookmarks."
-      : "Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded.";
-    ["bs-listen-top", "bs-listen"].forEach(function (id) {
-      var btn = $(id);
-      if (!btn) return;
-      btn.textContent = listenLabel;
-      btn.title = listenTitle;
-      btn.classList.toggle("bs-on", listenPaused);
-    });
+      : (listenScanRunning ? "Bookmark scan is running — click Stop to end." : listenScanIdleTitle());
+    var btn = $("bs-listen-top");
+    if (!btn) return;
+    btn.textContent = listenLabel;
+    btn.title = listenTitle;
+    btn.disabled = listenScanRunning && !listenPaused;
+    btn.classList.toggle("bs-on", listenPaused || listenScanRunning);
+    btn.classList.toggle("bs-running", listenScanRunning && !listenPaused);
   }
 
   function resumeListenScan() {
@@ -403,6 +505,10 @@ Plugins.band_survey.init = function () {
     return true;
   }
 
+  function notify(msg) {
+    notifyNewPeak(msg, null);
+  }
+
   function beep() {
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
@@ -420,9 +526,103 @@ Plugins.band_survey.init = function () {
     } catch (e2) {}
   }
 
-  function notify(msg) {
-    if (!S.notifyNew || !msg) return;
-    beep();
+  function askNotifyPerm() {
+    try {
+      if ((S.notifyNew || S.notifyScanDone) && window.Notification && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    } catch (e) {}
+  }
+
+  function getHopSettleMs() {
+    var v = Number(S.profileSettleMs);
+    return (isFinite(v) && v >= 100) ? Math.min(5000, v) : HOP_SETTLE_MS;
+  }
+
+  function maxAudioClipsCap() {
+    var n = Number(S.maxAudioClips);
+    return (isFinite(n) && n >= 5) ? Math.min(200, Math.round(n)) : 40;
+  }
+
+  function pluginSetFrequency(freq) {
+    bsInternalTune = true;
+    try {
+      pluginSetFrequency(freq);
+    } finally {
+      setTimeout(function () { bsInternalTune = false; }, 0);
+    }
+  }
+
+  function hookTuneApi() {
+    if (window._bs_tune_hooked || !window.UI || typeof UI.setFrequency !== "function") return;
+    var orig = UI.setFrequency.bind(UI);
+    UI.setFrequency = function (freq) {
+      if (running && S.pauseOnManualTune && !bsInternalTune) {
+        stopFlag = true;
+        setStatus("Paused — you tuned manually.");
+      }
+      if (!bsInternalTune && !running && !listenScanRunning) lastManualTuneAt = Date.now();
+      return orig(freq);
+    };
+    window._bs_tune_hooked = true;
+  }
+
+  function parseTimeHm(s) {
+    var m = String(s || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    var h = Number(m[1]);
+    var min = Number(m[2]);
+    if (!isFinite(h) || !isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) return null;
+    return h * 60 + min;
+  }
+
+  function inQuietHours() {
+    var sm = parseTimeHm(S.quietStart);
+    var em = parseTimeHm(S.quietEnd);
+    if (sm === null || em === null) return false;
+    var now = new Date();
+    var mins = now.getHours() * 60 + now.getMinutes();
+    if (sm <= em) return mins >= sm && mins < em;
+    return mins >= sm || mins < em;
+  }
+
+  function receiverRecentlyActive() {
+    if (!S.schedIdleOnly) return false;
+    return lastManualTuneAt && (Date.now() - lastManualTuneAt) < SCHED_IDLE_MS;
+  }
+
+  function isAlertFreq(freq) {
+    var list = parseHzList(S.alertFreqs);
+    if (!list.length) return false;
+    var offset = Math.max(1, Number(S.alertOffsetKhz) || 25) * 1000;
+    for (var i = 0; i < list.length; i++) {
+      if (Math.abs(list[i] - freq) <= offset) return true;
+    }
+    return false;
+  }
+
+  function fireWebhook(hit) {
+    var url = String(S.webhookUrl || "").trim();
+    if (!url || !hit) return;
+    var payload = {
+      freq: hit.freq,
+      name: hit.name || existingName(hit.freq) || "",
+      db: hit.maxDb || hit.lastDb || 0,
+      band: hit.label || hit.pid || ""
+    };
+    try {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        mode: "cors",
+        keepalive: true
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function notifyScanComplete(msg) {
+    if (!S.notifyScanDone || !msg) return;
     try {
       if (window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function") {
         Plugins.notify.show(msg);
@@ -436,12 +636,274 @@ Plugins.band_survey.init = function () {
     setStatus(msg);
   }
 
-  function askNotifyPerm() {
+  function notifyNewPeak(msg, hit) {
+    if (!S.notifyNew || !msg) return;
+    var alertHit = hit && isAlertFreq(hit.freq);
+    if (S.soundNewPeak !== false || alertHit) beep();
+    if (alertHit && S.notifyNew) {
+      msg = "Alert " + msg;
+      if (S.soundNewPeak !== false) beep();
+    }
     try {
-      if (S.notifyNew && window.Notification && Notification.permission === "default") {
-        Notification.requestPermission();
+      if (window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function") {
+        Plugins.notify.show(msg);
       }
     } catch (e) {}
+    try {
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("Band survey", { body: msg, silent: true });
+      }
+    } catch (e2) {}
+    setStatus(msg);
+    if (hit) fireWebhook(hit);
+  }
+
+  function trimPeaksIfNeeded() {
+    var max = Number(S.maxPeaks);
+    if (!isFinite(max) || max < 1 || hits.length <= max) return;
+    hits.sort(function (a, b) { return (a.last || 0) - (b.last || 0); });
+    while (hits.length > max) hits.shift();
+  }
+
+  function resolveOpenTab() {
+    if (S.defaultTab && S.defaultTab !== "last" && TAB_IDS.indexOf(S.defaultTab) >= 0) {
+      return S.defaultTab;
+    }
+    try {
+      var saved = null;
+      if (S.rememberTab !== false) saved = window.localStorage.getItem(SS_TAB);
+      if (!saved) saved = sessionStorage.getItem(SS_TAB);
+      if (saved && TAB_IDS.indexOf(saved) >= 0) return saved;
+    } catch (e) {}
+    return "bands";
+  }
+
+  function applyUiTextSize() {
+    var p = $("bs-panel");
+    if (!p) return;
+    p.classList.remove("bs-text-sm", "bs-text-lg");
+    var sz = S.uiTextSize || "default";
+    if (sz === "small") p.classList.add("bs-text-sm");
+    else if (sz === "large") p.classList.add("bs-text-lg");
+  }
+
+  function resetPanelLayoutDefaults() {
+    S.panelW = 0;
+    S.panelH = 0;
+    S.panelLeft = null;
+    S.panelTop = null;
+    saveSettings();
+    applyPanelLayout();
+    setStatus("Panel layout reset to default position and size.");
+  }
+
+  function settingsDefaults() {
+    return {
+      selected: null,
+      passes: 2,
+      dwell: 2.5,
+      minHits: 3,
+      threshDb: 7,
+      autoBm: true,
+      hideAuto: false,
+      mute: true,
+      hideSpurs: true,
+      ignoredFreqs: [],
+      scanAfter: false,
+      listenSec: 4,
+      holdBusy: true,
+      continuousBmScan: true,
+      recordBusy: false,
+      recMode: REC_MODE_ORIGINAL,
+      recSquelchOnly: true,
+      recMinSnrDb: 0,
+      recSquelchHeadroomDb: 0,
+      recMinClipRatioPct: 0,
+      recDebounceMs: 0,
+      recQuietMs: 0,
+      notifyNew: true,
+      aloneOnly: true,
+      lockoutMin: 30,
+      scheduleHrs: 0,
+      priority: "121.5",
+      ownRadio: false,
+      seenHelp: false,
+      autoOpenPanel: false,
+      panelW: 0,
+      panelH: 0,
+      panelLeft: null,
+      panelTop: null,
+      splitPct: 62,
+      leftSplitPct: 58,
+      rightSplit1: 28,
+      rightSplit2: 52,
+      rightSplit3: 76,
+      rangeStartMhz: 109,
+      rangeEndMhz: 200,
+      rangeStepKhz: 0,
+      rememberTab: true,
+      defaultTab: "last",
+      switchPeaksOnDone: false,
+      notifyScanDone: false,
+      soundNewPeak: true,
+      schedAction: "band",
+      schedIdleOnly: false,
+      quietStart: "",
+      quietEnd: "",
+      pauseOnManualTune: false,
+      profileSettleMs: 0,
+      maxPeaks: 0,
+      maxAudioClips: 40,
+      webhookUrl: "",
+      copyPeaksOnDone: false,
+      alertFreqs: "",
+      alertOffsetKhz: 25,
+      uiTextSize: "default"
+    };
+  }
+
+  function exportSettingsJson() {
+    readForm();
+    var out = {};
+    var d = settingsDefaults();
+    Object.keys(d).forEach(function (k) {
+      if (k === "ignoredFreqs") out[k] = (S.ignoredFreqs || []).slice();
+      else out[k] = S[k];
+    });
+    downloadFile(LS_SETTINGS_FILE, JSON.stringify(out, null, 2), "application/json");
+    setStatus("Exported settings JSON.");
+  }
+
+  function fillSettingsForm() {
+    if ($("bs-remember-tab")) $("bs-remember-tab").checked = S.rememberTab !== false;
+    if ($("bs-default-tab")) $("bs-default-tab").value = S.defaultTab || "last";
+    if ($("bs-switch-peaks")) $("bs-switch-peaks").checked = !!S.switchPeaksOnDone;
+    if ($("bs-notify-done")) $("bs-notify-done").checked = !!S.notifyScanDone;
+    if ($("bs-sound-peak")) $("bs-sound-peak").checked = S.soundNewPeak !== false;
+    if ($("bs-sched-action")) $("bs-sched-action").value = S.schedAction || "band";
+    if ($("bs-sched-idle")) $("bs-sched-idle").checked = !!S.schedIdleOnly;
+    if ($("bs-quiet-start")) $("bs-quiet-start").value = S.quietStart || "";
+    if ($("bs-quiet-end")) $("bs-quiet-end").value = S.quietEnd || "";
+    if ($("bs-pause-tune")) $("bs-pause-tune").checked = !!S.pauseOnManualTune;
+    if ($("bs-settle-ms")) $("bs-settle-ms").value = S.profileSettleMs || 0;
+    if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks || 0;
+    if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || 40;
+    if ($("bs-webhook")) $("bs-webhook").value = S.webhookUrl || "";
+    if ($("bs-copy-done")) $("bs-copy-done").checked = !!S.copyPeaksOnDone;
+    if ($("bs-alert-freqs")) $("bs-alert-freqs").value = S.alertFreqs || "";
+    if ($("bs-alert-offset")) $("bs-alert-offset").value = S.alertOffsetKhz || 25;
+    if ($("bs-text-size")) $("bs-text-size").value = S.uiTextSize || "default";
+    if ($("bs-autoopen")) $("bs-autoopen").checked = !!S.autoOpenPanel;
+    $("bs-notify").checked = S.notifyNew !== false;
+    $("bs-alone").checked = S.aloneOnly !== false;
+    $("bs-sched").value = S.scheduleHrs || 0;
+    applyUiTextSize();
+  }
+
+  function importSettingsMerge(obj) {
+    if (!obj || typeof obj !== "object") return false;
+    var d = settingsDefaults();
+    Object.keys(d).forEach(function (k) {
+      if (typeof obj[k] === "undefined") return;
+      if (k === "ignoredFreqs") {
+        S.ignoredFreqs = Array.isArray(obj[k]) ? obj[k].slice() : S.ignoredFreqs;
+      } else {
+        S[k] = obj[k];
+      }
+    });
+    S = sanitizeLayoutSettings(S);
+    saveSettings();
+    fillSettingsForm();
+    applySchedule();
+    renderBookmarkPane();
+    updateTabLabels();
+    return true;
+  }
+
+  function resetSettingsToDefaults() {
+    if (!window.confirm("Reset all Band survey settings to defaults? Peak list and bookmarks are kept.")) return;
+    var keepSelected = S.selected;
+    var keepIgnored = (S.ignoredFreqs || []).slice();
+    var d = settingsDefaults();
+    Object.keys(d).forEach(function (k) {
+      if (k === "ignoredFreqs") S.ignoredFreqs = keepIgnored;
+      else S[k] = d[k];
+    });
+    if (keepSelected) S.selected = keepSelected;
+    saveSettings();
+    fillSettingsForm();
+    if ($("bs-passes")) $("bs-passes").value = S.passes;
+    if ($("bs-dwell")) $("bs-dwell").value = S.dwell;
+    if ($("bs-minhits")) $("bs-minhits").value = S.minHits;
+    if ($("bs-thresh")) $("bs-thresh").value = S.threshDb;
+    applySchedule();
+    applyPanelLayout();
+    setStatus("Settings reset to defaults.");
+  }
+
+  function clearAllPluginData() {
+    if (!window.confirm("Clear ALL Band survey data in this browser? Peaks, bookmarks, audio, skip list, and settings will be wiped.")) return;
+    hits = [];
+    tileLooks = {};
+    loadedBookmarks = [];
+    audioClips = [];
+    try {
+      if (typeof BookmarkLocalStorage === "function") {
+        var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+        store.setBookmarks([]);
+        if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+          bookmarks.loadLocalBookmarks();
+        }
+      }
+    } catch (eBm) {}
+    try {
+      window.localStorage.removeItem(LS);
+      window.localStorage.removeItem(LS_HITS);
+      window.localStorage.removeItem(LS_SNAP);
+      window.localStorage.removeItem(LS_LOCK);
+      window.localStorage.removeItem(LS_BM_FIRST);
+      window.localStorage.removeItem(LS_BM_LAST);
+      window.localStorage.removeItem(LS_LOADED_BM);
+      window.localStorage.removeItem(LS_CLIP_SEQ);
+      window.localStorage.removeItem(LS_CHECK_DISMISS);
+      window.localStorage.removeItem(SS_TAB);
+      sessionStorage.removeItem(SS_TAB);
+    } catch (e) {}
+    clearAllPersistedAudioClips().then(function () {
+      S = loadSettings();
+      fillSettingsForm();
+      renderHits();
+      renderBookmarkPane();
+      renderAudioClips();
+      applyCheckInstallDismiss();
+      updateTabLabels();
+      setStatus("All plugin data cleared.");
+    });
+  }
+
+  function onSurveyComplete(fin, stopped) {
+    if (stopped) return;
+    if (S.notifyScanDone) notifyScanComplete(fin.doneStatus);
+    if (S.switchPeaksOnDone) switchTab("peaks");
+    if (S.copyPeaksOnDone) copyResults();
+  }
+
+  function runScheduledScan() {
+    if (running || listenScanRunning) return;
+    if (inQuietHours()) return;
+    if (receiverRecentlyActive()) return;
+    var action = S.schedAction || "band";
+    if (action === "bookmark" || action === "both") {
+      if (action === "both") {
+        runSurvey(false).then(function () {
+          if (!running && !listenScanRunning) startListenScan();
+        }).catch(function () {});
+        return;
+      }
+      startListenScan();
+      return;
+    }
+    runSurvey(false);
   }
 
   var recordingOn = false;
@@ -623,6 +1085,23 @@ Plugins.band_survey.init = function () {
     });
   }
 
+  function clearAllPersistedAudioClips() {
+    return openAudioDb().then(function (db) {
+      if (!db) return false;
+      try {
+        var tx = db.transaction(IDB_AUDIO_STORE, "readwrite");
+        tx.objectStore(IDB_AUDIO_STORE).clear();
+        return idbTxDone(tx).then(function () { return true; });
+      } catch (e) {
+        warnAudioIdb("audio clip clear failed", e);
+        return false;
+      }
+    }).catch(function (e) {
+      warnAudioIdb("audio clip clear failed", e);
+      return false;
+    });
+  }
+
   function totalAudioBytes() {
     var n = 0;
     for (var i = 0; i < audioClips.length; i++) {
@@ -632,7 +1111,7 @@ Plugins.band_survey.init = function () {
   }
 
   function trimAudioStorage() {
-    while (audioClips.length > MAX_AUDIO_CLIPS || totalAudioBytes() > MAX_AUDIO_STORE_BYTES) {
+    while (audioClips.length > maxAudioClipsCap() || totalAudioBytes() > MAX_AUDIO_STORE_BYTES) {
       var drop = audioClips.pop();
       if (!drop) break;
       if (drop.url) {
@@ -764,6 +1243,13 @@ Plugins.band_survey.init = function () {
     recCap.chunks = [];
     recCap.meta = null;
     if (!chunks.length) return;
+    var activeMs = Number(meta.activeMs) || 0;
+    var durationMs = Number(meta.durationMs) || 0;
+    var gate = recGateParams();
+    if (gate.discardWeak) {
+      if (activeMs < gate.minActiveMs) return;
+      if (durationMs > 0 && activeMs / durationMs < gate.minActiveRatio) return;
+    }
     var blob = new Blob(chunks, { type: mime });
     if (!blob.size) return;
     var url = URL.createObjectURL(blob);
@@ -785,12 +1271,27 @@ Plugins.band_survey.init = function () {
     setStatus("Saved clip · " + (clip.name || fmtMhz(clip.freq)) + " · Audio clips on the right.");
   }
 
+  function pauseBusyCapture() {
+    var rec = recCap.rec;
+    if (rec && rec.state === "recording" && typeof rec.pause === "function") {
+      try { rec.pause(); } catch (e) {}
+    }
+  }
+
+  function resumeBusyCapture() {
+    var rec = recCap.rec;
+    if (rec && rec.state === "paused" && typeof rec.resume === "function") {
+      try { rec.resume(); } catch (e) {}
+    }
+  }
+
   function stopBusyCapture() {
     var rec = recCap.rec;
     if (rec) {
       recCap.rec = null;
       try {
         rec.onstop = function () { finishClipFromChunks(); };
+        if (rec.state === "paused" && typeof rec.resume === "function") rec.resume();
         if (rec.state !== "inactive") rec.stop();
         else finishClipFromChunks();
       } catch (e) {
@@ -824,7 +1325,7 @@ Plugins.band_survey.init = function () {
     var hrs = Number(S.scheduleHrs) || 0;
     if (hrs < 0.1) return;
     schedTimer = setInterval(function () {
-      if (!running) runSurvey(false);
+      runScheduledScan();
     }, hrs * 3600 * 1000);
   }
 
@@ -1295,6 +1796,38 @@ Plugins.band_survey.init = function () {
     return "<p><b>" + tag + escapeHtml(x.title) + "</b><br>" + escapeHtml(x.fix) + "</p>";
   }
 
+  function isCheckInstallDismissed() {
+    try { return window.localStorage.getItem(LS_CHECK_DISMISS) === "1"; } catch (e) { return false; }
+  }
+
+  function applyCheckInstallDismiss() {
+    var wrap = $("bs-check-wrap");
+    if (wrap) wrap.hidden = isCheckInstallDismissed();
+  }
+
+  function dismissCheckInstall() {
+    try { window.localStorage.setItem(LS_CHECK_DISMISS, "1"); } catch (e) {}
+    applyCheckInstallDismiss();
+  }
+
+  function runCheckInstall(opts) {
+    opts = opts || {};
+    var issues = renderHealth({ all: true, toast: true, ok: true });
+    var hard = issues.filter(function (x) { return x.level === "error"; }).length;
+    var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
+    var extras = issues.filter(function (x) { return x.level === "info"; }).length;
+    if (!hard && !warns) {
+      setStatus("Install looks good. Orange SV is this plugin. Optional extras are listed only so you know they are not required.");
+    } else {
+      setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
+        (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
+        (extras ? extras + " optional extra" + (extras === 1 ? "" : "s") + ". " : "") +
+        "Read the box above, or open Help.");
+    }
+    if (opts.dismissToolbar !== false) dismissCheckInstall();
+    return issues;
+  }
+
   function renderHealth(opts) {
     opts = opts || {};
     applyCaps();
@@ -1417,65 +1950,158 @@ Plugins.band_survey.init = function () {
     }
   }
 
+  function restoreCheckInstall() {
+    try { window.localStorage.removeItem(LS_CHECK_DISMISS); } catch (e) {}
+    applyCheckInstallDismiss();
+    setStatus("Check install restored to toolbar.");
+  }
+
   function helpContentHtml() {
+    var fastHops = ownerOverrideAllowed()
+      ? "<li><b>Own radio — fast hops</b> (Bands tab) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
+      : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>Band survey — help (v41)</h2>" +
+      "<h2>Band survey — help (v56)</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
-      "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after you install or update.</li>" +
-      "<li>Click the orange <b>SV</b> button on the right-hand receiver panel.</li>" +
-      "<li>Click <b>Check install</b>. Green means ready. Red or yellow includes the fix on screen — not only in the browser console.</li>" +
-      "<li>Tick bands (or <b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) and press <b>Scan bands</b>.</li>" +
-      "<li>Hover any control for a short tip. Drag the panel edges or bottom-right corner to resize. Use tabs to switch between Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, and Help. Size is remembered in this browser.</li>" +
+      "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
+      "<li>Click orange <b>SV</b> on the right-hand receiver panel.</li>" +
+      "<li>Click <b>Check install</b>. Green = ready. Red or yellow shows the fix on screen.</li>" +
+      "<li>Tick bands (or a preset) and press <b>Scan bands</b>.</li>" +
+      "<li>Hover any control for a tip. Drag panel edges or the corner to resize — position and size are remembered in this browser.</li>" +
       "</ol>" +
       '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
       "<h3>What this is</h3>" +
-      "<p>A <b>standalone OpenWebRX+ receiver plugin</b>. It walks the bands you tick, counts real waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>.</p>" +
-      "<p>It does <b>not</b> need freq_scanner, scan_hunt, rx_bands, uikit, or notify. Those are optional extras if they are already loaded.</p>" +
-      "<h3>Install (new machine)</h3>" +
-      "<p>Preferred: from this folder run <code>./install.sh</code>. It backs up your files, copies the plugin, and adds one load line. Then hard-refresh. To only verify an existing copy: <code>./install.sh --check</code>. On a public shared receiver, use <code>./install.sh --public</code> so visitors cannot skip the 11s gap.</p>" +
-      "<p>Manual: copy <code>band_survey/</code> into <code>htdocs/plugins/receiver/band_survey/</code> (typical htdocs: <code>/usr/lib/python3/dist-packages/htdocs</code> or <code>/opt/openwebrx/htdocs</code>), then add <code>await Plugins.load(\"band_survey\");</code> inside <code>plugins/receiver/init.js</code>.</p>" +
-      "<h3>How to use</h3>" +
-      "<ol>" +
-      "<li><b>Scan bands</b> adds to Seen totals; <b>Fresh scan</b> starts at zero. <b>Stop</b> auto-bookmarks qualified peaks found so far when <b>Auto-bookmark actives</b> is on (same as scan end).</li>" +
-      "<li><b>Range</b> tab: set start/end MHz (e.g. 109–200) and press <b>Scan range</b> (adds to Seen) or <b>Fresh range scan</b> (clears the peak list first). Not tied to ticked bands — the plugin picks covering SDR profiles, tunes <code>UI.setFrequency</code> at each step, and feeds the same peak list. <b>Step kHz</b> 0 = auto hop (~88% of waterfall span). Use a larger step (e.g. 500–2000 kHz) for wide surveys. <b>Stop</b> works the same as band scan — qualified peaks found so far are auto-bookmarked when <b>Auto-bookmark actives</b> is on (same as scan end). Passes, dwell, and dB over noise come from Settings.</li>" +
-      "<li>Band presets (<b>Air</b> / <b>VHF voice</b> / <b>All VHF</b> / <b>All UHF</b> / <b>Ham</b>) are <b>additive</b> — they add ticks without clearing others. Combine <b>All VHF</b> + <b>All UHF</b> for both ranges. <b>None</b> unticks every band.</li>" +
-      (ownerOverrideAllowed()
-        ? "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> unless <b>Own radio — fast hops</b> is on (~1s). Only tick that on a receiver you run yourself — public sites can ban the client.</li>"
-        : "<li>Same-band hops ~<b>1s</b>. Other-band profile changes stay ~<b>11s</b> — the operator locked fast hops on this public receiver (visitors cannot tick the override). Server bot-ban still applies if it is enabled.</li>") +
-      "<li>Click a MHz to tune, click a name to rename, <b>ign</b> to always skip a birdie (click again to undo).</li>" +
-      "<li>While <b>Scan bookmarks</b> is running: <b>Hold</b> stay, <b>Skip</b> next, <b>Lockout</b> ~30 min, <b>Always skip</b> never land there again and continue (saved in this browser). A <b>busy</b> channel pauses — the orange button becomes <b>Continue scan bookmarks</b>, or use <b>Continue scan</b> in the listen row (same action). <b>Scan bands</b> is separate and does not change label. Undo with <b>un-ign</b> on the peak (untick Hide birdies) or <b>Clear always-skip</b>.</li>" +
-      "<li><b>Hold while busy</b> stays on a live signal until it goes quiet. <b>Jump loudest</b> retunes on <em>this tile only</em>.</li>" +
-      "<li><b>Priority</b> (e.g. 121.5) plus tower/ATIS names are listened first. <b>Only if alone</b> skips retune when other listeners are online — untick it to override.</li>" +
-      "<li><b>Every N hours</b> runs Scan bands while this tab stays open. <b>Export CSV</b> / <b>Export JSON</b> for a log or to merge yellow server bookmarks. <b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser.</li>" +
-      "</ol>" +
-      "<h3>Panel</h3>" +
-      "<p>Scan controls stay pinned at the top — <b>Scan bands</b> always keeps that label; during bookmark scan a busy channel pauses and the button becomes <b>Continue scan bookmarks</b> (same as <b>Continue scan</b> in the listen row). The status line below the toolbar reserves two lines of height so the panel does not bounce when text wraps at minimum width.</p>" +
-      "<p>Tab bar: <b>Bands</b>, <b>Range</b>, <b>Peaks</b>, <b>Bookmarks</b>, <b>Audio</b>, <b>Skip</b>, <b>Settings</b>, <b>Help</b>. <b>Bands</b>: presets and tick list. <b>Range</b>: custom MHz sweep. <b>Peaks</b>: ranked results and export. <b>Bookmarks</b>: local blue and [load] imports. <b>Audio</b>: recorded and loaded clips (persist across refresh). <b>Skip</b>: always-skipped frequencies. <b>Settings</b>: passes, dwell, <b>Open panel on startup</b>, and other options. <b>Help</b>: this guide. Drag panel edges or the corner to resize; default position is 12&nbsp;vw from the left, 28&nbsp;vh from the top, 28&nbsp;vw wide, 58&nbsp;vh tall — position and size are remembered in this browser. Tick <b>Open panel on startup</b> to open SV when OpenWebRX loads; the panel waits for band profiles so the tick list is filled on first open. Click a row to tune; click <b>ren</b> to rename. Hover any checkbox, field, or button for a one-line tip.</p>" +
-      "<h3>Bookmarks</h3>" +
-      "<p><b>Blue</b> bookmarks are local to this browser (<b>[auto]</b> from surveys vs named). <b>Save bookmarks</b> downloads local + <b>[load]</b> as JSON; <b>Load bookmarks</b> imports JSON/CSV (including that save file). <b>Scan bookmarks</b> hops through both. Use <b>ren</b> on any local or loaded row to rename its label (saved in this browser). <b>Clear bookmarks</b> removes all blue local entries; <b>Clear loaded</b> removes only <b>[load]</b>; <b>Clear auto bookmarks</b> removes only <b>[auto]</b>.</p>" +
-      "<p>Yellow <b>server</b> bookmarks are admin-only — a normal user cannot write them. Use <b>Export JSON</b> and merge the <code>bookmarks</code> array on the radio host.</p>" +
-      "<p><b>Import CSV</b> / <b>Import JSON</b> restores Peaks/Seen in this browser from a previous export (file picker; Shift-click to paste). Blue and loaded bookmarks are not changed.</p>" +
-      "<h3>Audio clips</h3>" +
-      "<p>Tick <b>Record busy</b> on Settings before <b>Scan bookmarks</b> — demod audio is captured only while parked on a busy or held channel (bookmark-scan pause), <em>not</em> during the survey walk or quiet hops. Clips appear on the <b>Audio</b> tab and are kept in this browser (IndexedDB) across page refreshes and browser restarts — up to 40 clips or ~48&nbsp;MB, oldest dropped first. Each clip is written to storage as soon as it appears; wait a second before hard-refresh if you just recorded. <b>Save all</b> downloads each clip separately; <b>Save all · ZIP</b> bundles them; <b>Load audio</b> adds files from disk (nothing is uploaded). Click <b>×</b> to remove a clip from the list and browser storage.</p>" +
-      '<p><button type="button" id="bs-restore-first" title="Replace this browser’s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
-      '<button type="button" id="bs-restore-last" title="Replace this browser’s blue bookmarks with the most recent backup.">Restore last backup</button> ' +
-      '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
-      "<h3>If something is wrong</h3>" +
+      "<p>Standalone <b>OpenWebRX+ receiver plugin</b>. Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Does <b>not</b> need freq_scanner, scan_hunt, uikit, or notify — those are optional if already loaded.</p>" +
+      "<h3>Install</h3>" +
+      "<p>Preferred: run <code>./install.sh</code> from the plugin folder (backs up, copies files, adds load line). Verify only: <code>./install.sh --check</code>. Public shared receiver: <code>./install.sh --public</code> (hides fast hops). Manual: copy into <code>htdocs/plugins/receiver/band_survey/</code> and add <code>await Plugins.load(\"band_survey\");</code> in <code>init.js</code>.</p>" +
+      "<h3>Title bar tabs</h3>" +
+      "<p><b>Bands</b> · <b>Range</b> · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b> — each tab holds the controls for that feature. Drag the title bar to move the panel.</p>" +
+      "<h3>Toolbar (always visible)</h3>" +
       "<ul>" +
-      "<li><b>No SV button</b> — plugin not loaded, or this browser cached an old file. Re-run <code>./install.sh --check</code>, then hard-refresh. If the receiver panel is missing, use the fixed SV chip or the red banner.</li>" +
-      "<li><b>No profile list</b> — open the receiver page (not the map / settings page only), wait for OpenWebRX+ to finish loading, hard-refresh.</li>" +
-      "<li><b>No waterfall data</b> — wait a few seconds after the radio connects, or check the SDR is started.</li>" +
-      "<li><b>Local bookmarks API missing</b> — auto-bookmark is off; Export JSON still works.</li>" +
-      "<li><b>Other listeners online</b> — untick Only if alone.</li>" +
-      "<li><b>Nothing counted</b> — lower “dB over noise”, pick a busier band, or wait until the waterfall is moving.</li>" +
-      (ownerOverrideAllowed()
-        ? "<li><b>Banned / kicked</b> — leave <b>Own radio — fast hops</b> off on shared/public receivers (11s gap). Same-band hops and frequencies already on this waterfall skip that wait.</li>"
-        : "<li><b>Banned / kicked</b> — this site locked fast hops (11s profile gap). Same-band hops still ~1s. Hiding the checkbox is not a hard security fence (DevTools can still change the wait), but <b>server bot-ban</b> still kicks clients if the admin has it on.</li>") +
+      "<li><b>Scan bands</b> / <b>Scanning bands</b> — walk ticked bands; adds to Seen counts. Label changes while a band or range scan runs.</li>" +
+      "<li><b>Fresh scan</b> — clear the peak list, then scan ticked bands from scratch.</li>" +
+      "<li><b>Stop</b> — halt band survey, range survey, or bookmark scan. Qualified peaks found so far are auto-bookmarked when <b>Auto-bookmark actives</b> is on (same as normal scan end).</li>" +
+      "<li><b>Scan bookmarks</b> / <b>Scanning bookmarks</b> — loop local and loaded bookmarks until Stop. With <b>Continuous bookmark scan</b> off and a busy channel, becomes <b>Continue scan bookmarks</b>.</li>" +
+      "<li><b>Jump loudest</b> — retune to the strongest peak on <em>this waterfall tile only</em>.</li>" +
+      "<li><b>Check install</b> — verify the plugin and receiver. Dismiss with <b>×</b> or after a successful check; restore via Settings → <b>Re-show Check install</b>. Help tab always has <b>Check install now</b>.</li>" +
+      "<li><b>Hold</b> · <b>Skip</b> · <b>Always skip</b> · <b>Lockout</b> — during bookmark scan: stay, move on, skip forever, or skip for Lockout minutes (Skip tab).</li>" +
       "</ul>" +
-      "<p>Click <b>Check install</b> any time — messages include the fix.</p>" +
-      "<h3>Privacy</h3>" +
-      "<p>Settings, hit lists, bookmark backups, and audio clips live in <b>localStorage / IndexedDB only in this browser</b>. Nothing is uploaded. Clearing site data removes them.</p>"
+      "<h3>Bands tab</h3>" +
+      "<ul>" +
+      "<li><b>Presets</b> — <b>Air</b>, <b>VHF voice</b>, <b>All VHF</b> (30–300&nbsp;MHz), <b>All UHF</b> (300–1000&nbsp;MHz), <b>Ham</b>, <b>All</b>, <b>None</b>. Presets are <b>additive</b> (combine VHF+UHF; <b>None</b> clears all).</li>" +
+      "<li><b>Band checkboxes</b> — include each SDR profile when scanning. Filter box hides non-matching names.</li>" +
+      "<li><b>Band scan options</b> — <b>Passes</b> (walks per run), <b>Dwell s</b> (seconds per band), <b>Min seen</b> (qualify for auto-bookmark / Bookmark qualified), <b>dB over noise</b> (peak threshold).</li>" +
+      "<li><b>Hide birdies</b> — hide always-skipped rows from the peak list.</li>" +
+      "<li><b>Mute while running</b> — silence audio during band/range survey walks.</li>" +
+      fastHops +
+      "</ul>" +
+      "<h3>Range tab</h3>" +
+      "<ul>" +
+      "<li><b>Start MHz</b> / <b>End MHz</b> — sweep span (e.g. 109–200). Not tied to ticked bands; plugin picks covering profiles.</li>" +
+      "<li><b>Step kHz</b> — hop size. <b>0</b> = auto (~88% of waterfall span, min 12.5&nbsp;kHz). Use 500–2000&nbsp;kHz for wide surveys.</li>" +
+      "<li><b>Scan range</b> — add peaks to Seen. <b>Fresh range scan</b> — clear peak list first.</li>" +
+      "<li>Uses Bands tab scan options (passes, dwell, Min seen, dB). <b>Stop</b> auto-bookmarks like band scan.</li>" +
+      "<li><b>Spectrum map</b> — after finish or Stop: green = new, amber = seen, pink = priority; bar height = dB; click a bar to tune.</li>" +
+      "</ul>" +
+      "<h3>Peaks tab</h3>" +
+      "<ul>" +
+      "<li>Ranked table — sort by Seen, MHz, or dB. Click MHz to tune; click name to rename; <b>ign</b> / <b>un-ign</b> to always skip a birdie.</li>" +
+      "<li><b>Bookmark qualified</b> — save every peak with Seen ≥ Min seen as blue bookmark.</li>" +
+      "<li><b>Copy list</b> · <b>Export CSV</b> · <b>Export JSON</b> — log or merge yellow server bookmarks (admin merges <code>bookmarks</code> on host).</li>" +
+      "<li><b>Import CSV</b> · <b>Import JSON</b> — restore Peaks/Seen in this browser (file picker; Shift-click to paste). Does not change bookmarks.</li>" +
+      "<li><b>Clear list</b> — wipe peak table. Bookmarks stay.</li>" +
+      "</ul>" +
+      "<h3>Bookmarks tab</h3>" +
+      "<ul>" +
+      "<li><b>Blue</b> local bookmarks — <b>[auto]</b> from surveys vs named. <b>Amber [load]</b> — imported list (separate from blue).</li>" +
+      "<li><b>Save bookmarks</b> · <b>Load bookmarks</b> · <b>Clear loaded</b> · <b>Clear bookmarks</b> · <b>Clear auto bookmarks</b> · <b>ren</b> to rename.</li>" +
+      "<li><b>Listen s</b> — minimum seconds on each bookmark after ~0.7s tune settle.</li>" +
+      "<li><b>Priority</b> — MHz list (e.g. 121.5); guard/tower/ATIS names added automatically; listened first.</li>" +
+      "<li><b>Auto-bookmark actives</b> — save busy peaks as <b>[auto]</b> bookmarks (on scan end and Stop).</li>" +
+      "<li><b>Scan new bookmarks when done</b> — one-shot bookmark scan after a band survey.</li>" +
+      "<li><b>Hide auto bookmarks</b> — hide <b>[auto]</b> from OpenWebRX bookmark bar (still on Bookmarks tab).</li>" +
+      "<li><b>Continuous bookmark scan</b> (default on) — loop without pausing on busy; auto-hop after Listen s unless you press <b>Hold</b>.</li>" +
+      "<li><b>Hold while busy</b> — when continuous is off: stay until ~1.5s quiet after activity; orange button becomes <b>Continue scan bookmarks</b>.</li>" +
+      "<li><b>Record busy</b> — capture demod audio while parked on a busy/held channel (see Audio tab). Tick before <b>Scan bookmarks</b>.</li>" +
+      "</ul>" +
+      "<h3>Audio tab</h3>" +
+      "<ul>" +
+      "<li><b>Save all</b> · <b>Save all · ZIP</b> · <b>Load audio</b> · <b>Clear all</b> — manage clips (IndexedDB; nothing uploaded).</li>" +
+      "<li><b>Record mode</b> — <b>Original</b> (default): record on first waterfall-busy sample; no squelch/voice gating. <b>Balanced</b>: squelch open + light debounce. <b>Strict voice</b>: squelch + S-meter + SNR, pause on quiet, discard hiss.</li>" +
+      "<li>Fine-tune (Balanced/Strict; Original ignores): <b>Squelch open only</b>, <b>Debounce ms</b>, <b>Quiet pause ms</b>, <b>Min SNR dB</b>, <b>Squelch headroom dB</b>, <b>Min clip voice %</b> (0 = mode default).</li>" +
+      "<li>Clips persist across refresh/restart (default cap 40 clips or ~48&nbsp;MB; set <b>Max audio clips</b> on Settings). Scanner waits ≥2s before hopping so clips are not cut off.</li>" +
+      "</ul>" +
+      "<h3>Skip tab</h3>" +
+      "<ul>" +
+      "<li><b>Always skip</b> list — frequencies skipped forever during scans. Add via <b>ign</b> on peaks/bookmarks or toolbar <b>Always skip</b>. Undo with <b>un-ign</b> or <b>Clear always-skip</b>.</li>" +
+      "<li><b>Lockout min</b> — how long a toolbar <b>Lockout</b> skip lasts (default 30&nbsp;min).</li>" +
+      "</ul>" +
+      "<h3>Settings tab</h3>" +
+      "<p><b>Panel &amp; UI</b></p><ul>" +
+      "<li><b>Open panel on startup</b> — open SV when OpenWebRX loads (waits for band profiles).</li>" +
+      "<li><b>Remember last tab</b> — restore the tab you last used.</li>" +
+      "<li><b>Default tab</b> — which tab on open (Last used, Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, Help).</li>" +
+      "<li><b>UI text size</b> — Small / Default / Large.</li>" +
+      "<li><b>Reset panel layout</b> — default position (12&nbsp;vw / 28&nbsp;vh / 28&nbsp;vw / 58&nbsp;vh).</li>" +
+      "<li><b>Re-show Check install</b> — put Check install back on the toolbar.</li>" +
+      "</ul><p><b>After scan</b> (normal finish, not Stop)</p><ul>" +
+      "<li><b>Switch to Peaks when done</b></li>" +
+      "<li><b>Notify when scan completes</b> — desktop notification + status line.</li>" +
+      "<li><b>Copy peaks after scan</b> — copy peak table to clipboard.</li>" +
+      "<li><b>Sound on new peak</b> — short beep when a new peak is counted during scan.</li>" +
+      "</ul><p><b>Scheduled scan</b> (while this browser tab stays open)</p><ul>" +
+      "<li><b>Every N hours</b> — 0 = off.</li>" +
+      "<li><b>Action</b> — Band scan, Bookmark scan, or Both (band then bookmarks).</li>" +
+      "<li><b>Only when receiver idle</b> — skip if you tuned manually in the last 10&nbsp;min.</li>" +
+      "<li><b>Quiet hours</b> — no auto-scan between start and end times (24h, local).</li>" +
+      "</ul><p><b>Courtesy</b></p><ul>" +
+      "<li><b>Pause scan when I tune manually</b> — stop survey if you click the waterfall.</li>" +
+      "<li><b>Notify new peak</b> — browser notification for unseen peaks.</li>" +
+      "<li><b>Only if alone</b> — do not retune when other listeners are online (untick to override).</li>" +
+      "<li><b>Profile settle ms</b> — wait after profile/frequency change before sampling (0 = default ~700&nbsp;ms).</li>" +
+      "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
+      "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
+      "<li><b>Max peaks</b> — trim oldest when exceeded (0 = unlimited).</li>" +
+      "<li><b>Max audio clips</b> — IndexedDB cap (5–200).</li>" +
+      "<li><b>Clear all plugin data</b> — wipe peaks, bookmarks, audio, skip list, and settings in this browser.</li>" +
+      "</ul><p><b>Homelab</b></p><ul>" +
+      "<li><b>Webhook URL</b> — POST JSON <code>{freq, name, db, band}</code> on each new peak.</li>" +
+      "<li><b>Alert MHz list</b> + <b>± kHz</b> — extra notify and sound when a new peak is within tolerance.</li>" +
+      "</ul>" +
+      "<h3>Scan behaviour</h3>" +
+      "<ul>" +
+      "<li><b>Band survey</b> — walks ticked profiles; same-band hops ~1s; other-band ~11s" + (ownerOverrideAllowed() ? " (or ~1s with Own radio — fast hops)" : "") + ".</li>" +
+      "<li><b>Range survey</b> — hops MHz steps across profiles; shares peak list and scan options with band survey.</li>" +
+      "<li><b>Bookmark scan</b> — continuous mode loops until Stop; pause mode waits on busy unless you Continue/Skip/release Hold.</li>" +
+      "<li><b>Stop + auto-bookmark</b> — qualified peaks (Seen ≥ Min seen) saved as <b>[auto]</b> when Auto-bookmark actives is on.</li>" +
+      "<li><b>Recording</b> — only while parked on a bookmark (Record busy); not during survey walks.</li>" +
+      "</ul>" +
+      "<h3>What is saved where</h3>" +
+      "<ul>" +
+      "<li><b>localStorage</b> — settings, peak list (Seen), bookmark backups, skip list, panel position/size, dismissed Check install.</li>" +
+      "<li><b>IndexedDB</b> — audio clips (survives refresh and browser restart).</li>" +
+      "<li><b>Blue bookmarks</b> — OpenWebRX local bookmark store in this browser.</li>" +
+      "<li>Nothing is uploaded except optional webhook POSTs you configure. Clearing site data removes everything.</li>" +
+      "</ul>" +
+      "<h3>Bookmark backups</h3>" +
+      '<p><button type="button" id="bs-restore-first" title="Replace this browser\u2019s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
+      '<button type="button" id="bs-restore-last" title="Replace this browser\u2019s blue bookmarks with the copy taken on the most recent backup.">Restore last backup</button> ' +
+      '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
+      "<p>Yellow <b>server</b> bookmarks are admin-only. Export JSON and merge on the radio host.</p>" +
+      "<h3>Troubleshooting</h3>" +
+      "<ul>" +
+      "<li><b>No SV button</b> — plugin not loaded or cached old file. Run <code>./install.sh --check</code>, hard-refresh.</li>" +
+      "<li><b>No profile list</b> — open the receiver page (not map/settings only); wait for OpenWebRX+ to load.</li>" +
+      "<li><b>No waterfall data</b> — wait after connect; check SDR is started.</li>" +
+      "<li><b>Local bookmarks API missing</b> — auto-bookmark disabled; Export JSON still works.</li>" +
+      "<li><b>Other listeners online</b> — untick <b>Only if alone</b>.</li>" +
+      "<li><b>Nothing counted</b> — lower dB over noise, pick a busier band, wait for waterfall activity.</li>" +
+      (ownerOverrideAllowed()
+        ? "<li><b>Banned / kicked</b> — leave <b>Own radio — fast hops</b> off on shared receivers.</li>"
+        : "<li><b>Banned / kicked</b> — fast hops locked here (~11s gap). Server bot-ban may still apply.</li>") +
+      "</ul>" +
+      "<p>Toolbar <b>Check install</b> hides after use; <b>Check install now</b> above always works.</p>"
     );
   }
 
@@ -1500,10 +2126,7 @@ Plugins.band_survey.init = function () {
     if ($("bs-help-check")) {
       $("bs-help-check").onclick = function () {
         switchTab("bands");
-        var issues = renderHealth({ all: true, toast: true, ok: true });
-        var hard = issues.filter(function (x) { return x.level === "error"; }).length;
-        var notes = issues.filter(function (x) { return x.level === "warn"; }).length;
-        if (!hard && !notes) setStatus("Install looks good. Tick bands and press Scan bands.");
+        runCheckInstall({ dismissToolbar: false });
       };
     }
   }
@@ -1564,7 +2187,7 @@ Plugins.band_survey.init = function () {
     if (!p) return;
     function finishOpen() {
       p.hidden = false;
-      switchTab("bands");
+      switchTab(resolveOpenTab());
       showPanel();
     }
     if (profiles().length) {
@@ -1758,7 +2381,168 @@ Plugins.band_survey.init = function () {
       ? (S.rangeStepKhz + " kHz steps")
       : ("auto ~" + (stepHz / 1000).toFixed(1) + " kHz from waterfall span");
     el.textContent = n + " tune point" + (n === 1 ? "" : "s") + " · " + stepTxt +
-      " · ×" + (S.passes || 2) + " pass(es) from Settings";
+      " · ×" + (S.passes || 2) + " pass(es) from Bands tab";
+  }
+
+  function peaksInRangeMhz(loMhz, hiMhz) {
+    var lo = Math.min(loMhz, hiMhz) * 1e6;
+    var hi = Math.max(loMhz, hiMhz) * 1e6;
+    return hits.filter(function (h) {
+      if (h.freq < lo - 1 || h.freq > hi + 1) return false;
+      if (S.hideSpurs !== false && isSpur(h)) return false;
+      return true;
+    });
+  }
+
+  function hideRangeSpectrum() {
+    var wrap = $("bs-range-spectrum-wrap");
+    if (wrap) wrap.hidden = true;
+    rangeSpectrum.peaks = [];
+  }
+
+  function showRangeSpectrum(startMhz, endMhz) {
+    if (!startMhz || !endMhz || startMhz >= endMhz) return;
+    rangeSpectrum.startMhz = startMhz;
+    rangeSpectrum.endMhz = endMhz;
+    rangeSpectrum.peaks = peaksInRangeMhz(startMhz, endMhz);
+    var wrap = $("bs-range-spectrum-wrap");
+    if (!wrap) return;
+    var cap = $("bs-range-spectrum-cap");
+    var n = rangeSpectrum.peaks.length;
+    var newN = rangeSpectrum.peaks.filter(function (h) { return h.isNew; }).length;
+    if (cap) {
+      cap.textContent = n
+        ? (n + " peak" + (n === 1 ? "" : "s") + " in " + Number(startMhz).toFixed(3) + "–" +
+          Number(endMhz).toFixed(3) + " MHz" + (newN ? " · " + newN + " new" : ""))
+        : "No peaks in " + Number(startMhz).toFixed(3) + "–" + Number(endMhz).toFixed(3) +
+          " MHz (try lower dB threshold).";
+    }
+    wrap.hidden = false;
+    drawRangeSpectrum();
+  }
+
+  function drawRangeSpectrum() {
+    var cv = $("bs-range-spectrum");
+    var wrap = $("bs-range-spectrum-wrap");
+    if (!cv || !wrap || wrap.hidden) return;
+    var peaks = rangeSpectrum.peaks;
+    var loMhz = rangeSpectrum.startMhz;
+    var hiMhz = rangeSpectrum.endMhz;
+    if (!loMhz || !hiMhz || loMhz >= hiMhz) return;
+
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = cv.clientWidth || 320;
+    var cssH = 100;
+    cv.style.height = cssH + "px";
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    var padL = 36;
+    var padR = 6;
+    var padT = 6;
+    var padB = 18;
+    var plotW = cssW - padL - padR;
+    var plotH = cssH - padT - padB;
+
+    ctx.fillStyle = "#0a0a0a";
+    ctx.fillRect(0, 0, cssW, cssH);
+    ctx.strokeStyle = "#444";
+    ctx.strokeRect(padL + 0.5, padT + 0.5, plotW - 1, plotH - 1);
+
+    ctx.strokeStyle = "#1f2937";
+    for (var g = 1; g < 4; g++) {
+      var gx = padL + (plotW * g / 4);
+      ctx.beginPath();
+      ctx.moveTo(gx, padT);
+      ctx.lineTo(gx, padT + plotH);
+      ctx.stroke();
+    }
+
+    function xForFreq(freqHz) {
+      var frac = (freqHz / 1e6 - loMhz) / (hiMhz - loMhz);
+      return padL + Math.max(0, Math.min(1, frac)) * plotW;
+    }
+
+    ctx.fillStyle = "#9ca3af";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(loMhz.toFixed(3), padL, cssH - 4);
+    ctx.textAlign = "center";
+    ctx.fillText(((loMhz + hiMhz) / 2).toFixed(3), padL + plotW / 2, cssH - 4);
+    ctx.textAlign = "right";
+    ctx.fillText(hiMhz.toFixed(3), padL + plotW, cssH - 4);
+
+    if (!peaks.length) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#6b7280";
+      ctx.fillText("—", padL + plotW / 2, padT + plotH / 2 + 4);
+      return;
+    }
+
+    var maxDb = 0;
+    var minDb = 999;
+    peaks.forEach(function (h) {
+      var db = h.maxDb || h.lastDb || 0;
+      if (db > maxDb) maxDb = db;
+      if (db < minDb) minDb = db;
+    });
+    if (maxDb <= minDb) maxDb = minDb + 1;
+
+    var barW = Math.max(2, Math.min(8, plotW / Math.max(peaks.length, 1) * 0.65));
+    peaks.forEach(function (h) {
+      var x = xForFreq(h.freq);
+      var db = h.maxDb || h.lastDb || minDb;
+      var fracH = (db - minDb) / (maxDb - minDb);
+      var barH = Math.max(4, fracH * (plotH - 4));
+      var color = h.isNew ? "#34d399" : "#fbbf24";
+      if (isPriority(h.freq)) color = "#f472b6";
+      ctx.fillStyle = color;
+      ctx.fillRect(x - barW / 2, padT + plotH - barH, barW, barH);
+      ctx.fillStyle = "rgba(255,255,255,0.75)";
+      ctx.fillRect(x - 0.5, padT + plotH - barH, 1, barH);
+    });
+  }
+
+  function bindRangeSpectrum() {
+    var cv = $("bs-range-spectrum");
+    if (!cv || rangeSpectrumBound) return;
+    rangeSpectrumBound = true;
+    cv.onclick = function (ev) {
+      if (!rangeSpectrum.peaks.length) return;
+      var rect = cv.getBoundingClientRect();
+      var padL = 36;
+      var padR = 6;
+      var plotW = rect.width - padL - padR;
+      if (plotW <= 0) return;
+      var x = ev.clientX - rect.left;
+      var frac = (x - padL) / plotW;
+      if (frac < 0 || frac > 1) return;
+      var mhz = rangeSpectrum.startMhz + frac * (rangeSpectrum.endMhz - rangeSpectrum.startMhz);
+      var targetHz = mhz * 1e6;
+      var best = null;
+      var bestDx = 1e18;
+      rangeSpectrum.peaks.forEach(function (h) {
+        var dx = Math.abs(h.freq - targetHz);
+        if (dx < bestDx) {
+          bestDx = dx;
+          best = h;
+        }
+      });
+      if (!best) return;
+      var tol = (rangeSpectrum.endMhz - rangeSpectrum.startMhz) * 1e6 * 0.02;
+      if (bestDx > tol) return;
+      tuneTo(best.freq, best.pid);
+      setStatus("Tuned to " + fmtMhz(best.freq) + (best.name ? " · " + best.name : "") + ".");
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      var ro = new ResizeObserver(function () {
+        if (!$("bs-range-spectrum-wrap") || $("bs-range-spectrum-wrap").hidden) return;
+        drawRangeSpectrum();
+      });
+      ro.observe(cv);
+    }
   }
 
   async function tuneToCenter(freqHz, profile, statusLabel) {
@@ -1773,8 +2557,8 @@ Plugins.band_survey.init = function () {
       await switchProfile(profile.value);
     }
     if (stopFlag) return false;
-    if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freqHz);
-    var settled = Date.now() + HOP_SETTLE_MS;
+    pluginSetFrequency(freqHz);
+    var settled = Date.now() + getHopSettleMs();
     while (Date.now() < settled && !stopFlag) {
       await sleep(Math.min(150, settled - Date.now()));
     }
@@ -2021,8 +2805,9 @@ Plugins.band_survey.init = function () {
       if (prev[freqKey(h.freq)]) return;
       h._notified = true;
       h.isNew = true;
-      notify("New " + (h.name || existingName(h.freq) || icao833(h.freq) || fmtMhz(h.freq)));
+      notifyNewPeak("New " + (h.name || existingName(h.freq) || icao833(h.freq) || fmtMhz(h.freq)), h);
     });
+    trimPeaksIfNeeded();
   }
 
   function fmtMhz(hz) {
@@ -2248,6 +3033,231 @@ Plugins.band_survey.init = function () {
     return data[i];
   }
 
+  var smeterTrack = [];
+
+  function smeterLin() {
+    var v = window.smeter_level;
+    return (typeof v === "number" && isFinite(v) && v > 0) ? v : null;
+  }
+
+  function smeterDb() {
+    var lin = smeterLin();
+    if (lin == null) return null;
+    if (typeof window.getLogSmeterValue === "function") return window.getLogSmeterValue(lin);
+    return 10 * Math.log10(lin);
+  }
+
+  function squelchSliderDb() {
+    try {
+      if (window.UI && typeof UI.getDemodulatorPanel === "function") {
+        var panel = UI.getDemodulatorPanel();
+        if (panel && panel.el) {
+          var raw = panel.el.find(".openwebrx-squelch-slider").val();
+          var n = parseFloat(raw);
+          if (isFinite(n)) return n;
+        }
+      }
+      if (window.UI && typeof UI.getDemodulator === "function") {
+        var demod = UI.getDemodulator();
+        if (demod && typeof demod.getSquelch === "function") {
+          var sq = demod.getSquelch();
+          if (isFinite(sq)) return sq;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function squelchOpen() {
+    var db = smeterDb();
+    var thr = squelchSliderDb();
+    if (db == null || thr == null) return null;
+    return db >= thr;
+  }
+
+  function trackSmeterSample() {
+    var db = smeterDb();
+    if (db == null) return;
+    smeterTrack.push(db);
+    if (smeterTrack.length > SMETER_TRACK_N) smeterTrack.shift();
+  }
+
+  function smeterModulation() {
+    return stddev(smeterTrack);
+  }
+
+  function isAirbandPid(pid, mode) {
+    var m = mode || guessMode(pid);
+    return /^air_|^vor/.test(pid || "") || m === "am";
+  }
+
+  function levelAtWindow(freq, halfBins) {
+    halfBins = halfBins || 1;
+    var data = wf();
+    var center = window.center_freq;
+    var bw = window.bandwidth;
+    if (!data || !data.length || !bw) return -999;
+    var i = Math.floor((freq - (center - bw / 2)) / bw * data.length);
+    var best = -999;
+    var lo = Math.max(0, i - halfBins);
+    var hi = Math.min(data.length - 1, i + halfBins);
+    for (var j = lo; j <= hi; j++) {
+      if (data[j] > best) best = data[j];
+    }
+    return best;
+  }
+
+  function localNoiseNear(freq, halfBins) {
+    halfBins = halfBins || 6;
+    var data = wf();
+    var center = window.center_freq;
+    var bw = window.bandwidth;
+    if (!data || !data.length || !bw) return noiseFloor(data);
+    var i = Math.floor((freq - (center - bw / 2)) / bw * data.length);
+    var samples = [];
+    var lo = Math.max(0, i - halfBins);
+    var hi = Math.min(data.length - 1, i + halfBins);
+    for (var j = lo; j <= hi; j++) {
+      if (Math.abs(j - i) <= 1) continue;
+      samples.push(data[j]);
+    }
+    if (samples.length < 4) return noiseFloor(data);
+    samples.sort(function (a, b) { return a - b; });
+    return samples[Math.floor(samples.length * 0.35)];
+  }
+
+  function listenRecordThreshold(floor, pid, mode) {
+    var t = Number(S.threshDb) || 7;
+    if (isAirbandPid(pid, mode)) return floor + Math.max(t, 9);
+    if (/^fm_/.test(pid || "")) return floor + Math.max(t - 1, 5);
+    return floor + Math.max(t, 6);
+  }
+
+  function normalizeRecMode(mode) {
+    if (mode === REC_MODE_BALANCED || mode === REC_MODE_STRICT) return mode;
+    return REC_MODE_ORIGINAL;
+  }
+
+  function recGateParams() {
+    var mode = normalizeRecMode(S.recMode);
+    var p = {
+      mode: mode,
+      debounceMs: 250,
+      quietMs: 700,
+      minActiveMs: 450,
+      minActiveRatio: 0.1,
+      minSnr: 4,
+      airMinSnr: 5,
+      wfMinSnr: 5,
+      airWfMinSnr: 6,
+      squelchHeadroom: 1.5,
+      airSquelchHeadroom: 2,
+      modMin: 0.5,
+      airModMin: 0.7,
+      pauseOnQuiet: false,
+      discardWeak: true,
+      squelchOnly: S.recSquelchOnly !== false
+    };
+    if (mode === REC_MODE_ORIGINAL) {
+      p.debounceMs = 0;
+      p.quietMs = 999999;
+      p.minActiveMs = 0;
+      p.minActiveRatio = 0;
+      p.pauseOnQuiet = false;
+      p.discardWeak = false;
+      p.squelchOnly = false;
+    } else if (mode === REC_MODE_STRICT) {
+      p.debounceMs = REC_SIGNAL_DEBOUNCE_MS;
+      p.quietMs = REC_SIGNAL_QUIET_MS;
+      p.minActiveMs = MIN_CLIP_ACTIVE_MS;
+      p.minActiveRatio = MIN_CLIP_ACTIVE_RATIO;
+      p.minSnr = 6;
+      p.airMinSnr = 7;
+      p.wfMinSnr = 6;
+      p.airWfMinSnr = 9;
+      p.squelchHeadroom = 2;
+      p.airSquelchHeadroom = 4;
+      p.modMin = 0.9;
+      p.airModMin = 1.2;
+      p.pauseOnQuiet = true;
+      p.discardWeak = true;
+      p.squelchOnly = S.recSquelchOnly !== false;
+    }
+    var snr = Number(S.recMinSnrDb);
+    if (isFinite(snr) && snr > 0) {
+      p.minSnr = snr;
+      p.airMinSnr = snr + 1;
+      p.wfMinSnr = snr;
+      p.airWfMinSnr = snr + 2;
+    }
+    var hd = Number(S.recSquelchHeadroomDb);
+    if (isFinite(hd) && hd > 0) {
+      p.squelchHeadroom = hd;
+      p.airSquelchHeadroom = hd + 0.5;
+    }
+    var ratioPct = Number(S.recMinClipRatioPct);
+    if (isFinite(ratioPct) && ratioPct > 0) {
+      p.minActiveRatio = Math.min(0.95, ratioPct / 100);
+    }
+    var deb = Number(S.recDebounceMs);
+    if (isFinite(deb) && deb > 0) p.debounceMs = Math.max(0, Math.min(3000, deb));
+    var q = Number(S.recQuietMs);
+    if (isFinite(q) && q > 0) p.quietMs = Math.max(100, Math.min(5000, q));
+    return p;
+  }
+
+  function voiceSignalMetrics(freq, pid, mode) {
+    var air = isAirbandPid(pid, mode);
+    var lvl = levelAtWindow(freq, air ? 4 : 2);
+    var floor = localNoiseNear(freq, air ? 10 : 6);
+    var snr = lvl - floor;
+    var thr = listenRecordThreshold(floor, pid, mode);
+    trackSmeterSample();
+    var sql = squelchOpen();
+    var sdb = smeterDb();
+    var sqlThr = squelchSliderDb();
+    var smeterSnr = (sdb != null && sqlThr != null) ? sdb - sqlThr : null;
+    return {
+      lvl: lvl, floor: floor, snr: snr, thr: thr, sql: sql,
+      sdb: sdb, smeterSnr: smeterSnr, mod: smeterModulation(), air: air
+    };
+  }
+
+  function isRecordableVoice(freq, pid, mode, gate) {
+    gate = gate || recGateParams();
+    var m = voiceSignalMetrics(freq, pid, mode);
+    if (gate.squelchOnly && m.sql === false) return false;
+    if (gate.mode === REC_MODE_ORIGINAL) return true;
+    var wfStrong = m.lvl >= m.thr && m.snr >= (m.air ? gate.airWfMinSnr : gate.wfMinSnr);
+    var headroom = m.air ? gate.airSquelchHeadroom : gate.squelchHeadroom;
+    var minSnr = m.air ? gate.airMinSnr : gate.minSnr;
+    if (m.sql === true) {
+      if (m.smeterSnr != null && m.smeterSnr >= headroom) return true;
+      if (m.mod >= (m.air ? gate.airModMin : gate.modMin) &&
+          m.smeterSnr != null && m.smeterSnr >= Math.max(0.5, headroom - 1.5)) return true;
+      if (gate.mode === REC_MODE_STRICT) return false;
+      return m.smeterSnr != null && m.smeterSnr >= 0.5 && m.mod >= (m.air ? gate.airModMin * 0.7 : gate.modMin * 0.7);
+    }
+    if (m.sql === false) return false;
+    if (gate.squelchOnly) return false;
+    return wfStrong && m.snr >= minSnr;
+  }
+
+  function shouldStartRecording(freq, pid, mode, isBusy, gate) {
+    gate = gate || recGateParams();
+    if (gate.mode === REC_MODE_ORIGINAL) return !!isBusy;
+    return isRecordableVoice(freq, pid, mode, gate);
+  }
+
+  function listenActivityBusy(recGate, isBusy, recordable) {
+    return recGate.mode === REC_MODE_ORIGINAL ? !!isBusy : !!recordable;
+  }
+
+  function listenActivityLabel(recGate, isBusy, recordable) {
+    if (recGate.mode === REC_MODE_ORIGINAL) return isBusy ? " · busy" : " · quiet";
+    return recordable ? " · voice" : (isBusy ? " · busy" : " · quiet");
+  }
+
   function profileValueForPid(pid) {
     var list = profiles();
     for (var i = 0; i < list.length; i++) {
@@ -2280,6 +3290,31 @@ Plugins.band_survey.init = function () {
     return passNum > 0 ? ("Pass " + passNum + " · ") : "";
   }
 
+  function listenBusyThreshold(floor) {
+    return floor + Math.max(3, (Number(S.threshDb) || 7) - 3);
+  }
+
+  function readListenSettings() {
+    if ($("bs-listensec")) S.listenSec = Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4));
+    if ($("bs-holdbusy")) S.holdBusy = $("bs-holdbusy").checked;
+    if ($("bs-continuousbm")) S.continuousBmScan = $("bs-continuousbm").checked;
+    if ($("bs-record")) S.recordBusy = $("bs-record").checked;
+    readRecSettings();
+  }
+
+  function readRecSettings() {
+    if ($("bs-recmode")) {
+      var m = $("bs-recmode").value;
+      S.recMode = normalizeRecMode(m);
+    }
+    if ($("bs-recsquelch")) S.recSquelchOnly = $("bs-recsquelch").checked;
+    if ($("bs-recminsnr")) S.recMinSnrDb = Math.max(0, Number($("bs-recminsnr").value) || 0);
+    if ($("bs-recheadroom")) S.recSquelchHeadroomDb = Math.max(0, Number($("bs-recheadroom").value) || 0);
+    if ($("bs-recminratio")) S.recMinClipRatioPct = Math.max(0, Math.min(95, Number($("bs-recminratio").value) || 0));
+    if ($("bs-recdebounce")) S.recDebounceMs = Math.max(0, Number($("bs-recdebounce").value) || 0);
+    if ($("bs-recquiet")) S.recQuietMs = Math.max(0, Number($("bs-recquiet").value) || 0);
+  }
+
   async function listenBookmarks(items, passNum, loopMode) {
     passNum = passNum || 0;
     loopMode = !!loopMode;
@@ -2290,6 +3325,7 @@ Plugins.band_survey.init = function () {
       return 0;
     }
     if (courtesyBlocked("listening / retuning")) return 0;
+    readListenSettings();
     items = sortListenPriority(items.filter(function (row) {
       var f = (row.hit || row).freq || row.frequency;
       return !shouldSkipTune(f);
@@ -2334,49 +3370,128 @@ Plugins.band_survey.init = function () {
         lastProfileSwitchAt = Date.now();
       }
       if (consumeListenAbort(freq, name)) continue;
-      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+      pluginSetFrequency(freq);
       if (it.mode && window.UI && typeof UI.setModulation === "function") {
         try { UI.setModulation(it.mode, ""); } catch (e3) {}
       }
-      setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Always skip / Continue scan bookmarks]");
-      var settled = Date.now() + HOP_SETTLE_MS;
+      setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Always skip / Stop]");
+      var holdBusy = loopMode ? false : (S.holdBusy !== false);
+      var listenMs = Math.max(1000, (Number(S.listenSec) || 4) * 1000);
+      var settled = Date.now() + getHopSettleMs();
       var abortHop = false;
       while (Date.now() < settled && !stopFlag) {
         if (consumeListenAbort(freq, name)) { abortHop = true; break; }
-        await sleep(Math.min(150, settled - Date.now()));
+        await sleep(Math.min(LISTEN_SAMPLE_MS, Math.max(50, settled - Date.now())));
       }
       if (abortHop || stopFlag) continue;
-      var floor = noiseFloor(wf());
-      var busyThr = floor + Math.max(4, (Number(S.threshDb) || 7) - 2);
-      var lvl = levelAt(freq);
       if (consumeListenAbort(freq, name)) continue;
-      if (lvl < busyThr && listenCmd !== "hold") {
-        setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · quiet, skip · " + name);
-        await sleep(400);
-        continue;
-      }
-      heard++;
+      var listenStart = Date.now();
+      var minUntil = listenStart + listenMs;
+      var busySeen = listenCmd === "hold";
       var recOn = false;
-      if (S.recordBusy) {
-        setRecording(true, { freq: freq, name: name, pid: pid });
-        recOn = true;
-      }
-      setListenPaused(true);
-      setStatus(passLab + "ACTIVE · " + name + " · " + fmtMhz(freq) + " — Continue scan bookmarks or Always skip");
+      var recPaused = false;
+      var recStartedAt = 0;
+      var recActiveMs = 0;
+      var signalSince = 0;
+      var recQuietSince = 0;
+      var lastSampleAt = Date.now();
+      var modeStr = it.mode || guessMode(pid);
+      smeterTrack = [];
+      var recGate = recGateParams();
+      var quietSince = 0;
+      var floor = noiseFloor(wf());
+      var busyThr = listenBusyThreshold(floor);
       while (!stopFlag) {
         if (consumeListenAbort(freq, name)) break;
-        lvl = levelAt(freq);
-        var extra = listenCmd === "hold" ? " · HOLD" : (lvl >= busyThr ? " · busy" : " · quiet");
-        setStatus(passLab + "ACTIVE · " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + extra + " — Continue scan bookmarks");
-        await sleep(250);
+        floor = noiseFloor(wf());
+        busyThr = listenBusyThreshold(floor);
+        var lvl = levelAt(freq);
+        var isBusy = lvl >= busyThr || listenCmd === "hold";
+        var recordable = shouldStartRecording(freq, pid, modeStr, isBusy, recGate);
+        var recordingActive = listenActivityBusy(recGate, isBusy, recordable);
+        var now = Date.now();
+        var dt = Math.min(LISTEN_SAMPLE_MS, Math.max(20, now - lastSampleAt));
+        lastSampleAt = now;
+        if (isBusy) {
+          busySeen = true;
+          quietSince = 0;
+        } else if (busySeen && holdBusy) {
+          if (!quietSince) quietSince = now;
+        }
+        if (recordingActive) {
+          if (!signalSince) signalSince = now;
+          recQuietSince = 0;
+        } else if (recOn) {
+          if (!recQuietSince) recQuietSince = now;
+        } else {
+          signalSince = 0;
+        }
+        if (S.recordBusy) {
+          var debounceMs = recGate.debounceMs;
+          if (!recOn && recordingActive && signalSince && (debounceMs <= 0 || (now - signalSince >= debounceMs))) {
+            setRecording(true, { freq: freq, name: name, pid: pid, activeMs: 0 });
+            recOn = true;
+            recPaused = false;
+            recStartedAt = now;
+            recActiveMs = 0;
+          } else if (recOn) {
+            if (recordingActive) {
+              if (recPaused) {
+                resumeBusyCapture();
+                recPaused = false;
+              }
+              if (recCap.rec && recCap.rec.state === "recording") recActiveMs += dt;
+            } else if (recGate.pauseOnQuiet && recQuietSince && (now - recQuietSince >= recGate.quietMs)) {
+              pauseBusyCapture();
+              recPaused = true;
+            } else if (!recGate.pauseOnQuiet && recCap.rec && recCap.rec.state === "recording") {
+              recActiveMs += dt;
+            }
+            if (recCap.meta) recCap.meta.activeMs = recActiveMs;
+          }
+        }
+        var canLeave = false;
+        if (listenCmd === "hold") {
+          canLeave = false;
+        } else if (loopMode) {
+          canLeave = now >= minUntil;
+        } else if (!holdBusy) {
+          canLeave = now >= minUntil;
+        } else if (!busySeen) {
+          canLeave = now >= minUntil;
+        } else {
+          canLeave = now >= minUntil && quietSince && (now - quietSince >= QUIET_HOLD_MS);
+        }
+        if (busySeen && !loopMode) {
+          setListenPaused(true);
+          var busyExtra = listenCmd === "hold" ? " · HOLD" : listenActivityLabel(recGate, isBusy, recordable);
+          setStatus(passLab + "ACTIVE · " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + busyExtra + " — Continue scan bookmarks");
+        } else if (busySeen) {
+          var busyExtraLoop = listenCmd === "hold" ? " · HOLD" : listenActivityLabel(recGate, isBusy, recordable);
+          setStatus(passLab + "ACTIVE · " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB" + busyExtraLoop);
+        } else {
+          if (!loopMode) setListenPaused(false);
+          setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB · listening");
+        }
+        if (canLeave) break;
+        await sleep(LISTEN_SAMPLE_MS);
       }
-      setListenPaused(false);
-      if (recOn) setRecording(false);
+      if (!loopMode) setListenPaused(false);
+      if (busySeen) heard++;
+      if (recOn) {
+        var recLeft = MIN_RECORD_MS - (Date.now() - recStartedAt);
+        if (recLeft > 0) await sleep(recLeft);
+        if (recCap.meta) {
+          recCap.meta.activeMs = recActiveMs;
+          recCap.meta.durationMs = Date.now() - recStartedAt;
+        }
+        setRecording(false);
+      }
     }
-    listenCmd = "";
-    listenFreq = 0;
-    setListenPaused(false);
-    setRecording(false);
+      listenCmd = "";
+      listenFreq = 0;
+      if (!loopMode) setListenPaused(false);
+      setRecording(false);
     if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
     if (loopMode) return heard;
     if (stopFlag) setStatus(passLab + "Listen stopped after " + heard + " busy bookmarks.");
@@ -2409,7 +3524,7 @@ Plugins.band_survey.init = function () {
         if (pass === 1) {
           setStatus("Scan bookmarks — looping " + list.length + " target(s) until Stop");
         }
-        var heard = await listenBookmarks(list, pass, true);
+        var heard = await listenBookmarks(list, pass, continuousBmScanOn());
         totalHeard += heard || 0;
         if (stopFlag) break;
         setStatus("Pass " + pass + " done · " + (heard || 0) + " busy — restarting bookmark scan…");
@@ -2417,6 +3532,7 @@ Plugins.band_survey.init = function () {
       }
       listenCmd = "";
       listenFreq = 0;
+      setListenScanRunning(false);
       setListenPaused(false);
       setRecording(false);
       if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
@@ -2426,6 +3542,7 @@ Plugins.band_survey.init = function () {
     } catch (err) {
       listenFreq = 0;
       setRecording(false);
+      setListenScanRunning(false);
       setListenPaused(false);
       setStatus(friendlyError(err, "Listen"));
       toast(friendlyError(err, "Listen"));
@@ -2510,20 +3627,37 @@ Plugins.band_survey.init = function () {
         pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === name);
       });
     }
-    try { sessionStorage.setItem(SS_TAB, name); } catch (e) {}
+    try {
+      sessionStorage.setItem(SS_TAB, name);
+      if (S.rememberTab !== false) window.localStorage.setItem(SS_TAB, name);
+    } catch (e) {}
+  }
+
+  function visibleBookmarkRows() {
+    var list = localBookmarkList() || [];
+    var visibleLocal = list.filter(function (b) { return !isIgnoredFreq(b.frequency); });
+    var visibleLoaded = loadedBookmarks.filter(function (b) { return !isIgnoredFreq(b.frequency); });
+    return {
+      local: visibleLocal,
+      loaded: visibleLoaded,
+      total: visibleLocal.length + visibleLoaded.length
+    };
+  }
+
+  function tabPeakCount() {
+    if (!S.hideSpurs) return hits.length;
+    return hits.filter(function (h) { return !isSpur(h); }).length;
   }
 
   function updateTabLabels() {
     var peaksBtn = document.querySelector('#bs-tabs .bs-tab[data-tab="peaks"]');
     if (peaksBtn) {
-      var pn = hits.length;
+      var pn = tabPeakCount();
       peaksBtn.textContent = pn ? ("Peaks " + pn) : "Peaks";
     }
     var bmBtn = document.querySelector('#bs-tabs .bs-tab[data-tab="bookmarks"]');
     if (bmBtn) {
-      var list = localBookmarkList() || [];
-      var bn = list.filter(function (b) { return !isIgnoredFreq(b.frequency); }).length +
-        loadedBookmarks.filter(function (b) { return !isIgnoredFreq(b.frequency); }).length;
+      var bn = visibleBookmarkRows().total;
       bmBtn.textContent = bn ? ("Bookmarks " + bn) : "Bookmarks";
     }
     var audBtn = document.querySelector('#bs-tabs .bs-tab[data-tab="audio"]');
@@ -2749,7 +3883,7 @@ Plugins.band_survey.init = function () {
       tuneTo(hit.freq, hit.pid);
       return;
     }
-    if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+    pluginSetFrequency(freq);
     if (mode && window.UI && typeof UI.setModulation === "function") {
       try { UI.setModulation(mode, ""); } catch (e) {}
     }
@@ -2757,16 +3891,20 @@ Plugins.band_survey.init = function () {
 
   function renderBookmarkPane() {
     var host = $("bs-bmlist");
-    if (!host) return;
+    if (!host) {
+      updateTabLabels();
+      return;
+    }
     var list = localBookmarkList();
     if (!list) list = [];
     var skipN = (S.ignoredFreqs || []).length;
-    var visibleLocal = list.slice().sort(function (a, b) {
+    var bmRows = visibleBookmarkRows();
+    var visibleLocal = bmRows.local.slice().sort(function (a, b) {
       return (a.frequency || 0) - (b.frequency || 0);
-    }).filter(function (b) { return !isIgnoredFreq(b.frequency); });
-    var visibleLoaded = loadedBookmarks.slice().sort(function (a, b) {
+    });
+    var visibleLoaded = bmRows.loaded.slice().sort(function (a, b) {
       return a.frequency - b.frequency;
-    }).filter(function (b) { return !isIgnoredFreq(b.frequency); });
+    });
     var count = $("bs-bmcount");
     if (count) {
       var parts = [];
@@ -2820,19 +3958,20 @@ Plugins.band_survey.init = function () {
     var skipHost = $("bs-skiplist");
     var ign = (S.ignoredFreqs || []).slice().sort(function (a, b) { return a - b; });
     if (skipHead) skipHead.textContent = ign.length ? ("Always skip (" + ign.length + ")") : "Always skip";
-    if (!skipHost) return;
-    if (!ign.length) {
-      skipHost.innerHTML = '<p class="bs-empty">None. Always skip or ign on a peak adds frequencies here.</p>';
-      return;
+    if (skipHost) {
+      if (!ign.length) {
+        skipHost.innerHTML = '<p class="bs-empty">None. Always skip or ign on a peak adds frequencies here.</p>';
+      } else {
+        skipHost.innerHTML = ign.map(function (f) {
+          var known = existingName(f) || "";
+          return '<div class="bs-skip-row">' +
+            '<button type="button" class="bs-tune" data-skip-tune="' + f + '" title="Tune to this frequency.">' +
+            fmtMhz(f) + "</button>" +
+            (known ? '<span class="bs-bm-name">' + escapeHtml(known) + "</span>" : "") +
+            '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + f + '" title="Stop always-skipping this frequency.">un-ign</button></div>';
+        }).join("");
+      }
     }
-    skipHost.innerHTML = ign.map(function (f) {
-      var known = existingName(f) || "";
-      return '<div class="bs-skip-row">' +
-        '<button type="button" class="bs-tune" data-skip-tune="' + f + '" title="Tune to this frequency.">' +
-        fmtMhz(f) + "</button>" +
-        (known ? '<span class="bs-bm-name">' + escapeHtml(known) + "</span>" : "") +
-        '<button type="button" class="bs-tiny bs-on" data-bm-ign="' + f + '" title="Stop always-skipping this frequency.">un-ign</button></div>';
-    }).join("");
     renderAudioClips();
     updateTabLabels();
   }
@@ -2845,9 +3984,13 @@ Plugins.band_survey.init = function () {
     var host = $("bs-audiolist");
     var head = $("bs-audiohead");
     if (head) head.textContent = audioClips.length ? ("Audio clips (" + audioClips.length + ")") : "Audio clips";
-    if (!host) return;
+    if (!host) {
+      updateTabLabels();
+      return;
+    }
     if (!audioClips.length) {
       host.innerHTML = '<p class="bs-empty">None yet. Tick Record busy, then Scan bookmarks — clips are saved while parked on a busy/held channel, not during the survey walk. Clips persist in this browser until you remove them (×). Load audio adds files from disk.</p>';
+      updateTabLabels();
       return;
     }
     host.innerHTML = audioClips.map(function (c) {
@@ -2864,6 +4007,7 @@ Plugins.band_survey.init = function () {
         '<button type="button" class="bs-tiny" data-clip-del="' + c.id + '" title="Remove this clip from the list (does not delete a file you already saved).">×</button>' +
         "</div>";
     }).join("");
+    updateTabLabels();
   }
 
   function stopClipPlayback() {
@@ -3023,6 +4167,26 @@ Plugins.band_survey.init = function () {
       return false;
     });
     renderAudioClips();
+  }
+
+  function clearAllAudioClips() {
+    if (!audioClips.length) {
+      setStatus("No audio clips to clear.");
+      return;
+    }
+    if (!window.confirm("Remove all " + audioClips.length + " audio clip(s) from this browser? Files you already saved to disk are not deleted.")) return;
+    var n = audioClips.length;
+    stopClipPlayback();
+    audioClips.forEach(function (c) {
+      if (c.url) {
+        try { URL.revokeObjectURL(c.url); } catch (e) {}
+      }
+    });
+    audioClips = [];
+    renderAudioClips();
+    clearAllPersistedAudioClips().then(function () {
+      setStatus("Cleared " + n + " audio clip" + (n === 1 ? "" : "s") + ".");
+    });
   }
 
   function parseFreqFromAudioName(name) {
@@ -3248,7 +4412,10 @@ Plugins.band_survey.init = function () {
   function renderHits() {
     updateClearSkipBtn();
     var host = $("bs-hitwrap");
-    if (!host) return;
+    if (!host) {
+      updateTabLabels();
+      return;
+    }
     if (!hits.length) {
       host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Scan bands or Fresh scan.</p>';
       renderBookmarkPane();
@@ -3537,12 +4704,16 @@ Plugins.band_survey.init = function () {
     }
     running = true;
     stopFlag = false;
+    hideRangeSpectrum();
+    var rangeScanLo = Number(S.rangeStartMhz);
+    var rangeScanHi = Number(S.rangeEndMhz);
     var snapBefore = loadSnap();
     if (fresh) {
       hits = [];
       tileLooks = {};
     }
     renderHits();
+    setSurveyRunning(true);
     var btn = $("bs-toggle-btn");
     if (btn) btn.classList.add("bs-running");
     muteOn();
@@ -3551,6 +4722,7 @@ Plugins.band_survey.init = function () {
     if (!p0) {
       setStatus("No profile covers " + fmtMhz(startHz) + ". Add a band that includes this MHz.");
       running = false;
+      setSurveyRunning(false);
       if (btn) btn.classList.remove("bs-running");
       muteOff();
       return;
@@ -3561,9 +4733,11 @@ Plugins.band_survey.init = function () {
         if (stopFlag) {
           var finPrep = finalizeSurveyScan(snapBefore, "range");
           setStatus(finPrep.stopStatus);
+          showRangeSpectrum(rangeScanLo, rangeScanHi);
           muteOff();
         }
         running = false;
+        setSurveyRunning(false);
         if (btn) btn.classList.remove("bs-running");
         if (!stopFlag) muteOff();
         renderHits();
@@ -3603,9 +4777,14 @@ Plugins.band_survey.init = function () {
       }
       var finRange = finalizeSurveyScan(snapBefore, "range");
       var freshBm = finRange.freshBm;
+      showRangeSpectrum(rangeScanLo, rangeScanHi);
       if (stopFlag) setStatus(finRange.stopStatus);
-      else setStatus(finRange.doneStatus);
+      else {
+        setStatus(finRange.doneStatus);
+        onSurveyComplete(finRange, false);
+      }
       muteOff();
+      setSurveyRunning(false);
       if (!stopFlag && S.scanAfter && freshBm.length) {
         setStatus(finRange.doneStatus + " Listening to new bookmarks…");
         await listenBookmarks(freshBm);
@@ -3619,6 +4798,7 @@ Plugins.band_survey.init = function () {
       renderHealth({ all: true, toast: false });
     }
     running = false;
+    setSurveyRunning(false);
     if (btn) btn.classList.remove("bs-running");
     if (!S.scanAfter) muteOff();
     renderHits();
@@ -3667,6 +4847,7 @@ Plugins.band_survey.init = function () {
       tileLooks = {};
     }
     renderHits();
+    setSurveyRunning(true);
     var btn = $("bs-toggle-btn");
     if (btn) btn.classList.add("bs-running");
     muteOn();
@@ -3708,8 +4889,12 @@ Plugins.band_survey.init = function () {
       var finBand = finalizeSurveyScan(snapBefore, "band");
       var freshBm = finBand.freshBm;
       if (stopFlag) setStatus(finBand.stopStatus);
-      else setStatus(finBand.doneStatus);
+      else {
+        setStatus(finBand.doneStatus);
+        onSurveyComplete(finBand, false);
+      }
       muteOff();
+      setSurveyRunning(false);
       if (!stopFlag && S.scanAfter && freshBm.length) {
         setStatus(finBand.doneStatus + " Listening to new bookmarks…");
         await listenBookmarks(freshBm);
@@ -3723,6 +4908,7 @@ Plugins.band_survey.init = function () {
       renderHealth({ all: true, toast: false });
     }
     running = false;
+    setSurveyRunning(false);
     if (btn) btn.classList.remove("bs-running");
     if (!S.scanAfter) muteOff();
     renderHits();
@@ -3744,7 +4930,7 @@ Plugins.band_survey.init = function () {
     }
     var go = want ? switchProfile(want) : Promise.resolve(true);
     go.then(function () {
-      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(freq);
+      pluginSetFrequency(freq);
       var hit = null;
       for (var j = 0; j < hits.length; j++) {
         if (hits[j].freq === freq) hit = hits[j];
@@ -4225,7 +5411,7 @@ Plugins.band_survey.init = function () {
       renderHealth();
       return;
     }
-    UI.setFrequency(p.freq);
+    pluginSetFrequency(p.freq);
     if (window.UI && typeof UI.setModulation === "function") {
       try { UI.setModulation(guessMode(pid), ""); } catch (e) {}
     }
@@ -4238,13 +5424,19 @@ Plugins.band_survey.init = function () {
   }
 
   function readForm() {
+    if ($("bs-passes")) S.passes = Math.max(1, Math.min(MAX_PASSES, Number($("bs-passes").value) || 2));
+    if ($("bs-dwell")) S.dwell = Math.max(0.8, Math.min(15, Number($("bs-dwell").value) || 2.5));
+    if ($("bs-minhits")) S.minHits = Math.max(1, Math.min(50, Number($("bs-minhits").value) || 3));
+    if ($("bs-thresh")) S.threshDb = Math.max(4, Math.min(25, Number($("bs-thresh").value) || 10));
     S.hideAuto = $("bs-hideauto") ? $("bs-hideauto").checked : S.hideAuto;
     S.autoBm = $("bs-autobm") ? $("bs-autobm").checked : S.autoBm;
     S.mute = $("bs-mute") ? $("bs-mute").checked : S.mute;
     S.hideSpurs = $("bs-hidespurs") ? $("bs-hidespurs").checked : S.hideSpurs;
     S.scanAfter = $("bs-scanafter") ? $("bs-scanafter").checked : S.scanAfter;
     S.holdBusy = $("bs-holdbusy") ? $("bs-holdbusy").checked : S.holdBusy;
+    S.continuousBmScan = $("bs-continuousbm") ? $("bs-continuousbm").checked : S.continuousBmScan;
     S.recordBusy = $("bs-record") ? $("bs-record").checked : S.recordBusy;
+    readRecSettings();
     S.notifyNew = $("bs-notify") ? $("bs-notify").checked : S.notifyNew;
     S.aloneOnly = $("bs-alone") ? $("bs-alone").checked : S.aloneOnly;
     S.ownRadio = ownerOverrideAllowed() && $("bs-ownradio") ? $("bs-ownradio").checked : false;
@@ -4253,15 +5445,35 @@ Plugins.band_survey.init = function () {
     if ($("bs-priority")) S.priority = $("bs-priority").value || "";
     if ($("bs-lockmin")) S.lockoutMin = Math.max(1, Math.min(240, Number($("bs-lockmin").value) || 30));
     if ($("bs-sched")) S.scheduleHrs = Math.max(0, Math.min(24, Number($("bs-sched").value) || 0));
+    if ($("bs-remember-tab")) S.rememberTab = $("bs-remember-tab").checked;
+    if ($("bs-default-tab")) S.defaultTab = $("bs-default-tab").value || "last";
+    if ($("bs-switch-peaks")) S.switchPeaksOnDone = $("bs-switch-peaks").checked;
+    if ($("bs-notify-done")) S.notifyScanDone = $("bs-notify-done").checked;
+    if ($("bs-sound-peak")) S.soundNewPeak = $("bs-sound-peak").checked;
+    if ($("bs-sched-action")) S.schedAction = $("bs-sched-action").value || "band";
+    if ($("bs-sched-idle")) S.schedIdleOnly = $("bs-sched-idle").checked;
+    if ($("bs-quiet-start")) S.quietStart = $("bs-quiet-start").value || "";
+    if ($("bs-quiet-end")) S.quietEnd = $("bs-quiet-end").value || "";
+    if ($("bs-pause-tune")) S.pauseOnManualTune = $("bs-pause-tune").checked;
+    if ($("bs-settle-ms")) S.profileSettleMs = Math.max(0, Number($("bs-settle-ms").value) || 0);
+    if ($("bs-max-peaks")) S.maxPeaks = Math.max(0, Number($("bs-max-peaks").value) || 0);
+    if ($("bs-max-clips")) S.maxAudioClips = Math.max(5, Math.min(200, Number($("bs-max-clips").value) || 40));
+    if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
+    if ($("bs-copy-done")) S.copyPeaksOnDone = $("bs-copy-done").checked;
+    if ($("bs-alert-freqs")) S.alertFreqs = $("bs-alert-freqs").value || "";
+    if ($("bs-alert-offset")) S.alertOffsetKhz = Math.max(1, Number($("bs-alert-offset").value) || 25);
+    if ($("bs-text-size")) S.uiTextSize = $("bs-text-size").value || "default";
     saveSettings();
+    applyUiTextSize();
     applySchedule();
     refreshBookmarks();
     renderHits();
+    updateRangeEstimate();
   }
 
   function startListenScan() {
-    if (running) return;
-    S.listenSec = $("bs-listensec") ? Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4)) : S.listenSec;
+    if (running || listenScanRunning) return;
+    readListenSettings();
     saveSettings();
     if (!scanTargetItems().length && !scanTargetItems(true).length) {
       setStatus("No bookmarks or qualified peaks to scan.");
@@ -4269,14 +5481,17 @@ Plugins.band_survey.init = function () {
     }
     stopFlag = false;
     running = true;
+    setListenScanRunning(true);
     var btn = $("bs-toggle-btn");
     if (btn) btn.classList.add("bs-running");
     runListenScanLoop().then(function () {
       running = false;
+      setListenScanRunning(false);
       if (btn) btn.classList.remove("bs-running");
       renderHits();
     }).catch(function (err) {
       running = false;
+      setListenScanRunning(false);
       if (btn) btn.classList.remove("bs-running");
       setStatus(friendlyError(err, "Listen"));
     });
@@ -4296,20 +5511,23 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-tab" data-tab="bookmarks" role="tab" title="Local and loaded bookmarks.">Bookmarks</button>' +
       '<button type="button" class="bs-tab" data-tab="audio" role="tab" title="Session audio clips.">Audio</button>' +
       '<button type="button" class="bs-tab" data-tab="skip" role="tab" title="Always-skipped frequencies.">Skip</button>' +
-      '<button type="button" class="bs-tab" data-tab="settings" role="tab" title="Passes, dwell, and options.">Settings</button>' +
+      '<button type="button" class="bs-tab" data-tab="settings" role="tab" title="Panel startup, schedule, and notifications.">Settings</button>' +
       '<button type="button" class="bs-tab" data-tab="help" role="tab" title="Help and install guide.">Help</button>' +
       "</div>" +
       '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button></div>' +
       '<div class="bs-toolbar" id="bs-toolbar">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
-      '<p class="bs-note">Tick bands on the Bands tab, then Scan bands (add to Seen) or Fresh scan. Use <b>Range</b> for a custom MHz sweep. Peaks, Bookmarks, Audio, and Skip are on their tabs.</p>' +
+      '<p class="bs-note">Tick bands below, then Scan bands (add to Seen) or Fresh scan. Use <b>Range</b> for a custom MHz sweep. Options for each feature are on its tab.</p>' +
       '<div class="bs-row">' +
       '<button type="button" class="bs-primary" id="bs-start" title="Walk ticked bands and add to Seen counts.">Scan bands</button>' +
       '<button type="button" id="bs-fresh" title="Clear peak list and scan from scratch.">Fresh scan</button>' +
       '<button type="button" class="bs-stop" id="bs-stop" title="Stop the survey or bookmark scan right now.">Stop</button>' +
       '<button type="button" class="bs-scan-top" id="bs-listen-top" title="Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded.">Scan bookmarks</button>' +
       '<button type="button" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
+      '<span class="bs-check-wrap" id="bs-check-wrap">' +
       '<button type="button" id="bs-check" title="Check that this page can run Band survey and show any fix on screen.">Check install</button>' +
+      '<button type="button" class="bs-check-dismiss" id="bs-check-dismiss" title="Hide Check install from the toolbar (Help tab still has Check install now).">×</button>' +
+      "</span>" +
       '<span class="bs-count" id="bs-selcount"></span>' +
       "</div>" +
       '<div class="bs-row">' +
@@ -4317,7 +5535,6 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-skip" title="Leave this frequency and go to the next bookmark.">Skip</button>' +
       '<button type="button" id="bs-alwaysskip" title="Skip this MHz forever and continue the scan.">Always skip</button>' +
       '<button type="button" id="bs-lockout" title="Skip this frequency for Lockout minutes (saved in this browser).">Lockout</button>' +
-      '<button type="button" id="bs-contscan" title="Leave this busy channel and continue hopping through bookmarks (same as Continue scan bookmarks).">Continue scan</button>' +
       '<span class="bs-hint" id="bs-hophint">busy waits · Always skip = never again · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
@@ -4335,11 +5552,24 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
       '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px" title="Type to hide band names that do not match.">' +
       "</div>" +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="Passes, dwell, and peak-detection thresholds for band and range scans.">Band scan options</summary>' +
+      '<div class="bs-row">' +
+      "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"100\" step=\"1\" style=\"width:3.4em\" title=\"How many times to walk the ticked bands in one run.\"></label>" +
+      "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each band while counting peaks.\"></label>" +
+      "<label title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\">Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\" title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\"></label>" +
+      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Hide always-skipped / birdie rows from the list."><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
+      '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute while running</label>' +
+      '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
+      "</div></details>" +
       '<div class="bs-bands-wrap" id="bs-bands-wrap">' +
       '<div class="bs-bands" id="bs-bands"></div>' +
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-range" data-tab="range" role="tabpanel">' +
-      '<p class="bs-note">Sweep any MHz span — hops profile tiles and tunes <code>UI.setFrequency</code> at each step. Uses dwell, passes, and dB settings from Settings. Peaks land on the Peaks tab.</p>' +
+      '<p class="bs-note">Sweep any MHz span — hops profile tiles and tunes <code>UI.setFrequency</code> at each step. Uses <b>Band scan options</b> from the Bands tab (passes, dwell, Min seen, dB). Peaks land on the Peaks tab.</p>' +
       '<div class="bs-row">' +
       '<label title="Start of the sweep in MHz (e.g. 109).">Start MHz <input type="number" id="bs-range-start" min="0.1" max="6000" step="0.001" style="width:6em" title="Start of the sweep in MHz (e.g. 109)."></label>' +
       '<label title="End of the sweep in MHz (e.g. 200). Must be greater than start.">End MHz <input type="number" id="bs-range-end" min="0.1" max="6000" step="0.001" style="width:6em" title="End of the sweep in MHz (e.g. 200). Must be greater than start."></label>' +
@@ -4350,19 +5580,24 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-range-fresh" title="Clear the peak list, then scan this range from scratch.">Fresh range scan</button>' +
       "</div>" +
       '<p class="bs-hint" id="bs-range-est"></p>' +
+      '<div id="bs-range-spectrum-wrap" hidden>' +
+      '<p class="bs-hint" id="bs-range-spectrum-cap"></p>' +
+      '<canvas id="bs-range-spectrum" title="Peak map for the last range scan. Click a bar to tune."></canvas>' +
+      '<p class="bs-hint bs-range-spectrum-leg">Green = new · amber = seen · pink = priority · bar height = dB · click to tune</p>' +
+      "</div>" +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-peaks" data-tab="peaks" role="tabpanel">' +
       '<div class="bs-row">' +
       '<button type="button" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
-      '<button type="button" id="bs-listen" title="Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded.">Scan bookmarks</button>' +
       '<button type="button" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
       '<button type="button" id="bs-csv" title="Download the peak list as a CSV file.">Export CSV</button>' +
       '<button type="button" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
       '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
-      '<button type="button" class="bs-tiny" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
+      '<button type="button" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
       "</div>" +
+      '<p class="bs-hint">Min seen and dB over noise are on the <b>Bands</b> tab — they control which peaks qualify for Bookmark qualified.</p>' +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo)</div>" +
       '<div class="bs-tab-scroll" id="bs-hitwrap"></div>' +
       "</div>" +
@@ -4375,6 +5610,20 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<span class="bs-count" id="bs-bmcount"></span>' +
       "</div>" +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="How bookmark scan listens, records, and auto-saves peaks.">Bookmark scan options</summary>' +
+      '<div class="bs-row">' +
+      "<label title=\"Minimum seconds on each bookmark after tune settle; with Hold while busy, stays longer until quiet.\">Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\" title=\"Minimum seconds on each bookmark after tune settle; with Hold while busy, stays longer until quiet.\"></label>" +
+      '<label title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically.">Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Save busy peaks as blue [auto] bookmarks in this browser."><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
+      '<label class="bs-chk" title="After a survey, hop through the new auto bookmarks."><input type="checkbox" id="bs-scanafter"> Scan new bookmarks when done</label>' +
+      '<label class="bs-chk" title="Hide [auto] bookmarks from the OpenWebRX bookmark bar (they still show in Bookmarks tab)."><input type="checkbox" id="bs-hideauto"> Hide auto bookmarks</label>' +
+      '<label class="bs-chk" title="Loop bookmarks until Stop without pausing on busy traffic — auto-hop after Listen s."><input type="checkbox" id="bs-continuousbm"> Continuous bookmark scan</label>' +
+      '<label class="bs-chk" title="After Listen s minimum, stay while the waterfall shows activity and leave ~1.5s after quiet."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
+      '<label class="bs-chk" title="Record demod while a bookmark is busy or voice-gated (see Record mode on Audio tab)."><input type="checkbox" id="bs-record"> Record busy</label>' +
+      "</div></details>" +
       '<p class="bs-note">Local = blue [auto] · Loaded = [load] import · click to tune · ren to rename</p>' +
       '<div class="bs-tab-scroll bs-bm-scroll" id="bs-bmlist"></div>' +
       '<div class="bs-tab-scroll bs-loaded-scroll" id="bs-loadedlist"></div>' +
@@ -4384,51 +5633,120 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips as separate files (MHz/timestamp names). Includes busy recordings and files you loaded.">Save all</button>' +
       '<button type="button" id="bs-aud-save-zip" title="Download all Audio clips as one ZIP file. Loads JSZip from jsDelivr on first use.">Save all · ZIP</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
+      '<button type="button" id="bs-aud-clear" title="Remove every audio clip from this browser (IndexedDB). Files you already saved to disk are not deleted.">Clear all</button>' +
       "</div>" +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="Recording quality and voice-gating fine-tune.">Recording options</summary>' +
+      '<div class="bs-row bs-rec-tune" id="bs-rec-tune">' +
+      '<label title="Original = as first shipped (waterfall busy). Balanced = squelch open + light gating. Strict = voice/S-meter gating.">Record mode <select id="bs-recmode" title="Original = as first shipped (waterfall busy). Balanced = squelch open + light gating. Strict = voice/S-meter gating.">' +
+      '<option value="original">Original (as first shipped)</option>' +
+      '<option value="balanced">Balanced</option>' +
+      '<option value="strict">Strict voice</option>' +
+      "</select></label>" +
+      '<label class="bs-chk" title="Start recording only when demod squelch is open — avoids static/carrier when squelch is closed (recommended for airband)."><input type="checkbox" id="bs-recsquelch"> Squelch open only</label>' +
+      '<label title="0 = mode default. Wait this long after signal before MediaRecorder starts.">Debounce ms <input type="number" id="bs-recdebounce" min="0" max="3000" step="50" style="width:4.2em" title="0 = mode default. Wait after signal before record starts."></label>' +
+      '<label title="0 = mode default. Strict mode pauses recording after this much quiet.">Quiet pause ms <input type="number" id="bs-recquiet" min="0" max="5000" step="50" style="width:4.5em" title="0 = mode default. Pause recording after this much quiet (Strict)."></label>' +
+      "</div>" +
+      '<div class="bs-row bs-rec-tune">' +
+      '<label title="0 = mode default. Minimum waterfall SNR for voice gating.">Min SNR dB <input type="number" id="bs-recminsnr" min="0" max="25" step="1" style="width:3.6em" title="0 = mode default. Minimum waterfall SNR."></label>' +
+      '<label title="0 = mode default. S-meter must be this many dB above squelch slider.">Squelch headroom dB <input type="number" id="bs-recheadroom" min="0" max="15" step="0.5" style="width:3.8em" title="0 = mode default. S-meter above squelch slider."></label>' +
+      '<label title="0 = mode default. Discard clip if active voice time is below this % of clip length.">Min clip voice % <input type="number" id="bs-recminratio" min="0" max="95" step="1" style="width:3.8em" title="0 = mode default. Min active voice % to keep clip."></label>' +
+      "</div></details>" +
       '<b id="bs-audiohead">Audio clips</b>' +
-      '<p class="bs-note">busy / held channels · saved in this browser · tick Record busy on Settings before Scan bookmarks</p>' +
+      '<p class="bs-note">busy / held channels · saved in this browser · tick <b>Record busy</b> on Bookmarks before Scan bookmarks</p>' +
       '<div class="bs-tab-scroll bs-audiolist" id="bs-audiolist"></div>' +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-skip" data-tab="skip" role="tabpanel">' +
       '<div class="bs-row">' +
       '<button type="button" class="bs-tiny" id="bs-clearskip-tab" title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
+      '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
       "</div>" +
       '<b id="bs-skiphead">Always skip</b>' +
       '<div class="bs-tab-scroll bs-skiplist" id="bs-skiplist"></div>' +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
-      '<div class="bs-row">' +
-      "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"100\" step=\"1\" style=\"width:3.4em\" title=\"How many times to walk the ticked bands in one run.\"></label>" +
-      "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each band while counting peaks.\"></label>" +
-      "<label title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\">Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\" title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\"></label>" +
-      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
-      "<label title=\"Fixed listen, or quiet-before-move when Hold while busy is on.\">Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\" title=\"Fixed listen, or quiet-before-move when Hold while busy is on.\"></label>" +
-      "</div>" +
-      '<div class="bs-row">' +
-      '<label title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically.">Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em" title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically."></label>' +
-      '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em" title="Minutes a Lockout button skip lasts for that frequency."></label>' +
-      '<label title="0 = off. Runs Scan bands while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Runs Scan bands while this tab stays open."></label>' +
-      "</div>" +
+      '<p class="bs-note">Global panel preferences — scan and bookmark options are on their respective tabs.</p>' +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="Panel open behaviour, layout, and text size.">Panel &amp; UI</summary>' +
       '<div class="bs-row bs-chk-grid">' +
       '<label class="bs-chk" title="Open the Band survey panel automatically when OpenWebRX loads."><input type="checkbox" id="bs-autoopen"> Open panel on startup</label>' +
-      '<label class="bs-chk" title="Save busy peaks as blue [auto] bookmarks in this browser."><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
-      '<label class="bs-chk" title="After a survey, hop through the new auto bookmarks."><input type="checkbox" id="bs-scanafter"> Scan new bookmarks when done</label>' +
-      '<label class="bs-chk" title="Hide [auto] bookmarks from the OpenWebRX bookmark bar (they still show in Bookmarks tab)."><input type="checkbox" id="bs-hideauto"> Hide auto bookmarks</label>' +
-      '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute while running</label>' +
-      '<label class="bs-chk" title="Hide always-skipped / birdie rows from the list."><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
-      '<label class="bs-chk" title="Stay on a live signal until it goes quiet, then move on."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
-      '<label class="bs-chk" title="Record demod audio only while Scan bookmarks is parked on a busy or held channel (bookmark-scan pause). Does not record the survey walk or quiet hops. Clips appear on the Audio tab."><input type="checkbox" id="bs-record"> Record busy</label>' +
-      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new</label>' +
+      '<label class="bs-chk" title="Remember the last tab you used between sessions."><input type="checkbox" id="bs-remember-tab"> Remember last tab</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Which tab to show when the panel opens. Last used follows Remember last tab.">Default tab <select id="bs-default-tab" title="Tab shown on open.">' +
+      '<option value="last">Last used</option><option value="bands">Always Bands</option><option value="range">Always Range</option>' +
+      '<option value="peaks">Always Peaks</option><option value="bookmarks">Always Bookmarks</option><option value="audio">Always Audio</option>' +
+      '<option value="skip">Always Skip</option><option value="settings">Always Settings</option><option value="help">Always Help</option></select></label>' +
+      '<label title="Scale panel text: Small ~90%, Default 100%, Large ~110%.">UI text size <select id="bs-text-size" title="Panel font scale.">' +
+      '<option value="small">Small</option><option value="default">Default</option><option value="large">Large</option></select></label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<button type="button" id="bs-reset-layout" title="Restore default position (12% / 28% / 28vw / 58vh).">Reset panel layout</button>' +
+      '<button type="button" id="bs-restore-check" title="Show Check install on the toolbar again.">Re-show Check install</button>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="What happens when a band or range scan finishes normally (not Stop).">After scan</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Switch to the Peaks tab when a survey completes."><input type="checkbox" id="bs-switch-peaks"> Switch to Peaks when done</label>' +
+      '<label class="bs-chk" title="Desktop notification and status when a survey completes."><input type="checkbox" id="bs-notify-done"> Notify when scan completes</label>' +
+      '<label class="bs-chk" title="Copy peak table to clipboard when a survey completes."><input type="checkbox" id="bs-copy-done"> Copy peaks after scan</label>' +
+      '<label class="bs-chk" title="Short beep when a new peak is counted during a scan."><input type="checkbox" id="bs-sound-peak"> Sound on new peak</label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts" open>' +
+      '<summary title="Automatic scans while this tab stays open.">Scheduled scan</summary>' +
+      '<div class="bs-row">' +
+      '<label title="0 = off. Repeat while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em" title="0 = off. Repeat while tab stays open."></label>' +
+      '<label title="Band scan, bookmark scan, or both in sequence.">Action <select id="bs-sched-action" title="What to run on schedule.">' +
+      '<option value="band">Band scan</option><option value="bookmark">Bookmark scan</option><option value="both">Both</option></select></label>' +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Skip scheduled scan if you tuned manually in the last 10 minutes."><input type="checkbox" id="bs-sched-idle"> Only when receiver idle</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="No auto-scan between these times (24h, local). Leave blank to disable.">Quiet hours <input type="time" id="bs-quiet-start" style="width:6.5em" title="Quiet period start."> – ' +
+      '<input type="time" id="bs-quiet-end" style="width:6.5em" title="Quiet period end."></label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Courtesy while scanning and profile settle time.">Courtesy</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Stop the survey when you tune manually on the waterfall."><input type="checkbox" id="bs-pause-tune"> Pause scan when I tune manually</label>' +
+      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new peak</label>' +
       '<label class="bs-chk" title="Don\'t retune if other listeners are connected."><input type="checkbox" id="bs-alone"> Only if alone</label>' +
-      '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
-      "</div></div></div>" +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Milliseconds to wait after profile/frequency change before sampling. 0 = default (~700 ms).">Profile settle ms <input type="number" id="bs-settle-ms" min="0" max="5000" step="50" style="width:4.5em" title="Override hop settle time."></label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Export, import, limits, and nuclear reset.">Data &amp; housekeeping</summary>' +
+      '<div class="bs-row">' +
+      '<button type="button" id="bs-export-settings" title="Download settings JSON (not peak hits or audio).">Export settings</button>' +
+      '<button type="button" id="bs-import-settings" title="Import settings JSON and merge.">Import settings</button>' +
+      '<button type="button" id="bs-reset-settings" title="Reset settings to defaults. Keeps peak list.">Reset settings</button>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="0 = unlimited. Trim oldest peaks when exceeded.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em" title="Peak list size cap."></label>' +
+      '<label title="Audio clips kept in this browser (5–200).">Max audio clips <input type="number" id="bs-max-clips" min="5" max="200" step="1" style="width:3.8em" title="IndexedDB clip cap."></label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-stop" id="bs-clear-all-data" title="Wipe peaks, bookmarks, audio, skip list, and settings in this browser.">Clear all plugin data</button>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Webhooks, alert frequencies, and homelab integrations.">Homelab</summary>' +
+      '<div class="bs-row">' +
+      '<label title="POST JSON {freq, name, db, band} on each new peak. Errors are ignored.">Webhook URL <input type="url" id="bs-webhook" placeholder="https://…" style="flex:1;min-width:140px" title="Webhook for new peaks."></label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Comma-separated MHz. Extra notify and sound when a new peak is within ± offset.">Alert MHz list <textarea id="bs-alert-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px" title="Watch frequencies for alerts."></textarea></label>' +
+      '<label title="Match alert list within ± this many kHz.">± kHz <input type="number" id="bs-alert-offset" min="1" max="500" step="1" style="width:3.5em" title="Alert frequency tolerance."></label>' +
+      "</div></details></div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-help" data-tab="help" role="tabpanel">' +
       '<div class="bs-tab-scroll bs-help-pane">' + helpContentHtml() + "</div></div></div>" +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
       '<input type="file" id="bs-json-file" accept=".json,.txt,application/json,text/plain" hidden>' +
       '<input type="file" id="bs-aud-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.opus" multiple hidden>' +
       '<input type="file" id="bs-bm-file" accept=".json,.csv,.txt,application/json,text/csv" hidden>' +
+      '<input type="file" id="bs-settings-file" accept=".json,application/json,text/plain" hidden>' +
       '<div class="bs-resize-e" data-resize="e" title="Drag to make the panel wider or narrower."></div>' +
       '<div class="bs-resize-s" data-resize="s" title="Drag to make the panel taller or shorter."></div>' +
       '<div class="bs-resize-se" data-resize="se" title="Drag to resize the panel."></div>';
@@ -4445,7 +5763,17 @@ Plugins.band_survey.init = function () {
     $("bs-mute").checked = !!S.mute;
     $("bs-hidespurs").checked = S.hideSpurs !== false;
     $("bs-holdbusy").checked = S.holdBusy !== false;
+    $("bs-continuousbm").checked = S.continuousBmScan !== false;
     $("bs-record").checked = !!S.recordBusy;
+    if ($("bs-recmode")) {
+      $("bs-recmode").value = normalizeRecMode(S.recMode);
+    }
+    if ($("bs-recsquelch")) $("bs-recsquelch").checked = S.recSquelchOnly !== false;
+    if ($("bs-recdebounce")) $("bs-recdebounce").value = S.recDebounceMs || 0;
+    if ($("bs-recquiet")) $("bs-recquiet").value = S.recQuietMs || 0;
+    if ($("bs-recminsnr")) $("bs-recminsnr").value = S.recMinSnrDb || 0;
+    if ($("bs-recheadroom")) $("bs-recheadroom").value = S.recSquelchHeadroomDb || 0;
+    if ($("bs-recminratio")) $("bs-recminratio").value = S.recMinClipRatioPct || 0;
     $("bs-notify").checked = S.notifyNew !== false;
     $("bs-alone").checked = S.aloneOnly !== false;
     $("bs-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
@@ -4453,11 +5781,12 @@ Plugins.band_survey.init = function () {
     $("bs-priority").value = S.priority || "121.5";
     $("bs-lockmin").value = S.lockoutMin || 30;
     $("bs-sched").value = S.scheduleHrs || 0;
-    if ($("bs-autoopen")) $("bs-autoopen").checked = !!S.autoOpenPanel;
+    fillSettingsForm();
     if ($("bs-range-start")) $("bs-range-start").value = S.rangeStartMhz;
     if ($("bs-range-end")) $("bs-range-end").value = S.rangeEndMhz;
     if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz || 0;
     updateRangeEstimate();
+    bindRangeSpectrum();
     watchProfiles();
     fillBands();
     applyCaps();
@@ -4480,31 +5809,21 @@ Plugins.band_survey.init = function () {
         switchTab(btn.getAttribute("data-tab"));
       });
     }
-    var initTab = "bands";
-    try {
-      var savedTab = sessionStorage.getItem(SS_TAB);
-      if (savedTab && TAB_IDS.indexOf(savedTab) >= 0) initTab = savedTab;
-    } catch (eTab) {}
-    switchTab(initTab);
+    switchTab(resolveOpenTab());
     updateTabLabels();
 
     bindHelpTabActions();
 
     $("bs-close").onclick = function () { panel.hidden = true; };
-    $("bs-check").onclick = function () {
-      var issues = renderHealth({ all: true, toast: true, ok: true });
-      var hard = issues.filter(function (x) { return x.level === "error"; }).length;
-      var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
-      var extras = issues.filter(function (x) { return x.level === "info"; }).length;
-      if (!hard && !warns) {
-        setStatus("Install looks good. Orange SV is this plugin. Optional extras are listed only so you know they are not required.");
-      } else {
-        setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
-          (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
-          (extras ? extras + " optional extra" + (extras === 1 ? "" : "s") + ". " : "") +
-          "Read the box above, or open Help.");
-      }
-    };
+    applyCheckInstallDismiss();
+    if ($("bs-check-dismiss")) {
+      $("bs-check-dismiss").onclick = function (ev) {
+        ev.stopPropagation();
+        dismissCheckInstall();
+        setStatus("Check install hidden from toolbar. Use Help → Check install now any time.");
+      };
+    }
+    $("bs-check").onclick = function () { runCheckInstall(); };
     $("bs-start").onclick = function () { runSurvey(false); };
     $("bs-fresh").onclick = function () { runSurvey(true); };
     if ($("bs-range-start-btn")) $("bs-range-start-btn").onclick = function () { runRangeSurvey(false); };
@@ -4515,28 +5834,78 @@ Plugins.band_survey.init = function () {
     $("bs-stop").onclick = stopSurvey;
     $("bs-jump").onclick = function () { jumpLoudest(); };
     $("bs-hold").onclick = function () {
-      listenCmd = listenCmd === "hold" ? "" : "hold";
+      var wasHold = listenCmd === "hold";
+      listenCmd = wasHold ? "" : "hold";
       $("bs-hold").classList.toggle("bs-on", listenCmd === "hold");
+      if (wasHold && listenPaused) resumeListenScan();
       setStatus(listenCmd === "hold" ? "Holding this frequency." : "Hold released.");
     };
     $("bs-skip").onclick = function () { listenCmd = "skip"; };
     $("bs-lockout").onclick = function () { listenCmd = "lock"; };
     $("bs-alwaysskip").onclick = function () { alwaysSkipAndContinue(); };
-    $("bs-contscan").onclick = resumeListenScan;
     if ($("bs-clearskip")) $("bs-clearskip").onclick = clearAlwaysSkips;
     if ($("bs-clearskip-tab")) $("bs-clearskip-tab").onclick = clearAlwaysSkips;
     $("bs-filter").oninput = filterBands;
+    ["bs-passes", "bs-dwell", "bs-minhits", "bs-thresh"].forEach(function (id) {
+      if ($(id)) $(id).onchange = readForm;
+    });
     $("bs-autobm").onchange = readForm;
     $("bs-scanafter").onchange = readForm;
     $("bs-hideauto").onchange = readForm;
     $("bs-mute").onchange = readForm;
     $("bs-hidespurs").onchange = readForm;
     $("bs-holdbusy").onchange = readForm;
+    $("bs-continuousbm").onchange = readForm;
     $("bs-record").onchange = readForm;
+    if ($("bs-recmode")) $("bs-recmode").onchange = readForm;
+    if ($("bs-recsquelch")) $("bs-recsquelch").onchange = readForm;
+    ["bs-recdebounce", "bs-recquiet", "bs-recminsnr", "bs-recheadroom", "bs-recminratio"].forEach(function (id) {
+      if ($(id)) $(id).onchange = readForm;
+    });
     $("bs-notify").onchange = function () { readForm(); askNotifyPerm(); };
+    if ($("bs-notify-done")) $("bs-notify-done").onchange = function () { readForm(); askNotifyPerm(); };
     $("bs-alone").onchange = readForm;
     $("bs-ownradio").onchange = readForm;
     if ($("bs-autoopen")) $("bs-autoopen").onchange = readForm;
+    [
+      "bs-remember-tab", "bs-switch-peaks", "bs-notify-done", "bs-sound-peak", "bs-copy-done",
+      "bs-sched-idle", "bs-pause-tune"
+    ].forEach(function (id) {
+      if ($(id)) $(id).onchange = readForm;
+    });
+    [
+      "bs-default-tab", "bs-text-size", "bs-sched-action", "bs-quiet-start", "bs-quiet-end",
+      "bs-settle-ms", "bs-max-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset"
+    ].forEach(function (id) {
+      if ($(id)) $(id).onchange = readForm;
+    });
+    if ($("bs-reset-layout")) $("bs-reset-layout").onclick = resetPanelLayoutDefaults;
+    if ($("bs-restore-check")) $("bs-restore-check").onclick = restoreCheckInstall;
+    if ($("bs-export-settings")) $("bs-export-settings").onclick = exportSettingsJson;
+    if ($("bs-import-settings")) $("bs-import-settings").onclick = function () {
+      var inp = $("bs-settings-file");
+      if (inp) inp.click();
+    };
+    if ($("bs-reset-settings")) $("bs-reset-settings").onclick = resetSettingsToDefaults;
+    if ($("bs-clear-all-data")) $("bs-clear-all-data").onclick = clearAllPluginData;
+    if ($("bs-settings-file")) {
+      $("bs-settings-file").onchange = function () {
+        var f = this.files && this.files[0];
+        this.value = "";
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            var obj = JSON.parse(String(reader.result || ""));
+            if (importSettingsMerge(obj)) setStatus("Settings imported and merged.");
+            else setStatus("Settings import failed — invalid JSON.");
+          } catch (e) {
+            setStatus("Settings import failed — " + friendlyError(e, "Import"));
+          }
+        };
+        reader.readAsText(f);
+      };
+    }
     $("bs-priority").onchange = readForm;
     $("bs-lockmin").onchange = readForm;
     $("bs-sched").onchange = readForm;
@@ -4569,14 +5938,15 @@ Plugins.band_survey.init = function () {
       }
     };
     function onListenScanClick() {
+      if (listenScanRunning && !listenPaused) return;
       if (listenPaused) {
         resumeListenScan();
+        if (listenScanRunning) setListenPaused(false);
         return;
       }
       startListenScan();
     }
     $("bs-listen-top").onclick = onListenScanClick;
-    $("bs-listen").onclick = onListenScanClick;
     $("bs-copy").onclick = copyResults;
     $("bs-csv").onclick = function () { exportCsv(); };
     $("bs-json").onclick = function () { exportServerJson(); };
@@ -4588,6 +5958,7 @@ Plugins.band_survey.init = function () {
       var inp = $("bs-aud-file");
       if (inp) inp.click();
     };
+    if ($("bs-aud-clear")) $("bs-aud-clear").onclick = clearAllAudioClips;
     if ($("bs-aud-file")) $("bs-aud-file").onchange = function () {
       loadAudioFiles(this.files);
       this.value = "";
@@ -4601,7 +5972,7 @@ Plugins.band_survey.init = function () {
     $("bs-clearauto").onclick = function () {
       var n = clearAutoBookmarks();
       setStatus("Removed " + n + " auto bookmarks.");
-      renderHits();
+      refreshBookmarks();
     };
     $("bs-clearhits").onclick = function () {
       hits = [];
@@ -4748,6 +6119,7 @@ Plugins.band_survey.init = function () {
   function ensureUi() {
     hookWaterfall();
     hookHide();
+    hookTuneApi();
     makePanel();
     backupLocalBookmarks("first-ui");
     var container = $("openwebrx-panel-receiver");
