@@ -1,7 +1,10 @@
-# Band survey — OpenWebRX+ plugin (v56)
+# Band survey — OpenWebRX+ plugin (v57)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
+
+**v57:** Bookmark scan uses the same profile and frequency tuning as band scans (fixes hops when bookmarks are on other profiles).
+
 
 <p>
   <img src="screenshot.png" alt="Band survey panel" width="640">
