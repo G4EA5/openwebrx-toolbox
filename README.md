@@ -15,23 +15,32 @@ Those are optional extras if you already load them.
 Orange **SV** button appears on the right-hand receiver panel. **Help** lives
 on the **Help** tab inside the panel (also opens once on first run).
 
-## Panel (v35)
+## Panel (v41)
 
 Tabbed layout — no split-pane columns:
 
 | Tab | Contents |
 | --- | --- |
 | **Bands** | Presets (Air, VHF, UHF, Ham) and band tick list |
+| **Range** | Custom MHz sweep (start/end, step kHz, Scan range / Fresh range scan) |
 | **Peaks** | Ranked survey results, export/import |
 | **Bookmarks** | Blue local `[auto]` / named, amber `[load]` imports |
-| **Audio** | Session clips from **Record busy** |
+| **Audio** | Recorded and loaded clips (persist in IndexedDB across refresh/restart) |
 | **Skip** | Always-skipped frequencies |
 | **Settings** | Passes, dwell, thresholds, **Open panel on startup**, etc. |
-| **Help** | Install guide and troubleshooting |
+| **Help** | Install guide and troubleshooting (v41) |
 
 Scan controls (**Scan bands**, **Scan bookmarks**, **Stop**, **Hold** / **Skip** /
-**Always skip**) stay pinned at the top. Drag panel edges or the corner to
-resize; position and size are remembered in this browser.
+**Always skip**) stay pinned at the top. **Scan bands** always keeps that label;
+during bookmark scan a busy channel pauses and the orange button becomes
+**Continue scan bookmarks** (same as **Continue scan** in the listen row).
+The status line below the toolbar reserves two lines of height so the panel
+does not bounce when text wraps at minimum width.
+
+Drag panel edges or the corner to resize. Default position is 12 vw from the
+left, 28 vh from the top, 28 vw wide, 58 vh tall; position and size are
+remembered in this browser. **Open panel on startup** waits for band profiles
+so the tick list is filled on first open.
 
 ## Tester install (two ways)
 
@@ -182,16 +191,17 @@ Typical `htdocs` paths:
 ## Usage (short)
 
 1. Tick bands, or tap **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**. Presets are **additive** (combine VHF+UHF; **None** clears all).
-2. **Scan bands** adds to Seen totals. **Fresh scan** starts at zero.
-3. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
-4. **Scan bookmarks** loops through all local and loaded bookmarks continuously until you press **Stop** (new auto bookmarks first, then the rest). Same-band hops ~1s; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses until you click **Continue scan** or **Always skip**. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** on the toolbar next to Skip (never land there again and continue the scan; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip** on the Skip tab. Bookmarks are not deleted.
-5. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
+2. **Scan bands** adds to Seen totals. **Fresh scan** starts at zero. **Stop** during a band or range scan auto-bookmarks qualified peaks found so far when **Auto-bookmark actives** is on (same as scan end).
+3. **Range** tab: set start/end MHz (e.g. 109–200), optional **Step kHz** (0 = auto hop ~88% of waterfall span), then **Scan range** (adds to Seen) or **Fresh range scan** (clears the peak list first). Not tied to ticked bands — the plugin picks covering SDR profiles and walks the range. Passes, dwell, and dB over noise come from Settings.
+4. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
+5. **Scan bookmarks** loops through all local and loaded bookmarks continuously until you press **Stop** (new auto bookmarks first, then the rest). Same-band hops ~1s; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses — the orange button becomes **Continue scan bookmarks**, or use **Continue scan** in the listen row (same action). **Scan bands** stays labeled **Scan bands** and is separate. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** on the toolbar next to Skip (never land there again and continue; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip** on the Skip tab. Bookmarks are not deleted.
+6. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
    (there is no regular-user API to write those). **Import CSV** / **Import JSON**
    restores Peaks/Seen in this browser (file picker; Shift-click to paste).
-6. **Load bookmarks** imports JSON/CSV into an amber **[load]** list (separate from blue **[auto]** local bookmarks). **Scan bookmarks** includes both. **Clear loaded** removes only **[load]** entries.
-7. Tick **Record busy** on the **Settings** tab before **Scan bookmarks** to capture demod audio only while parked on a busy/held channel — not during the survey walk. Clips appear on the **Audio** tab. **Save all** / **Save all · ZIP** / **Load audio** manage clips there.
+7. **Load bookmarks** imports JSON/CSV into an amber **[load]** list (separate from blue **[auto]** local bookmarks). **Scan bookmarks** includes both. **Clear loaded** removes only **[load]** entries.
+8. Tick **Record busy** on the **Settings** tab before **Scan bookmarks** to capture demod audio only while parked on a busy/held channel — not during the survey walk. Clips appear on the **Audio** tab and are kept in **IndexedDB** across page refreshes and browser restarts (up to 40 clips or ~48 MB, oldest dropped first). **Save all** / **Save all · ZIP** / **Load audio** manage clips there.
 
-Blue (local) bookmarks live in **this browser** on the **Bookmarks** tab (named vs **[auto]**, plus **[load]** imports). Always-skipped frequencies are on the **Skip** tab. Hover any control for a tip. Tick **Open panel on startup** on Settings to open SV automatically when OpenWebRX loads. The plugin copies bookmarks before it writes, and on first run. Restore from the **Help** tab.
+Blue (local) bookmarks live in **this browser** on the **Bookmarks** tab (named vs **[auto]**, plus **[load]** imports). Always-skipped frequencies are on the **Skip** tab. Hover any control for a tip. Tick **Open panel on startup** on Settings to open SV automatically when OpenWebRX loads (waits for band profiles so the tick list is filled). The plugin copies bookmarks before it writes, and on first run. Restore from the **Help** tab.
 
 **Only if alone** refuses to retune when another listener is connected. Untick
 it if you are sure you may hop profiles.
