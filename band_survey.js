@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 56;
+Plugins.band_survey._version = 57;
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -545,9 +545,10 @@ Plugins.band_survey.init = function () {
   }
 
   function pluginSetFrequency(freq) {
+    if (!window.UI || typeof UI.setFrequency !== "function") return;
     bsInternalTune = true;
     try {
-      pluginSetFrequency(freq);
+      UI.setFrequency(freq);
     } finally {
       setTimeout(function () { bsInternalTune = false; }, 0);
     }
@@ -3352,39 +3353,32 @@ Plugins.band_survey.init = function () {
       listenFreq = freq;
       if (shouldSkipTune(freq)) continue;
       var value = profileValueForPid(pid);
-      var onThisTile = freqInVisibleRange(freq);
-      if (!onThisTile && value && currentProfileValue() !== value) {
-        if (lastProfileSwitchAt) {
-          var waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
-          var why = ownerHopsOn() ? "fast hops (own radio)" : "anti-ban, profile change";
-          while (waitMore > 0 && !stopFlag) {
-            setStatus(passLab + "Listen wait " + Math.ceil(waitMore / 1000) + "s (" + why + ")");
-            if (consumeListenAbort(freq, name)) break;
-            await sleep(Math.min(200, waitMore));
-            waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
-          }
+      var prof = profileForFreq(freq);
+      if (!prof && value) prof = profileByValue(value);
+      if (!prof && value) prof = { id: pid || value, value: value, label: pid || value };
+      if (consumeListenAbort(freq, name)) continue;
+      if (prof) {
+        if (!(await tuneToCenter(freq, prof, passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name))) {
+          if (stopFlag) break;
+          continue;
         }
-        if (stopFlag) break;
-        if (consumeListenAbort(freq, name)) continue;
-        await switchProfile(value);
-        lastProfileSwitchAt = Date.now();
+      } else {
+        pluginSetFrequency(freq);
+        var settled = Date.now() + getHopSettleMs();
+        var abortHop = false;
+        while (Date.now() < settled && !stopFlag) {
+          if (consumeListenAbort(freq, name)) { abortHop = true; break; }
+          await sleep(Math.min(LISTEN_SAMPLE_MS, Math.max(50, settled - Date.now())));
+        }
+        if (abortHop || stopFlag) continue;
       }
       if (consumeListenAbort(freq, name)) continue;
-      pluginSetFrequency(freq);
       if (it.mode && window.UI && typeof UI.setModulation === "function") {
         try { UI.setModulation(it.mode, ""); } catch (e3) {}
       }
       setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + fmtMhz(freq) + "  [Hold / Skip / Always skip / Stop]");
       var holdBusy = loopMode ? false : (S.holdBusy !== false);
       var listenMs = Math.max(1000, (Number(S.listenSec) || 4) * 1000);
-      var settled = Date.now() + getHopSettleMs();
-      var abortHop = false;
-      while (Date.now() < settled && !stopFlag) {
-        if (consumeListenAbort(freq, name)) { abortHop = true; break; }
-        await sleep(Math.min(LISTEN_SAMPLE_MS, Math.max(50, settled - Date.now())));
-      }
-      if (abortHop || stopFlag) continue;
-      if (consumeListenAbort(freq, name)) continue;
       var listenStart = Date.now();
       var minUntil = listenStart + listenMs;
       var busySeen = listenCmd === "hold";
