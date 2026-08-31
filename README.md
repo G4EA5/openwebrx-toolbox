@@ -1,50 +1,22 @@
-# Band survey — OpenWebRX+ plugin
+# Band survey — OpenWebRX+ plugin (v56)
 
-Standalone receiver plugin. Walks the bands you tick, counts real waterfall
-peaks, ranks the busiest, and can bookmark them.
+Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
+real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 
 <p>
   <img src="screenshot.png" alt="Band survey panel" width="640">
 </p>
 
-<p><em>Band survey panel</em></p>
+<p><em>Band survey panel — orange SV button on the right-hand receiver panel</em></p>
 
-**It does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`.
-Those are optional extras if you already load them.
+**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
+optional extras if you already load them.
 
-Orange **SV** button appears on the right-hand receiver panel. **Help** lives
-on the **Help** tab inside the panel (also opens once on first run).
+---
 
-## Panel (v41)
+## Install
 
-Tabbed layout — no split-pane columns:
-
-| Tab | Contents |
-| --- | --- |
-| **Bands** | Presets (Air, VHF, UHF, Ham) and band tick list |
-| **Range** | Custom MHz sweep (start/end, step kHz, Scan range / Fresh range scan) |
-| **Peaks** | Ranked survey results, export/import |
-| **Bookmarks** | Blue local `[auto]` / named, amber `[load]` imports |
-| **Audio** | Recorded and loaded clips (persist in IndexedDB across refresh/restart) |
-| **Skip** | Always-skipped frequencies |
-| **Settings** | Passes, dwell, thresholds, **Open panel on startup**, etc. |
-| **Help** | Install guide and troubleshooting (v41) |
-
-Scan controls (**Scan bands**, **Scan bookmarks**, **Stop**, **Hold** / **Skip** /
-**Always skip**) stay pinned at the top. **Scan bands** always keeps that label;
-during bookmark scan a busy channel pauses and the orange button becomes
-**Continue scan bookmarks** (same as **Continue scan** in the listen row).
-The status line below the toolbar reserves two lines of height so the panel
-does not bounce when text wraps at minimum width.
-
-Drag panel edges or the corner to resize. Default position is 12 vw from the
-left, 28 vh from the top, 28 vw wide, 58 vh tall; position and size are
-remembered in this browser. **Open panel on startup** waits for band profiles
-so the tick list is filled on first open.
-
-## Tester install (two ways)
-
-**A — local copy (recommended, correct file types, works offline)**
+### Quick install (recommended)
 
 On the radio host:
 
@@ -55,97 +27,50 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Then hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**).
-Click orange **SV** → **Check install**.
+Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click orange **SV**
+→ **Check install**.
 
-On a **public** shared receiver (hide **Own radio — fast hops** from visitors):
-
-```bash
-./install.sh --public
-```
-
-**B — load from URL** (if you already have `htdocs/plugins/receiver/init.js`)
-
-Add one line inside your existing `async` block (do not delete other plugins):
-
-```js
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/band_survey.js");
-```
-
-GitHub Pages (same files, once Pages is live):
-
-```js
-await Plugins.load("https://g4ea5.github.io/owrx-band-survey/band_survey.js");
-```
-
-Then hard-refresh. Raspberry Pi images that use Varnish:
-
-```bash
-sudo systemctl restart varnish nginx
-```
-
-## First 30 seconds (after install)
-
-1. Hard-refresh the receiver page: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**).
-   A normal refresh can keep an old plugin file, so SV or Help look missing.
-2. Click orange **SV**.
-3. Click **Check install**. Green means ready. Red or yellow includes the fix
-   on screen — not only in the browser console.
-4. Tick bands (or **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**) and press **Scan bands**.
-
-To verify files on the radio without writing anything:
+Verify without writing files:
 
 ```bash
 ./install.sh --check
 ```
 
-## What you need
-
-- [OpenWebRX+](https://github.com/luarvique/openwebrx) (the `+` fork). Vanilla
-  OpenWebRX has no plugin loader.
-- SSH or a file copy onto the radio host (for method A).
-- A **hard** refresh after install (see above).
-
-## Install details (method A)
-
-The script BACKS UP your files first, then copies the plugin and adds one
-line to `plugins/receiver/init.js` if it is missing.
-
-It writes a timestamped folder:
-
-`~/owrx-band-survey-backups/YYYYMMDD-HHMMSS/`
-
-That copy includes (when readable):
-
-| File | Why |
-| --- | --- |
-| `init.js` | Your previous plugin list |
-| `band_survey.prev/` | Any older Band survey files |
-| `bookmarks.json` | Yellow **server** bookmarks |
-| `settings.json` | Receiver settings (profiles, reporting) |
-| `RESTORE.txt` | How to put them back |
-
-If `install.sh` cannot find OpenWebRX+:
+**Public shared receiver** (hide **Own radio — fast hops** from visitors):
 
 ```bash
-export OWRX_HTDOCS=/path/to/htdocs
-./install.sh
+./install.sh --public
 ```
 
-Typical `htdocs` paths:
+### Load from URL
 
-- `/usr/lib/python3/dist-packages/htdocs` (Debian / Ubuntu package)
-- `/opt/openwebrx/htdocs`
+Add inside your existing `async` block in `plugins/receiver/init.js`:
 
-## Install (manual)
+```js
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/band_survey.js");
+```
 
-1. Find `htdocs` (folder that contains `openwebrx.js`):
+GitHub Pages (when live):
+
+```js
+await Plugins.load("https://g4ea5.github.io/owrx-band-survey/band_survey.js");
+```
+
+Raspberry Pi images with Varnish:
+
+```bash
+sudo systemctl restart varnish nginx
+```
+
+### Manual install
+
+1. Find `htdocs` (folder containing `openwebrx.js`):
 
    ```bash
    find /usr /opt -name openwebrx.js 2>/dev/null
    ```
 
-2. **Back up first** (do not skip this):
+2. **Back up first:**
 
    ```bash
    HTDOCS=/usr/lib/python3/dist-packages/htdocs
@@ -163,7 +88,7 @@ Typical `htdocs` paths:
    sudo cp -a . "$HTDOCS/plugins/receiver/band_survey"
    ```
 
-4. Load it. Create or edit `$HTDOCS/plugins/receiver/init.js` and add:
+4. Add to `$HTDOCS/plugins/receiver/init.js`:
 
    ```js
    (async () => {
@@ -171,104 +96,398 @@ Typical `htdocs` paths:
    })();
    ```
 
-   If you already have an `init.js` (for example from
-   [0xAF plugins](https://github.com/0xAF/openwebrxplus-plugins)), add only
-   that `await Plugins.load("band_survey");` line inside your existing
-   `async` block. Do not delete your other plugins.
+   If you already have `init.js` (e.g. from
+   [0xAF plugins](https://github.com/0xAF/openwebrxplus-plugins)), add only the
+   `await Plugins.load("band_survey");` line inside your existing block.
 
 5. Hard-refresh the receiver.
 
-## After install — 30 second check
+### What you need
+
+- [OpenWebRX+](https://github.com/luarvique/openwebrx) (the `+` fork). Vanilla OpenWebRX
+  has no plugin loader.
+- SSH or file copy onto the radio host (for local install).
+- A **hard** refresh after install.
+
+### Install script details
+
+`install.sh` backs up first, then copies the plugin and adds one load line to `init.js`
+if missing. Backups go to:
+
+`~/owrx-band-survey-backups/YYYYMMDD-HHMMSS/`
+
+(includes `init.js`, previous `band_survey/`, `bookmarks.json`, `settings.json`, and
+`RESTORE.txt`).
+
+If `install.sh` cannot find OpenWebRX+:
+
+```bash
+export OWRX_HTDOCS=/path/to/htdocs
+./install.sh
+```
+
+Typical `htdocs` paths:
+
+- `/usr/lib/python3/dist-packages/htdocs` (Debian / Ubuntu package)
+- `/opt/openwebrx/htdocs`
+
+---
+
+## Quick start
+
+1. Hard-refresh: **Ctrl+Shift+R** / **Cmd+Shift+R**.
+2. Click orange **SV** on the right-hand panel.
+3. Click **Check install**. Green = ready.
+4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
+5. Results appear on the **Peaks** tab. Hover any control for a tip.
 
 | You see | Meaning |
 | --- | --- |
 | Orange **SV** | Plugin loaded |
-| Band checkboxes | Profiles are visible |
-| **Check install** says “looks good” | Ready to survey |
-| Red / yellow box with a fix | Follow that sentence, then Check install again |
-| Banner at the top of the page | You are on the map/settings page, or the receiver UI never appeared |
+| Band checkboxes | Profiles visible |
+| **Check install** “looks good” | Ready to survey |
+| Red / yellow box | Follow on-screen fix, then Check install again |
 
-## Usage (short)
+---
 
-1. Tick bands, or tap **Air** / **VHF voice** / **All VHF** / **All UHF** / **Ham**. Presets are **additive** (combine VHF+UHF; **None** clears all).
-2. **Scan bands** adds to Seen totals. **Fresh scan** starts at zero. **Stop** during a band or range scan auto-bookmarks qualified peaks found so far when **Auto-bookmark actives** is on (same as scan end).
-3. **Range** tab: set start/end MHz (e.g. 109–200), optional **Step kHz** (0 = auto hop ~88% of waterfall span), then **Scan range** (adds to Seen) or **Fresh range scan** (clears the peak list first). Not tied to ticked bands — the plugin picks covering SDR profiles and walks the range. Passes, dwell, and dB over noise come from Settings.
-4. Click a frequency to tune, click a name to rename, **ign** to always skip a birdie (click **un-ign** to undo).
-5. **Scan bookmarks** loops through all local and loaded bookmarks continuously until you press **Stop** (new auto bookmarks first, then the rest). Same-band hops ~1s; other-band profile changes stay ~11s unless you tick **Own radio — fast hops**. Only use that on a receiver you run yourself — public sites can ban the client. A live channel pauses — the orange button becomes **Continue scan bookmarks**, or use **Continue scan** in the listen row (same action). **Scan bands** stays labeled **Scan bands** and is separate. While listening: **Hold** / **Skip** / **Lockout** (~30 min) / **Always skip** on the toolbar next to Skip (never land there again and continue; saved in this browser). Undo with **un-ign** on the peak (untick Hide birdies) or **Clear always-skip** on the Skip tab. Bookmarks are not deleted.
-6. **Export CSV** / **Export JSON** for a log or to merge yellow server bookmarks
-   (there is no regular-user API to write those). **Import CSV** / **Import JSON**
-   restores Peaks/Seen in this browser (file picker; Shift-click to paste).
-7. **Load bookmarks** imports JSON/CSV into an amber **[load]** list (separate from blue **[auto]** local bookmarks). **Scan bookmarks** includes both. **Clear loaded** removes only **[load]** entries.
-8. Tick **Record busy** on the **Settings** tab before **Scan bookmarks** to capture demod audio only while parked on a busy/held channel — not during the survey walk. Clips appear on the **Audio** tab and are kept in **IndexedDB** across page refreshes and browser restarts (up to 40 clips or ~48 MB, oldest dropped first). **Save all** / **Save all · ZIP** / **Load audio** manage clips there.
+## Panel layout (v56)
 
-Blue (local) bookmarks live in **this browser** on the **Bookmarks** tab (named vs **[auto]**, plus **[load]** imports). Always-skipped frequencies are on the **Skip** tab. Hover any control for a tip. Tick **Open panel on startup** on Settings to open SV automatically when OpenWebRX loads (waits for band profiles so the tick list is filled). The plugin copies bookmarks before it writes, and on first run. Restore from the **Help** tab.
+Eight tabs in the title bar: **Bands**, **Range**, **Peaks**, **Bookmarks**, **Audio**,
+**Skip**, **Settings**, **Help**.
 
-**Only if alone** refuses to retune when another listener is connected. Untick
-it if you are sure you may hop profiles.
+Scan controls stay pinned in the **toolbar** below the tabs. Drag panel edges or the
+corner to resize; drag the title bar to move. Default position: 12 vw from left, 28 vh
+from top, 28 vw wide, 58 vh tall — remembered in this browser.
+
+---
+
+## Toolbar
+
+| Control | What it does |
+| --- | --- |
+| **Scan bands** / **Scanning bands** | Walk ticked bands; add to Seen counts. Label changes during band or range scan. |
+| **Fresh scan** | Clear peak list, then scan ticked bands from scratch. |
+| **Stop** | Halt band survey, range survey, or bookmark scan. Auto-bookmarks qualified peaks when **Auto-bookmark actives** is on. |
+| **Scan bookmarks** / **Scanning bookmarks** | Loop local and loaded bookmarks until Stop. Becomes **Continue scan bookmarks** when paused (continuous mode off + busy channel). |
+| **Jump loudest** | Retune to strongest peak on **this waterfall tile only**. |
+| **Check install** | Verify plugin and receiver. Dismiss with **×** or after success; restore via Settings → **Re-show Check install**. |
+| **Hold** / **Skip** / **Always skip** / **Lockout** | During bookmark scan: stay, move on, skip forever, or skip for Lockout minutes. |
+
+Status line below the toolbar reserves two lines so the panel does not bounce when text
+wraps.
+
+---
+
+## Tab guide
+
+### Bands
+
+- **Presets** — **Air**, **VHF voice**, **All VHF** (30–300 MHz), **All UHF** (300–1000 MHz),
+  **Ham**, **All**, **None**. Presets are **additive** (combine VHF+UHF; **None** clears all).
+- **Band checkboxes** — include each SDR profile in **Scan bands**. Filter box hides
+  non-matching names.
+- **Band scan options** (expandable):
+  - **Passes** — how many times to walk ticked bands per run.
+  - **Dwell s** — seconds on each band while counting peaks.
+  - **Min seen** — peaks below this Seen count do not qualify for auto-bookmark or
+    **Bookmark qualified**.
+  - **dB over noise** — peak must be this far above the noise floor.
+- **Hide birdies** — hide always-skipped rows from the peak list.
+- **Mute while running** — silence audio during band/range survey walks.
+- **Own radio — fast hops** — ~1 s between profile changes instead of ~11 s. Only on a
+  receiver you run yourself. Locked on public installs (`./install.sh --public`).
+
+### Range
+
+Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profiles.
+
+- **Start MHz** / **End MHz** — sweep span (e.g. 109–200).
+- **Step kHz** — hop size. **0** = auto (~88% of waterfall span, min 12.5 kHz). Use
+  500–2000 kHz for wide surveys.
+- **Scan range** — add peaks to Seen.
+- **Fresh range scan** — clear peak list first.
+- Uses **Band scan options** from the Bands tab (passes, dwell, Min seen, dB).
+- **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
+  bar height = dB; click a bar to tune.
+
+### Peaks
+
+Ranked survey results — sort by Seen, MHz, or dB.
+
+| Action | Purpose |
+| --- | --- |
+| Click MHz | Tune receiver |
+| Click name | Rename bookmark |
+| **ign** / **un-ign** | Always skip / undo skip a birdie |
+| **Bookmark qualified** | Save peaks with Seen ≥ Min seen as blue bookmarks |
+| **Copy list** | Copy table as text |
+| **Export CSV** / **Export JSON** | Download log; JSON for merging yellow server bookmarks |
+| **Import CSV** / **Import JSON** | Restore Peaks/Seen (file picker; Shift-click to paste) |
+| **Clear list** | Wipe peak table (bookmarks stay) |
+
+### Bookmarks
+
+- **Blue** local bookmarks — **[auto]** from surveys vs named.
+- **Amber [load]** — imported list (separate from blue).
+- **Save bookmarks** / **Load bookmarks** / **Clear loaded** / **Clear bookmarks** /
+  **Clear auto bookmarks** / **ren** to rename.
+
+**Bookmark scan options:**
+
+| Option | Purpose |
+| --- | --- |
+| **Listen s** | Minimum seconds on each bookmark after ~0.7 s tune settle |
+| **Priority** | MHz list (e.g. 121.5); guard/tower/ATIS added automatically; listened first |
+| **Auto-bookmark actives** | Save busy peaks as **[auto]** (scan end and Stop) |
+| **Scan new bookmarks when done** | One-shot bookmark scan after band survey |
+| **Hide auto bookmarks** | Hide **[auto]** from OpenWebRX bookmark bar |
+| **Continuous bookmark scan** | Loop without pausing on busy (default on) |
+| **Hold while busy** | When continuous off: stay until ~1.5 s quiet; button becomes **Continue scan bookmarks** |
+| **Record busy** | Capture demod audio while parked (see Audio tab) |
+
+**Scan bookmarks** loops new auto bookmarks first, then all local and loaded. Same-band
+hops ~1 s; other-band ~11 s (or ~1 s with **Own radio — fast hops**).
+
+### Audio
+
+Recorded clips from **Record busy** during bookmark scan. Persist in **IndexedDB**
+across refresh and browser restart.
+
+| Action | Purpose |
+| --- | --- |
+| **Save all** | Download each clip separately |
+| **Save all · ZIP** | Bundle all clips (loads JSZip on first use) |
+| **Load audio** | Add files from disk (nothing uploaded) |
+| **Clear all** | Remove all clips from browser storage |
+| **×** on a row | Remove one clip |
+
+**Recording options:**
+
+| Mode | Behaviour |
+| --- | --- |
+| **Original** (default) | Record on first waterfall-busy sample; no squelch/voice gating |
+| **Balanced** | Squelch open + light debounce |
+| **Strict voice** | Squelch + S-meter + SNR, pause on quiet, discard hiss |
+
+Fine-tune (Balanced/Strict; Original ignores): **Squelch open only**, **Debounce ms**,
+**Quiet pause ms**, **Min SNR dB**, **Squelch headroom dB**, **Min clip voice %**
+(0 = mode default).
+
+Default cap: 40 clips or ~48 MB (set **Max audio clips** on Settings). Scanner waits
+≥2 s before hopping so clips are not cut off.
+
+### Skip
+
+- **Always skip** list — frequencies skipped forever. Add via **ign** or toolbar
+  **Always skip**. Undo with **un-ign** or **Clear always-skip**.
+- **Lockout min** — duration for toolbar **Lockout** skips (default 30 min).
+
+### Help
+
+Full in-panel manual (this document in condensed form), **Check install now**, and
+bookmark backup buttons: **Restore first-run bookmarks**, **Restore last backup**,
+**Download bookmark backup**.
+
+---
+
+## Settings reference
+
+Global panel preferences. Scan and bookmark options live on their respective tabs.
+
+### Panel & UI
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Open panel on startup** | off | Open SV when OpenWebRX loads (waits for band profiles) |
+| **Remember last tab** | on | Restore tab between sessions |
+| **Default tab** | Last used | Tab shown on open (Bands, Range, Peaks, …) |
+| **UI text size** | Default | Small (~90%), Default, Large (~110%) |
+| **Reset panel layout** | — | Restore default position and size |
+| **Re-show Check install** | — | Put Check install back on toolbar |
+
+### After scan
+
+Applies on normal scan finish (not Stop).
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Switch to Peaks when done** | off | Jump to Peaks tab |
+| **Notify when scan completes** | off | Desktop notification + status |
+| **Copy peaks after scan** | off | Copy peak table to clipboard |
+| **Sound on new peak** | on | Beep when a new peak is counted during scan |
+
+### Scheduled scan
+
+Runs while **this browser tab** stays open.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Every N hours** | 0 (off) | Repeat interval |
+| **Action** | Band scan | Band scan, Bookmark scan, or Both |
+| **Only when receiver idle** | off | Skip if you tuned manually in last 10 min |
+| **Quiet hours** | blank | No auto-scan between start and end (24 h, local) |
+
+### Courtesy
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Pause scan when I tune manually** | off | Stop survey if you click the waterfall |
+| **Notify new peak** | on | Browser notification for unseen peaks |
+| **Only if alone** | on | Do not retune when other listeners online |
+| **Profile settle ms** | 0 | Wait after profile change before sampling (0 = ~700 ms) |
+
+### Data & housekeeping
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Export settings** | — | Download settings JSON (not peaks or audio) |
+| **Import settings** | — | Merge settings from JSON file |
+| **Reset settings** | — | Defaults (keeps peak list and bookmarks) |
+| **Max peaks** | 0 (unlimited) | Trim oldest when exceeded |
+| **Max audio clips** | 40 | IndexedDB cap (5–200) |
+| **Clear all plugin data** | — | Wipe everything in this browser |
+
+### Homelab
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Webhook URL** | blank | POST `{freq, name, db, band}` on each new peak |
+| **Alert MHz list** | blank | Extra notify/sound when new peak within ± offset |
+| **± kHz** | 25 | Alert frequency tolerance |
+
+---
+
+## Scan behaviour
+
+### Band survey
+
+Walks ticked SDR profiles. Counts waterfall peaks above **dB over noise** threshold.
+Same-band hops ~1 s; cross-band profile changes ~11 s (or ~1 s with **Own radio — fast
+hops**). **Scan bands** adds to Seen; **Fresh scan** clears first.
+
+### Range survey
+
+Hops MHz steps across profiles. Shares peak list and scan options with band survey.
+Spectrum map shown after finish or Stop.
+
+### Bookmark scan
+
+- **Continuous mode** (default): loops until Stop; auto-hops after **Listen s** unless
+  **Hold** pressed.
+- **Pause mode** (continuous off): waits on busy channel; orange button becomes
+  **Continue scan bookmarks**; use **Hold while busy**, **Skip**, or release **Hold**.
+
+### Stop and auto-bookmark
+
+Pressing **Stop** during band or range survey auto-bookmarks qualified peaks (Seen ≥
+Min seen) when **Auto-bookmark actives** is on — same as normal scan end.
+
+### Recording
+
+**Record busy** captures demod audio only while parked on a bookmark — not during survey
+walks or quiet hops.
+
+---
+
+## Persistence
+
+| Data | Storage |
+| --- | --- |
+| Settings, peak list, skip list, panel position | **localStorage** |
+| Audio clips | **IndexedDB** |
+| Blue bookmarks | OpenWebRX local bookmark store |
+| Bookmark backups | **localStorage** (first-run and last-backup copies) |
+
+Nothing is uploaded except optional **Webhook URL** POSTs. Clearing site data removes
+everything.
+
+---
 
 ## Public vs own radio
 
-Personal / own-PC installs leave the default. You can tick **Own radio — fast hops**
-to skip the 11s profile gap.
+Personal installs: you may tick **Own radio — fast hops** for ~1 s profile gaps.
 
-On a **public shared** OpenWebRX, lock that so visitors cannot:
+Public shared OpenWebRX:
 
 ```bash
 ./install.sh --public
 ```
 
-Or edit `band_survey.js` on the host:
+Or edit `band_survey.js`:
 
 ```js
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false;
 ```
 
-That hides the checkbox and always uses the 11s gap. It is not a hard security
-fence (DevTools can still change the wait in the browser). Turn on OpenWebRX
-**bot-ban** if you need the server to kick hoppers.
+This hides the checkbox and always uses the 11 s gap. Not a hard security fence — enable
+OpenWebRX **bot-ban** if you need the server to kick hoppers.
+
+---
 
 ## Restore backups
 
-**Peaks/Seen list:** SV → **Import CSV** or **Import JSON** (replaces or merges the table in this browser; does not change blue bookmarks).
+**Peaks/Seen:** SV → **Import CSV** or **Import JSON**.
 
-**Browser (blue bookmarks):** SV → Help → Restore first-run / last backup.
+**Blue bookmarks:** Help tab → **Restore first-run bookmarks** or **Restore last backup**.
 
-**Server files:**
+**Server files** (from `install.sh` backup):
 
 ```bash
 ls ~/owrx-band-survey-backups
-# pick a stamp, then for example:
 sudo cp ~/owrx-band-survey-backups/STAMP/init.js /usr/lib/python3/dist-packages/htdocs/plugins/receiver/init.js
 sudo cp ~/owrx-band-survey-backups/STAMP/bookmarks.json /var/lib/openwebrx/bookmarks.json
 ```
 
-Read `RESTORE.txt` in that stamp folder — paths are written for *your* install.
+Read `RESTORE.txt` in that stamp folder.
+
+Yellow **server** bookmarks are admin-only. **Export JSON** and merge the `bookmarks`
+array on the radio host.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| **No SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
+| **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
+| **No waterfall data** | Wait after connect; check SDR is started. |
+| **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
+| **Other listeners online** | Untick **Only if alone**. |
+| **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. |
+| **Banned / kicked** | Leave **Own radio — fast hops** off on shared receivers. |
+
+Toolbar **Check install** hides after use; Help tab **Check install now** always works.
+
+---
 
 ## Docker
 
-Bind-mount `htdocs/plugins/receiver` (or the whole `htdocs/plugins` tree) and
-run `install.sh` with `OWRX_HTDOCS` set to that mounted path:
+Bind-mount `htdocs/plugins/receiver` and run:
 
 ```bash
 export OWRX_HTDOCS=/path/on/host/that/is/htdocs
 ./install.sh
 ```
 
+---
+
 ## Uninstall
 
 ```bash
-# keep the backup folder
 sudo rm -rf "$HTDOCS/plugins/receiver/band_survey"
-# remove the Plugins.load("band_survey") line from init.js
+# remove Plugins.load("band_survey") from init.js
 ```
 
-Or copy `init.js` back from `~/owrx-band-survey-backups/…`.
+Or restore `init.js` from `~/owrx-band-survey-backups/…`.
+
+---
 
 ## Upstream
 
-This is a standalone tester repo. A later step can be a pull request into
-[0xAF/openwebrxplus-plugins](https://github.com/0xAF/openwebrxplus-plugins)
-(the community collection). Until then, clone or load from this repository.
+Standalone tester repo. A later step can be a pull request into
+[0xAF/openwebrxplus-plugins](https://github.com/0xAF/openwebrxplus-plugins). Until then,
+clone or load from this repository.
 
 ## License
 
