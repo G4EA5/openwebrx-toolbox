@@ -16,7 +16,7 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 
 <p>
   <strong>Range</strong> — full-span scan with spectrum chart (280 peaks, wideband FM detection)<br>
-  <img src="screenshots/range-fm-spectrum.png" alt="Range tab with FM spectrum" width="640">
+  <img src="screenshots/" alt="Range tab with FM spectrum" width="640">
 </p>
 <p>
   <strong>Peaks</strong> — ranked signal list from the same scan<br>
