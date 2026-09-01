@@ -160,8 +160,8 @@ Diagnostic reports go to:
 (includes OS/hardware detection, file checksums, service status, HTTP probe, and
 browser next-steps tailored to Pi / Docker / Mac / Linux).
 
-(includes `init.js`, previous `band_survey/`, `bookmarks.json`, `settings.json`,
-`RESTORE.txt`, and `diagnostic-report.txt` after install).
+Backup folder also includes `init.js`, previous `band_survey/`, `bookmarks.json`,
+`settings.json`, `RESTORE.txt`, and `diagnostic-report.txt` after install.
 
 If `install.sh` cannot find OpenWebRX+:
 
@@ -172,8 +172,116 @@ export OWRX_HTDOCS=/path/to/htdocs
 
 Typical `htdocs` paths:
 
-- `/usr/lib/python3/dist-packages/htdocs` (Debian / Ubuntu package)
+- `/usr/lib/python3/dist-packages/htdocs` (Debian / Ubuntu package, many Docker images)
 - `/opt/openwebrx/htdocs`
+
+### Docker (OpenWebRX+ in a container)
+
+You need **OpenWebRX+** (image must include `plugins.js`). Vanilla OpenWebRX images
+cannot load plugins.
+
+Band survey files must end up in **`htdocs/plugins/receiver/band_survey/`** with
+`await Plugins.load("band_survey");` in **`init.js`**. How you get them there depends
+on your compose file.
+
+#### Method 1 — Install inside the container (usual)
+
+On the **Docker host**:
+
+```bash
+docker ps                                    # note container name, e.g. openwebrx
+docker exec -it openwebrx bash               # shell inside container
+```
+
+Inside the container:
+
+```bash
+find /usr /opt -name openwebrx.js 2>/dev/null   # confirm htdocs path
+# common: /usr/lib/python3/dist-packages/htdocs
+
+apt-get update && apt-get install -y git        # if git is missing
+
+cd /tmp
+git clone https://github.com/G4EA5/owrx-band-survey.git
+cd owrx-band-survey
+chmod +x install.sh
+./install.sh --profile docker
+./install.sh --check
+exit
+```
+
+Restart the container (some images cache static files):
+
+```bash
+docker restart openwebrx
+```
+
+Then hard-refresh the receiver page (**Ctrl+Shift+R** / **Cmd+Shift+R**) and click
+orange **SV**.
+
+If auto-detect cannot find htdocs inside the container:
+
+```bash
+export OWRX_HTDOCS=/usr/lib/python3/dist-packages/htdocs
+./install.sh --profile docker
+```
+
+Verify from the host without opening a shell:
+
+```bash
+docker exec openwebrx bash -c 'cd /tmp/owrx-band-survey && ./install.sh --report'
+```
+
+Reports are written **inside the container** at `~/owrx-band-survey-reports/` unless
+you bind-mount home — copy out with `docker cp` if needed.
+
+**Note:** If you `docker compose down` and recreate the container **without** a volume
+on `plugins/receiver`, an in-container install is lost. Use Method 2 for persistence,
+or re-run `./install.sh` after recreate.
+
+#### Method 2 — Bind-mount `plugins/receiver` from the host (persistent)
+
+If your `docker-compose.yml` mounts the receiver plugin tree from the host, e.g.:
+
+```yaml
+volumes:
+  - ./plugins/receiver:/usr/lib/python3/dist-packages/htdocs/plugins/receiver
+```
+
+Install on the **host** into that folder (or run `install.sh` on the host with
+`OWRX_HTDOCS` pointing at the parent `htdocs` if you mount all of it):
+
+```bash
+git clone https://github.com/G4EA5/owrx-band-survey.git
+cd owrx-band-survey
+export OWRX_HTDOCS=/path/to/your/openwebrx/htdocs   # parent of plugins/receiver
+chmod +x install.sh
+./install.sh --profile docker
+docker restart openwebrx
+```
+
+Ensure `init.js` on the **host mount** includes:
+
+```js
+await Plugins.load("band_survey");
+```
+
+**Read-only mounts:** if the volume is `:ro`, the installer cannot write — remove
+`:ro` for install, or copy files into the host source directory by hand, then restart.
+
+#### Docker Desktop on Mac or Windows
+
+Docker runs Linux containers; install steps are the same (`docker exec` on the host).
+Your **browser** on Mac/Windows still needs a hard refresh on the receiver page —
+install does not run on the Mac itself unless OpenWebRX+ is natively installed there
+(unusual).
+
+#### Public shared Docker receiver
+
+```bash
+docker exec -it openwebrx bash
+cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
+```
 
 ---
 
@@ -510,16 +618,7 @@ array on the radio host.
 
 Toolbar **Check install** hides after use; Help tab **Check install now** always works.
 
----
-
-## Docker
-
-Bind-mount `htdocs/plugins/receiver` and run:
-
-```bash
-export OWRX_HTDOCS=/path/on/host/that/is/htdocs
-./install.sh
-```
+See **[Docker](#docker-openwebrx-in-a-container)** under Install for container install steps.
 
 ---
 
