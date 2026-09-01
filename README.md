@@ -1,4 +1,4 @@
-# Band survey — OpenWebRX+ plugin (v57)
+# Band survey — OpenWebRX+ plugin (v58 — local test)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
@@ -7,10 +7,29 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 
 
 <p>
-  <img src="screenshot.png" alt="Bands tab — band survey panel" width="640">
+  <img src="screenshots/range-fm-spectrum.png" alt="Range tab — FM broadcast spectrum after a range scan" width="640">
 </p>
 
 <p><em>Orange <strong>SV</strong> on the right-hand receiver panel opens the survey.</em></p>
+
+### Screenshots — FM broadcast range survey (88–108 MHz)
+
+<p>
+  <strong>Range</strong> — full-span scan with spectrum chart (280 peaks, wideband FM detection)<br>
+  <img src="screenshots/range-fm-spectrum.png" alt="Range tab with FM spectrum" width="640">
+</p>
+<p>
+  <strong>Peaks</strong> — ranked signal list from the same scan<br>
+  <img src="screenshots/peaks-fm-range.png" alt="Peaks tab — FM range hits" width="640">
+</p>
+<p>
+  <strong>Bookmarks</strong> — auto-bookmarked carriers<br>
+  <img src="screenshots/bookmarks-fm-auto.png" alt="Bookmarks tab — auto FM bookmarks" width="640">
+</p>
+<p>
+  <strong>Bands</strong> — scan options (wideband peaks, dB threshold, passes)<br>
+  <img src="screenshots/bands-scan-options.png" alt="Bands tab — scan options" width="640">
+</p>
 
 **Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
 optional extras if you already load them.
