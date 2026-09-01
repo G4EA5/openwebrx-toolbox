@@ -1,9 +1,11 @@
-# Band survey — OpenWebRX+ plugin (v58 — local test)
+# Band survey — OpenWebRX+ plugin (v86)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 
-**v57:** Bookmark scan uses the same profile and frequency tuning as band scans (fixes hops when bookmarks are on other profiles).
+**Recent:** Smart `install.sh` with `--check` / `--report` diagnostic logs; Range tab scan
+options (Hide birdies, Min seen); deferred peak loading for faster panel open; Help →
+**Copy diagnostic report** for browser-side troubleshooting.
 
 
 <p>
@@ -52,10 +54,23 @@ chmod +x install.sh
 Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click orange **SV**
 → **Check install**.
 
-Verify without writing files:
+Verify without writing files (writes a full diagnostic log):
 
 ```bash
 ./install.sh --check
+```
+
+Report only (same log, no install):
+
+```bash
+./install.sh --report
+```
+
+Logs go to `~/owrx-band-survey-reports/band-survey-report-*.txt` (OS, Pi/Docker detection, file checks, HTTP probe, Mac browser hints). Pick a setup type when prompted, or:
+
+```bash
+./install.sh --profile pi          # Raspberry Pi image
+./install.sh --profile mac-browser # you browse from Mac; install runs on the server
 ```
 
 **Public shared receiver** (hide **Own radio — fast hops** from visitors):
@@ -138,8 +153,15 @@ if missing. Backups go to:
 
 `~/owrx-band-survey-backups/YYYYMMDD-HHMMSS/`
 
-(includes `init.js`, previous `band_survey/`, `bookmarks.json`, `settings.json`, and
-`RESTORE.txt`).
+Diagnostic reports go to:
+
+`~/owrx-band-survey-reports/band-survey-report-*.txt`
+
+(includes OS/hardware detection, file checksums, service status, HTTP probe, and
+browser next-steps tailored to Pi / Docker / Mac / Linux).
+
+(includes `init.js`, previous `band_survey/`, `bookmarks.json`, `settings.json`,
+`RESTORE.txt`, and `diagnostic-report.txt` after install).
 
 If `install.sh` cannot find OpenWebRX+:
 
@@ -172,9 +194,9 @@ Typical `htdocs` paths:
 
 ---
 
-## Panel layout (v56)
+## Panel layout
 
-Eight tabs in the title bar: **Bands**, **Range**, **Peaks**, **Bookmarks**, **Audio**,
+Nine tabs: **Bands**, **Range**, **Explore**, **Peaks**, **Bookmarks**, **Audio**,
 **Skip**, **Settings**, **Help**.
 
 Scan controls stay pinned in the **toolbar** below the tabs. Drag panel edges or the
@@ -228,7 +250,8 @@ Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profile
   500–2000 kHz for wide surveys.
 - **Scan range** — add peaks to Seen.
 - **Fresh range scan** — clear peak list first.
-- Uses **Band scan options** from the Bands tab (passes, dwell, Min seen, dB).
+- **Range scan options** (on Range tab, synced with Bands): Passes, Dwell, Min seen,
+  dB, Hide birdies, Wideband peaks, Mute, Own radio.
 - **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
   bar height = dB; click a bar to tune.
 
@@ -365,7 +388,8 @@ Runs while **this browser tab** stays open.
 | **Export settings** | — | Download settings JSON (not peaks or audio) |
 | **Import settings** | — | Merge settings from JSON file |
 | **Reset settings** | — | Defaults (keeps peak list and bookmarks) |
-| **Max peaks** | 0 (unlimited) | Trim oldest when exceeded |
+| **Max peaks** | 0 (unlimited) | Trim oldest when exceeded. Try 1000–2000 if the panel feels slow. |
+| **Keep peaks between sessions** | on | Off = fresh peak list each browser session (faster). Export CSV first if you need the old list. |
 | **Max audio clips** | 40 | IndexedDB cap (5–200) |
 | **Clear all plugin data** | — | Wipe everything in this browser |
 
@@ -471,13 +495,18 @@ array on the radio host.
 
 | Problem | Fix |
 | --- | --- |
+| **Server check OK but no SV button** | Hard-refresh the **receiver** page (Ctrl+Shift+R / Cmd+Shift+R). Not map-only or admin. Pi: `sudo systemctl restart varnish nginx`. Run `./install.sh --report` and check browser steps in the log. |
 | **No SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
+| **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
+| **Slow panel / many stored peaks** | Settings → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open SV, not on page load. |
 | **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
 | **No waterfall data** | Wait after connect; check SDR is started. |
 | **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
 | **Other listeners online** | Untick **Only if alone**. |
-| **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. |
+| **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. Wideband peaks for FM/HF broadcast. |
 | **Banned / kicked** | Leave **Own radio — fast hops** off on shared receivers. |
+
+**Diagnostic logs:** `./install.sh --report` on the radio host (SSH). **Browser side:** SV → Help → **Copy diagnostic report**. Send both if asking for help.
 
 Toolbar **Check install** hides after use; Help tab **Check install now** always works.
 

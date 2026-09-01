@@ -25,8 +25,8 @@
 
 #bs-panel {
   position: fixed;
-  top: 28vh;
-  left: 12vw;
+  top: auto;
+  left: auto;
   z-index: 10040;
   width: 28vw;
   height: 58vh;
@@ -81,6 +81,39 @@
   padding: 2px 6px;
 }
 
+#bs-panel .bs-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  align-self: center;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+#bs-panel .bs-head .bs-x.bs-min {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 0 7px;
+}
+
+#bs-panel.bs-minimized {
+  height: auto !important;
+  min-height: 0;
+}
+
+#bs-panel.bs-minimized .bs-toolbar,
+#bs-panel.bs-minimized .bs-body,
+#bs-panel.bs-minimized .bs-resize-n,
+#bs-panel.bs-minimized .bs-resize-ne,
+#bs-panel.bs-minimized .bs-resize-e,
+#bs-panel.bs-minimized .bs-resize-se,
+#bs-panel.bs-minimized .bs-resize-s,
+#bs-panel.bs-minimized .bs-resize-sw,
+#bs-panel.bs-minimized .bs-resize-w,
+#bs-panel.bs-minimized .bs-resize-nw {
+  display: none !important;
+}
+
 #bs-panel .bs-x {
   border: 0;
   background: transparent;
@@ -98,6 +131,17 @@
   background: #111;
   overflow: auto;
   max-height: 42%;
+  cursor: move;
+}
+
+#bs-panel .bs-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0b1220;
+  cursor: move;
 }
 
 #bs-panel .bs-tabs {
@@ -139,8 +183,52 @@
   --bs-tab-accent-dim: rgba(234, 179, 8, 0.45);
 }
 
+#bs-panel .bs-tab[data-tab="explore"] {
+  --bs-tab-accent: #a78bfa;
+  --bs-tab-accent-dim: rgba(167, 139, 250, 0.45);
+}
+
+#bs-panel #bs-tab-explore {
+  overflow-y: auto;
+}
+
 #bs-panel #bs-tab-range {
   overflow-y: auto;
+}
+
+#bs-panel #bs-tab-range .bs-note {
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+#bs-panel #bs-tab-range .bs-row {
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+#bs-panel #bs-tab-range label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#bs-panel #bs-tab-range .bs-chk-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+#bs-panel #bs-tab-range .bs-chk-grid label.bs-chk {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#bs-panel #bs-tab-range .bs-hint {
+  margin: 2px 0 10px;
+  line-height: 1.4;
 }
 
 #bs-panel .bs-tab[data-tab="peaks"] {
@@ -195,15 +283,6 @@
   color: #0b1220;
 }
 
-#bs-panel .bs-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #0b1220;
-}
-
 #bs-panel .bs-tab-pane {
   display: none;
   flex: 1;
@@ -211,6 +290,7 @@
   flex-direction: column;
   overflow: hidden;
   padding: 6px 8px;
+  cursor: move;
 }
 
 #bs-panel .bs-tab-pane.bs-tab-on {
@@ -294,6 +374,20 @@
   background: transparent;
 }
 
+#bs-panel .bs-factory-row {
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #555;
+}
+
+#bs-panel .bs-factory-hint {
+  flex: 1;
+  min-width: 120px;
+  color: #bbb;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 #bs-panel .bs-chk-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -325,13 +419,27 @@
   font-size: 12px;
 }
 
-#bs-panel .bs-resize-e,
-#bs-panel .bs-resize-s,
-#bs-panel .bs-resize-se {
+#bs-panel [class*="bs-resize-"] {
   position: absolute;
   z-index: 3;
   background: transparent;
   touch-action: none;
+}
+
+#bs-panel .bs-resize-n {
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+#bs-panel .bs-resize-s {
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
 }
 
 #bs-panel .bs-resize-e {
@@ -342,12 +450,36 @@
   cursor: ew-resize;
 }
 
-#bs-panel .bs-resize-s {
+#bs-panel .bs-resize-w {
+  top: 28px;
   left: 0;
-  right: 12px;
+  width: 8px;
+  bottom: 12px;
+  cursor: ew-resize;
+}
+
+#bs-panel .bs-resize-nw {
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+#bs-panel .bs-resize-ne {
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+#bs-panel .bs-resize-sw {
+  left: 0;
   bottom: 0;
-  height: 8px;
-  cursor: ns-resize;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
 }
 
 #bs-panel .bs-resize-se {
@@ -366,6 +498,7 @@
   font-size: 11px;
   margin: 0 0 4px;
   line-height: 1.25;
+  cursor: move;
 }
 
 #bs-panel .bs-row {
@@ -812,6 +945,10 @@ body.bs-layout-drag.bs-resize-nwse {
   cursor: nwse-resize;
 }
 
+body.bs-layout-drag.bs-resize-nesw {
+  cursor: nesw-resize;
+}
+
 #bs-panel .bs-bm-scroll,
 #bs-panel .bs-loaded-scroll,
 #bs-panel .bs-audiolist,
@@ -940,4 +1077,87 @@ body.bs-layout-drag.bs-resize-nwse {
 #bs-panel .bs-range-spectrum-leg {
   margin-top: 2px;
   font-size: 11px;
+}
+
+/* Explore mode — waterfall hop + minimap (was spectrum_explorer) */
+#bs-ex-minimap-wrap {
+  position: relative;
+  z-index: 10150;
+  margin: 0 0 6px 0;
+}
+
+#bs-ex-minimap-wrap canvas,
+#bs-ex-minimap-canvas {
+  display: block;
+  width: 100%;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a0a0c;
+  cursor: crosshair;
+}
+
+#bs-panel #bs-tab-explore .bs-note {
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+#bs-panel #bs-tab-explore .bs-hint {
+  margin: 6px 0 0;
+  line-height: 1.35;
+}
+
+#bs-panel .bs-ex-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+#bs-panel .bs-ex-toolbar button.bs-ex-btn {
+  flex: 0 0 auto;
+}
+
+#bs-panel .bs-ex-toolbar #bs-ex-readout {
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+}
+
+#bs-panel button.bs-ex-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+#bs-panel button.bs-ex-btn.bs-ex-arrow {
+  padding: 5px 13px;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 800;
+  min-width: 38px;
+  background: #1d4ed8;
+  border: 2px solid #93c5fd;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.45);
+}
+
+#bs-panel button.bs-ex-btn.bs-ex-arrow:hover {
+  background: #2563eb;
+  border-color: #dbeafe;
+  box-shadow: 0 1px 6px rgba(59, 130, 246, 0.55);
+}
+
+#bs-panel #bs-ex-minimap-btn.bs-on {
+  background: #2563eb;
+  color: #fff;
+  border-color: #60a5fa;
+}
+
+#webrx-canvas-container.bs-ex-pan-active {
+  cursor: grabbing;
 }

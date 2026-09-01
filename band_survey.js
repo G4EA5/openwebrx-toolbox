@@ -13,7 +13,9 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 57;
+Plugins.band_survey._version = 86;
+/* Homelab magic_key for continuous center retune (setfrequency). Override if needed. */
+Plugins.band_survey.magic_key = Plugins.band_survey.magic_key || "memagic";
 
 Plugins.band_survey.init = function () {
   var LS = "owrx_band_survey_v1";
@@ -21,11 +23,126 @@ Plugins.band_survey.init = function () {
   var LS_HITS = "owrx_band_survey_hits_v1";
   var SAMPLE_MS = 400;
   var MAX_PASSES = 100;
+  var RENDER_HITS_CAP = 400;
+  var PEAKS_LOAD_WARN = 800;
+  var _panelHeavyTimer = null;
+  var _hitsLoaded = false;
+  var _hitsLoading = false;
+  var _hitsLoadQueue = [];
+  var _hitsClassified = false;
+
+  function syncPassesUi(val) {
+    val = Math.max(1, Math.min(MAX_PASSES, Number(val) || 2));
+    if ($("bs-passes")) $("bs-passes").value = val;
+    if ($("bs-range-passes")) $("bs-range-passes").value = val;
+    return val;
+  }
+
+  function passesFromUi() {
+    var el = $("bs-range-passes") || $("bs-passes");
+    return syncPassesUi(el && el.value);
+  }
+
+  function syncDwellUi(val) {
+    val = Math.max(0.8, Math.min(15, Number(val) || 2.5));
+    if ($("bs-dwell")) $("bs-dwell").value = val;
+    if ($("bs-range-dwell")) $("bs-range-dwell").value = val;
+    return val;
+  }
+
+  function syncThreshUi(val) {
+    val = Math.max(2, Math.min(25, Number(val) || 10));
+    if ($("bs-thresh")) $("bs-thresh").value = val;
+    if ($("bs-range-thresh")) $("bs-range-thresh").value = val;
+    return val;
+  }
+
+  function syncMuteUi(checked) {
+    var on = !!checked;
+    if ($("bs-mute")) $("bs-mute").checked = on;
+    if ($("bs-range-mute")) $("bs-range-mute").checked = on;
+    return on;
+  }
+
+  function syncOwnRadioUi(checked) {
+    var on = ownerOverrideAllowed() && !!checked;
+    if ($("bs-ownradio")) $("bs-ownradio").checked = on;
+    if ($("bs-range-ownradio")) $("bs-range-ownradio").checked = on;
+    return on;
+  }
+
+  function dwellFromUi() {
+    var el = $("bs-range-dwell") || $("bs-dwell");
+    return syncDwellUi(el && el.value);
+  }
+
+  function threshFromUi() {
+    var el = $("bs-range-thresh") || $("bs-thresh");
+    return syncThreshUi(el && el.value);
+  }
+
+  function muteFromUi() {
+    var el = $("bs-range-mute") || $("bs-mute");
+    return syncMuteUi(el && el.checked);
+  }
+
+  function ownRadioFromUi() {
+    var el = $("bs-range-ownradio") || $("bs-ownradio");
+    return syncOwnRadioUi(el && el.checked);
+  }
+
+  function syncMinHitsUi(val) {
+    val = Math.max(1, Math.min(50, Number(val) || 3));
+    if ($("bs-minhits")) $("bs-minhits").value = val;
+    if ($("bs-range-minhits")) $("bs-range-minhits").value = val;
+    return val;
+  }
+
+  function minHitsFromUi() {
+    var el = $("bs-range-minhits") || $("bs-minhits");
+    return syncMinHitsUi(el && el.value);
+  }
+
+  function syncHideSpursUi(on) {
+    on = on !== false;
+    if ($("bs-hidespurs")) $("bs-hidespurs").checked = on;
+    if ($("bs-range-hidespurs")) $("bs-range-hidespurs").checked = on;
+    return on;
+  }
+
+  function hideSpursFromUi() {
+    var el = $("bs-range-hidespurs") || $("bs-hidespurs");
+    return syncHideSpursUi(el ? el.checked : S.hideSpurs !== false);
+  }
+
+  function syncWidebandUi(on) {
+    on = on !== false;
+    if ($("bs-wideband")) $("bs-wideband").checked = on;
+    if ($("bs-range-wideband")) $("bs-range-wideband").checked = on;
+    return on;
+  }
+
+  function widebandFromUi() {
+    var el = $("bs-range-wideband") || $("bs-wideband");
+    return syncWidebandUi(el ? el.checked : S.widebandPeaks !== false);
+  }
+
+  function syncRangeScanOptsUi() {
+    syncPassesUi(S.passes);
+    syncDwellUi(S.dwell);
+    syncThreshUi(S.threshDb);
+    syncMinHitsUi(S.minHits);
+    syncMuteUi(S.mute);
+    syncOwnRadioUi(S.ownRadio);
+    syncWidebandUi(S.widebandPeaks !== false);
+    syncHideSpursUi(S.hideSpurs !== false);
+  }
   var CENTER_GUARD_HZ = 25000;
   var EDGE_FRAC = 0.06;
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
   var S = loadSettings();
+  var panelLayoutUserSet = Number(S.panelW) > 0;
   var hits = [];
   var tileLooks = {};
   var running = false;
@@ -62,14 +179,38 @@ Plugins.band_survey.init = function () {
   var LS_LOADED_BM = "owrx_band_survey_loaded_bm_v1";
   var SS_TAB = "owrx_band_survey_tab_v1";
   var LS_CHECK_DISMISS = "owrx_band_survey_check_dismiss_v1";
-  var LS_SETTINGS_FILE = "band-survey-settings.json";
-  var TAB_IDS = ["bands", "range", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+  var LS_PANEL_LAYOUT = "owrx_band_survey_panel_layout_v1";
+  var TAB_IDS = ["bands", "range", "explore", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+  var LS_EXPLORE = "owrx_band_survey_explore_v1";
+  var LS_EXPLORE_MM = "owrx_band_survey_explore_mm_v1";
+  var LS_RANGE_SPECTRUM = "owrx_band_survey_range_spectrum_v1";
+  var EX_CLICK_MAX_PX = 6;
+  var EX_MINIMAP_BINS = 512;
+  var EX_OVERVIEW_EMPTY = -999;
+  var EX_DEBOUNCE_MS = 180;
+  var explore = {
+    on: false,
+    minimapOn: false,
+    dragging: false,
+    dragStartX: 0,
+    dragStartCenter: 0,
+    movedPx: 0,
+    pendingCenter: null,
+    debounceTimer: null,
+    segmentStart: 0,
+    segmentEnd: 0,
+    minimap: null,
+    minimapCtx: null,
+    overview: null,
+    handlersOn: false
+  };
   var bsInternalTune = false;
   var lastManualTuneAt = 0;
   var SCHED_IDLE_MS = 10 * 60 * 1000;
   var loadedBookmarks = [];
   var rangeSpectrum = { startMhz: 0, endMhz: 0, peaks: [] };
   var rangeSpectrumBound = false;
+  var RANGE_SPEC = { cssH: 172, padL: 46, padR: 10, padT: 14, padB: 22, bins: 480 };
 
   function loadSettings() {
     var d = {
@@ -82,6 +223,7 @@ Plugins.band_survey.init = function () {
       hideAuto: false,
       mute: true,
       hideSpurs: true,
+      widebandPeaks: true,
       ignoredFreqs: [],
       scanAfter: false,
       listenSec: 4,
@@ -115,6 +257,7 @@ Plugins.band_survey.init = function () {
       rangeStartMhz: 109,
       rangeEndMhz: 200,
       rangeStepKhz: 0,
+      rangeMode: "full",
       rememberTab: true,
       defaultTab: "last",
       switchPeaksOnDone: false,
@@ -127,6 +270,7 @@ Plugins.band_survey.init = function () {
       pauseOnManualTune: false,
       profileSettleMs: 0,
       maxPeaks: 0,
+      keepPeaks: true,
       maxAudioClips: 40,
       webhookUrl: "",
       copyPeaksOnDone: false,
@@ -190,7 +334,55 @@ Plugins.band_survey.init = function () {
     } catch (e) {}
   }
 
+  function slimHitSamplesIfHuge() {
+    if (hits.length < 600) return;
+    hits.forEach(function (h) {
+      if (h.samples && h.samples.length > 8) h.samples = h.samples.slice(-8);
+    });
+  }
+
+  function ensureHitsLoaded(done) {
+    if (S.keepPeaks === false) {
+      _hitsLoaded = true;
+      if (done) done(0);
+      return;
+    }
+    if (_hitsLoaded) {
+      if (done) done(hits.length);
+      return;
+    }
+    if (done) _hitsLoadQueue.push(done);
+    if (_hitsLoading) return;
+    _hitsLoading = true;
+    setTimeout(function () {
+      try {
+        loadHits();
+        trimPeaksIfNeeded();
+        slimHitSamplesIfHuge();
+      } catch (e) {}
+      _hitsLoaded = true;
+      _hitsLoading = false;
+      var n = hits.length;
+      var q = _hitsLoadQueue.slice();
+      _hitsLoadQueue = [];
+      q.forEach(function (cb) { cb(n); });
+    }, 0);
+  }
+
+  function ensureHitsLoadedPromise() {
+    return new Promise(function (resolve) {
+      ensureHitsLoaded(resolve);
+    });
+  }
+
+  function ensureHitsClassified() {
+    if (_hitsClassified || !hits.length) return;
+    classifyAll();
+    _hitsClassified = true;
+  }
+
   function saveHits() {
+    if (S.keepPeaks === false) return;
     try {
       hits.forEach(function (h) {
         if (h.samples && h.samples.length > 48) h.samples = h.samples.slice(-48);
@@ -199,8 +391,32 @@ Plugins.band_survey.init = function () {
     } catch (e) {}
   }
 
-  function alwaysOnBand(pid) {
-    return /^(fm_|dab_|ais|adsb|vdl2|pocsag|tetra|ism)/.test(pid || "");
+  function alwaysOnBand(pid, label) {
+    if (/^(fm_|dab_|ais|adsb|vdl2|pocsag|tetra|ism)/.test(pid || "")) return true;
+    return isFmBroadcastProfile(pid, label) || isHfBroadcastProfile(pid, label);
+  }
+
+  function deferPanelHeavyWork(includeHealth) {
+    if (_panelHeavyTimer) clearTimeout(_panelHeavyTimer);
+    _panelHeavyTimer = setTimeout(function () {
+      _panelHeavyTimer = null;
+      fillBands();
+      var peaksOpen = document.querySelector('#bs-tabs .bs-tab.bs-tab-on[data-tab="peaks"]');
+      if (peaksOpen) {
+        ensureHitsClassified();
+        renderHits();
+      } else {
+        var host = $("bs-hitwrap");
+        if (host && hits.length && !host.querySelector("table")) {
+          host.innerHTML = '<p class="bs-empty">' + hits.length +
+            " peaks stored. Open the Peaks tab to load the table (keeps SV snappy).</p>";
+        }
+      }
+      renderBookmarkPane();
+      updateTabLabels();
+      if (includeHealth) renderHealth();
+      requestAnimationFrame(function () { applyPanelLayout(); });
+    }, 0);
   }
 
   function stddev(arr) {
@@ -544,11 +760,42 @@ Plugins.band_survey.init = function () {
     return (isFinite(n) && n >= 5) ? Math.min(200, Math.round(n)) : 40;
   }
 
+  function getMagicKey() {
+    try {
+      if (window.UI && typeof UI.getDemodulatorPanel === "function") {
+        var dp = UI.getDemodulatorPanel();
+        if (dp && typeof dp.getMagicKey === "function") {
+          var k = dp.getMagicKey();
+          if (k) return k;
+        }
+      }
+    } catch (e) {}
+    try {
+      var m = (window.location.hash || "").match(/(?:^|[&#])key=([^&]*)/);
+      if (m && m[1]) return decodeURIComponent(m[1]);
+    } catch (e2) {}
+    return Plugins.band_survey.magic_key || "";
+  }
+
   function pluginSetFrequency(freq) {
-    if (!window.UI || typeof UI.setFrequency !== "function") return;
+    freq = Math.round(freq);
+    if (!isFinite(freq) || freq < 0) return;
     bsInternalTune = true;
     try {
-      UI.setFrequency(freq);
+      var sock = window.ws;
+      var key = getMagicKey();
+      if (sock && sock.readyState === 1 && key) {
+        sock.send(JSON.stringify({
+          type: "setfrequency",
+          params: { frequency: freq, key: key }
+        }));
+      }
+      if (window.UI && typeof UI.setFrequency === "function") {
+        UI.setFrequency(freq);
+      }
+      if (window.UI && typeof UI.toggleScanner === "function") {
+        UI.toggleScanner(false);
+      }
     } finally {
       setTimeout(function () { bsInternalTune = false; }, 0);
     }
@@ -689,13 +936,72 @@ Plugins.band_survey.init = function () {
   }
 
   function resetPanelLayoutDefaults() {
+    if (restorePanelLayoutSnapshot()) {
+      saveSettings();
+      setStatus("Panel layout restored from last save.");
+      return;
+    }
     S.panelW = 0;
     S.panelH = 0;
     S.panelLeft = null;
     S.panelTop = null;
+    panelLayoutUserSet = false;
     saveSettings();
     applyPanelLayout();
-    setStatus("Panel layout reset to default position and size.");
+    setStatus("No saved layout — using waterfall default.");
+  }
+
+  function writePanelLayoutSnapshot() {
+    try {
+      if (!(Number(S.panelW) > 40 && Number(S.panelH) > 40)) return;
+      window.localStorage.setItem(LS_PANEL_LAYOUT, JSON.stringify({
+        panelW: Math.round(S.panelW),
+        panelH: Math.round(S.panelH),
+        panelLeft: typeof S.panelLeft === "number" ? Math.round(S.panelLeft) : null,
+        panelTop: typeof S.panelTop === "number" ? Math.round(S.panelTop) : null
+      }));
+    } catch (e) {}
+  }
+
+  function readPanelLayoutSnapshot() {
+    try {
+      var raw = window.localStorage.getItem(LS_PANEL_LAYOUT);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !(Number(o.panelW) > 40) || !(Number(o.panelH) > 40)) return null;
+      return o;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function restorePanelLayoutSnapshot() {
+    var o = readPanelLayoutSnapshot();
+    if (!o) return false;
+    S.panelW = Number(o.panelW);
+    S.panelH = Number(o.panelH);
+    S.panelLeft = typeof o.panelLeft === "number" && isFinite(o.panelLeft) ? o.panelLeft : null;
+    S.panelTop = typeof o.panelTop === "number" && isFinite(o.panelTop) ? o.panelTop : null;
+    panelLayoutUserSet = true;
+    applyPanelLayout();
+    return true;
+  }
+
+  function savePanelLayoutManual() {
+    savePanelLayout();
+    writePanelLayoutSnapshot();
+    setStatus("Panel layout saved — factory reset will restore this size and position.");
+  }
+
+  function applyWaterfallPanelDefault() {
+    S.panelW = 0;
+    S.panelH = 0;
+    S.panelLeft = null;
+    S.panelTop = null;
+    panelLayoutUserSet = false;
+    saveSettings();
+    applyPanelLayout();
+    setStatus("Panel layout set to waterfall default.");
   }
 
   function settingsDefaults() {
@@ -709,6 +1015,7 @@ Plugins.band_survey.init = function () {
       hideAuto: false,
       mute: true,
       hideSpurs: true,
+      widebandPeaks: true,
       ignoredFreqs: [],
       scanAfter: false,
       listenSec: 4,
@@ -742,6 +1049,7 @@ Plugins.band_survey.init = function () {
       rangeStartMhz: 109,
       rangeEndMhz: 200,
       rangeStepKhz: 0,
+      rangeMode: "full",
       rememberTab: true,
       defaultTab: "last",
       switchPeaksOnDone: false,
@@ -754,6 +1062,7 @@ Plugins.band_survey.init = function () {
       pauseOnManualTune: false,
       profileSettleMs: 0,
       maxPeaks: 0,
+      keepPeaks: true,
       maxAudioClips: 40,
       webhookUrl: "",
       copyPeaksOnDone: false,
@@ -788,6 +1097,7 @@ Plugins.band_survey.init = function () {
     if ($("bs-pause-tune")) $("bs-pause-tune").checked = !!S.pauseOnManualTune;
     if ($("bs-settle-ms")) $("bs-settle-ms").value = S.profileSettleMs || 0;
     if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks || 0;
+    if ($("bs-keep-peaks")) $("bs-keep-peaks").checked = S.keepPeaks !== false;
     if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || 40;
     if ($("bs-webhook")) $("bs-webhook").value = S.webhookUrl || "";
     if ($("bs-copy-done")) $("bs-copy-done").checked = !!S.copyPeaksOnDone;
@@ -834,18 +1144,30 @@ Plugins.band_survey.init = function () {
     saveSettings();
     fillSettingsForm();
     if ($("bs-passes")) $("bs-passes").value = S.passes;
+    if ($("bs-range-passes")) $("bs-range-passes").value = S.passes;
     if ($("bs-dwell")) $("bs-dwell").value = S.dwell;
     if ($("bs-minhits")) $("bs-minhits").value = S.minHits;
     if ($("bs-thresh")) $("bs-thresh").value = S.threshDb;
+    syncRangeScanOptsUi();
     applySchedule();
     applyPanelLayout();
     setStatus("Settings reset to defaults.");
   }
 
-  function clearAllPluginData() {
-    if (!window.confirm("Clear ALL Band survey data in this browser? Peaks, bookmarks, audio, skip list, and settings will be wiped.")) return;
+  function factoryReset() {
+    if (!window.confirm(
+      "Factory reset Band survey (SV)?\n\n" +
+      "This browser will lose peaks, bookmarks, audio clips, skip list, Explore state, and settings. Saved panel layout (position/size) and the last range spectrum chart are kept. OpenWebRX server bookmarks are not changed.\n\n" +
+      "Export settings first if you want a backup."
+    )) return;
+    doFactoryReset();
+  }
+
+  function doFactoryReset() {
     hits = [];
     tileLooks = {};
+    _hitsLoaded = false;
+    _hitsClassified = false;
     loadedBookmarks = [];
     audioClips = [];
     try {
@@ -867,19 +1189,42 @@ Plugins.band_survey.init = function () {
       window.localStorage.removeItem(LS_LOADED_BM);
       window.localStorage.removeItem(LS_CLIP_SEQ);
       window.localStorage.removeItem(LS_CHECK_DISMISS);
+      window.localStorage.removeItem(LS_REC_MIGRATE);
+      window.localStorage.removeItem(LS_EXPLORE);
+      window.localStorage.removeItem(LS_EXPLORE_MM);
       window.localStorage.removeItem(SS_TAB);
       sessionStorage.removeItem(SS_TAB);
     } catch (e) {}
     clearAllPersistedAudioClips().then(function () {
       S = loadSettings();
+      panelLayoutUserSet = false;
+      explore.on = false;
+      explore.minimapOn = true;
+      explore.overview = null;
       fillSettingsForm();
+      if ($("bs-passes")) $("bs-passes").value = S.passes;
+      if ($("bs-range-passes")) $("bs-range-passes").value = S.passes;
+      if ($("bs-dwell")) $("bs-dwell").value = S.dwell;
+      if ($("bs-minhits")) $("bs-minhits").value = S.minHits;
+      if ($("bs-thresh")) $("bs-thresh").value = S.threshDb;
+      syncRangeScanOptsUi();
       renderHits();
       renderBookmarkPane();
       renderAudioClips();
       applyCheckInstallDismiss();
       updateTabLabels();
-      setStatus("All plugin data cleared.");
+      if (!restorePanelLayoutSnapshot()) applyPanelLayout();
+      restoreRangeSpectrumView();
+      applySchedule();
+      if (typeof setExploreMode === "function") setExploreMode(false);
+      if (typeof setExploreMinimap === "function") setExploreMinimap(true);
+      switchTab("bands");
+      setStatus("Factory reset complete — SV restored to defaults (panel layout from last save).");
     });
+  }
+
+  function clearAllPluginData() {
+    factoryReset();
   }
 
   function onSurveyComplete(fin, stopped) {
@@ -1792,6 +2137,50 @@ Plugins.band_survey.init = function () {
     return issues;
   }
 
+  function buildDiagnosticReport() {
+    var lines = [];
+    function L(s) { lines.push(String(s || "")); }
+    L("Band survey — browser diagnostic report");
+    L("Generated: " + new Date().toISOString());
+    L("Plugin v" + (Plugins.band_survey._version || "?"));
+    L("Page: " + (location.href || ""));
+    L("User-Agent: " + (navigator.userAgent || ""));
+    L("Platform: " + (navigator.platform || "") + "  language=" + (navigator.language || ""));
+    L("Viewport: " + window.innerWidth + "x" + window.innerHeight);
+    L("");
+    var issues = diagnose();
+    L("=== Checks ===");
+    issues.forEach(function (x) {
+      L((x.level || "info").toUpperCase() + ": " + x.title);
+      L("  Fix: " + x.fix);
+    });
+    L("");
+    L("=== Page state ===");
+    L("SV panel: " + ($("bs-panel") ? "present" : "missing"));
+    L("SV toggle: " + ($("bs-toggle-btn") ? "present" : "missing"));
+    L("Receiver panel: " + ($("openwebrx-panel-receiver") ? "present" : "missing"));
+    L("Profiles: " + (profiles().length || 0));
+    L("Stored peaks: " + hits.length + " (loaded=" + (_hitsLoaded ? "yes" : "no") + ")");
+    L("Plugins loader: " + !!(window.Plugins && Plugins.load));
+    L("");
+    L("Send with server report from: ./install.sh --report");
+    return lines.join("\n");
+  }
+
+  function copyDiagnosticReport() {
+    var text = buildDiagnosticReport();
+    function ok() { setStatus("Diagnostic report copied. Paste into email or chat."); }
+    function fail() {
+      setStatus("Could not copy — use the prompt to copy manually.");
+      try { prompt("Copy this diagnostic report:", text); } catch (e) {}
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else {
+      fail();
+    }
+  }
+
   function renderIssueP(x) {
     var tag = x.level === "error" ? "Needs a fix: " : x.level === "warn" ? "Note: " : "Optional: ";
     return "<p><b>" + tag + escapeHtml(x.title) + "</b><br>" + escapeHtml(x.fix) + "</p>";
@@ -1930,7 +2319,9 @@ Plugins.band_survey.init = function () {
 
   function applyOwnerLock() {
     var el = $("bs-ownradio");
+    var rangeEl = $("bs-range-ownradio");
     var lab = el && el.parentElement;
+    var rangeLab = rangeEl && rangeEl.parentElement;
     var hint = $("bs-hophint");
     if (!ownerOverrideAllowed()) {
       S.ownRadio = false;
@@ -1938,15 +2329,28 @@ Plugins.band_survey.init = function () {
         el.checked = false;
         el.disabled = true;
       }
+      if (rangeEl) {
+        rangeEl.checked = false;
+        rangeEl.disabled = true;
+      }
       if (lab) {
         lab.hidden = true;
         lab.title = "The site operator locked fast hops on this receiver.";
+      }
+      if (rangeLab) {
+        rangeLab.hidden = true;
+        rangeLab.title = "The site operator locked fast hops on this receiver.";
       }
       if (hint) hint.textContent = "busy channel waits here · same-band ~1s · other band 11s (operator locked fast hops)";
     } else if (el && lab) {
       el.disabled = false;
       lab.hidden = false;
       lab.title = "Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off.";
+      if (rangeEl && rangeLab) {
+        rangeEl.disabled = false;
+        rangeLab.hidden = false;
+        rangeLab.title = "Skip the 11s wait between profiles. Only on a receiver you run. Public sites can lock this off.";
+      }
       if (hint) hint.textContent = "busy channel waits here · same-band ~1s · other band 11s unless Own radio is on";
     }
   }
@@ -1962,7 +2366,7 @@ Plugins.band_survey.init = function () {
       ? "<li><b>Own radio — fast hops</b> (Bands tab) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>Band survey — help (v56)</h2>" +
+      "<h2>Band survey — help (v86)</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
@@ -1971,11 +2375,12 @@ Plugins.band_survey.init = function () {
       "<li>Tick bands (or a preset) and press <b>Scan bands</b>.</li>" +
       "<li>Hover any control for a tip. Drag panel edges or the corner to resize — position and size are remembered in this browser.</li>" +
       "</ol>" +
-      '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button></p>' +
+      '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
+      '<button type="button" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
       "<h3>What this is</h3>" +
       "<p>Standalone <b>OpenWebRX+ receiver plugin</b>. Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Does <b>not</b> need freq_scanner, scan_hunt, uikit, or notify — those are optional if already loaded.</p>" +
       "<h3>Install</h3>" +
-      "<p>Preferred: run <code>./install.sh</code> from the plugin folder (backs up, copies files, adds load line). Verify only: <code>./install.sh --check</code>. Public shared receiver: <code>./install.sh --public</code> (hides fast hops). Manual: copy into <code>htdocs/plugins/receiver/band_survey/</code> and add <code>await Plugins.load(\"band_survey\");</code> in <code>init.js</code>.</p>" +
+      "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Smart checks: <code>./install.sh --check</code> or <code>./install.sh --report</code> writes a full log (Pi/Docker/Mac hints). Public site: <code>./install.sh --public</code>. On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</p>" +
       "<h3>Title bar tabs</h3>" +
       "<p><b>Bands</b> · <b>Range</b> · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b> — each tab holds the controls for that feature. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (always visible)</h3>" +
@@ -2002,7 +2407,8 @@ Plugins.band_survey.init = function () {
       "<li><b>Start MHz</b> / <b>End MHz</b> — sweep span (e.g. 109–200). Not tied to ticked bands; plugin picks covering profiles.</li>" +
       "<li><b>Step kHz</b> — hop size. <b>0</b> = auto (~88% of waterfall span, min 12.5&nbsp;kHz). Use 500–2000&nbsp;kHz for wide surveys.</li>" +
       "<li><b>Scan range</b> — add peaks to Seen. <b>Fresh range scan</b> — clear peak list first.</li>" +
-      "<li>Uses Bands tab scan options (passes, dwell, Min seen, dB). <b>Stop</b> auto-bookmarks like band scan.</li>" +
+      "<li><b>Range spectrum</b> bar chart appears after a scan — kept across page reload and factory reset. <b>Save PNG</b> / <b>Save CSV</b> on the Range tab.</li>" +
+      "<li><b>Passes</b>, <b>Dwell s</b>, <b>dB over noise</b>, <b>Mute while running</b>, and <b>Own radio — fast hops</b> on this tab (synced with Bands). <b>Min seen</b> for auto-bookmark is on Bands. <b>Stop</b> auto-bookmarks like band scan.</li>" +
       "<li><b>Spectrum map</b> — after finish or Stop: green = new, amber = seen, pink = priority; bar height = dB; click a bar to tune.</li>" +
       "</ul>" +
       "<h3>Peaks tab</h3>" +
@@ -2012,6 +2418,8 @@ Plugins.band_survey.init = function () {
       "<li><b>Copy list</b> · <b>Export CSV</b> · <b>Export JSON</b> — log or merge yellow server bookmarks (admin merges <code>bookmarks</code> on host).</li>" +
       "<li><b>Import CSV</b> · <b>Import JSON</b> — restore Peaks/Seen in this browser (file picker; Shift-click to paste). Does not change bookmarks.</li>" +
       "<li><b>Clear list</b> — wipe peak table. Bookmarks stay.</li>" +
+      "<li>Large lists (1000+ peaks) can make the Peaks tab slow. The table shows the top " + RENDER_HITS_CAP +
+      " rows; Export CSV has all. Set <b>Max peaks</b> on Settings or untick <b>Keep peaks between sessions</b> for faster opens.</li>" +
       "</ul>" +
       "<h3>Bookmarks tab</h3>" +
       "<ul>" +
@@ -2062,10 +2470,11 @@ Plugins.band_survey.init = function () {
       "<li><b>Only if alone</b> — do not retune when other listeners are online (untick to override).</li>" +
       "<li><b>Profile settle ms</b> — wait after profile/frequency change before sampling (0 = default ~700&nbsp;ms).</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
+      "<li><b>Factory reset</b> (top of Settings) — wipe peaks, bookmarks, audio, skip list, Explore, and settings in this browser.</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
-      "<li><b>Max peaks</b> — trim oldest when exceeded (0 = unlimited).</li>" +
+      "<li><b>Max peaks</b> — trim oldest when exceeded (0 = unlimited). Try 1000–2000 if SV feels slow with a big list.</li>" +
+      "<li><b>Keep peaks between sessions</b> — off = fresh peak list each browser session (faster). Export CSV first if you need the old list.</li>" +
       "<li><b>Max audio clips</b> — IndexedDB cap (5–200).</li>" +
-      "<li><b>Clear all plugin data</b> — wipe peaks, bookmarks, audio, skip list, and settings in this browser.</li>" +
       "</ul><p><b>Homelab</b></p><ul>" +
       "<li><b>Webhook URL</b> — POST JSON <code>{freq, name, db, band}</code> on each new peak.</li>" +
       "<li><b>Alert MHz list</b> + <b>± kHz</b> — extra notify and sound when a new peak is within tolerance.</li>" +
@@ -2098,6 +2507,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Local bookmarks API missing</b> — auto-bookmark disabled; Export JSON still works.</li>" +
       "<li><b>Other listeners online</b> — untick <b>Only if alone</b>.</li>" +
       "<li><b>Nothing counted</b> — lower dB over noise, pick a busier band, wait for waterfall activity.</li>" +
+      "<li><b>Slow SV open / sluggish panel</b> — hundreds or thousands of stored peaks. Peaks load when you open SV, not on page load. Set <b>Max peaks</b> (1000–2000), untick <b>Keep peaks between sessions</b>, or Peaks → Export CSV then Clear list.</li>" +
       (ownerOverrideAllowed()
         ? "<li><b>Banned / kicked</b> — leave <b>Own radio — fast hops</b> off on shared receivers.</li>"
         : "<li><b>Banned / kicked</b> — fast hops locked here (~11s gap). Server bot-ban may still apply.</li>") +
@@ -2130,21 +2540,54 @@ Plugins.band_survey.init = function () {
         runCheckInstall({ dismissToolbar: false });
       };
     }
+    if ($("bs-copy-diag")) {
+      $("bs-copy-diag").onclick = function () { copyDiagnosticReport(); };
+    }
+  }
+
+  function setPanelMinimized(min) {
+    var p = $("bs-panel");
+    if (!p) return;
+    p.classList.toggle("bs-minimized", !!min);
+    var btn = $("bs-minimize");
+    if (btn) {
+      btn.textContent = min ? "+" : "−";
+      btn.title = min
+        ? "Restore the full panel."
+        : "Minimize to tab bar only — scans keep running.";
+    }
+  }
+
+  function togglePanelMinimized() {
+    var p = $("bs-panel");
+    if (!p || p.hidden) return;
+    setPanelMinimized(!p.classList.contains("bs-minimized"));
+  }
+
+  function clampPanelOnScreen(w, h, left, top, vw, vh) {
+    var edge = 72;
+    if (left + w < edge) left = Math.max(4, vw - w - 4);
+    if (top + h < edge) top = Math.max(4, vh - h - 4);
+    if (left > vw - edge) left = 4;
+    if (top > vh - edge) top = Math.max(4, vh - h - 4);
+    return { left: left, top: top };
   }
 
   function showPanel() {
     var p = $("bs-panel");
     if (!p) return;
     p.hidden = false;
+    setPanelMinimized(false);
     applyPanelLayout();
-    fillBands();
-    renderBookmarkPane();
     if ($("bs-hideauto") && S.hideAuto !== $("bs-hideauto").checked) $("bs-hideauto").checked = !!S.hideAuto;
-    renderHealth();
     applyCaps();
-    requestAnimationFrame(function () {
-      applyPanelLayout();
-      fillBands();
+    ensureSvAccessChip();
+    ensureHitsLoaded(function (n) {
+      if (n >= PEAKS_LOAD_WARN) {
+        setStatus("Loaded " + n + " stored peaks. For faster opens try Max peaks 1000–2000 on Settings, or untick Keep peaks between sessions.");
+      }
+      updateTabLabels();
+      deferPanelHeavyWork(true);
     });
     if (!profiles().length) {
       setStatus("Waiting for band profiles… if this stays empty, click Check install or open the Help tab.");
@@ -2180,28 +2623,57 @@ Plugins.band_survey.init = function () {
     }
   }
 
-  function autoOpenPanelNow() {
-    if (!S.autoOpenPanel || window._bs_auto_opened) return;
-    window._bs_auto_opened = true;
+  function maintainStartupPanelOpen() {
+    if (window._bs_user_closed_panel) return;
+    if (!window._bs_startup_open_done) return;
+    if (!window._bs_startup_grace_until || Date.now() > window._bs_startup_grace_until) return;
+    var p = $("bs-panel");
+    if (p && p.hidden) showPanel();
+  }
+
+  function runStartupPanelOpen() {
+    if (window._bs_user_closed_panel) return;
+    var wantWelcome = !S.seenHelp && !window._bs_welcomed;
+    var wantAuto = !!S.autoOpenPanel;
+    if (!wantWelcome && !wantAuto) return;
+    if (window._bs_startup_open_done) {
+      maintainStartupPanelOpen();
+      return;
+    }
+
     makePanel();
     var p = $("bs-panel");
     if (!p) return;
+
     function finishOpen() {
-      p.hidden = false;
-      switchTab(resolveOpenTab());
-      showPanel();
+      if (window._bs_user_closed_panel || window._bs_startup_open_done) return;
+      window._bs_startup_open_done = true;
+      window._bs_startup_grace_until = Date.now() + 2500;
+      if (wantWelcome) {
+        window._bs_welcomed = true;
+        showPanel();
+        switchTab("help");
+        setStatus("Welcome. Your blue bookmarks were copied into a browser backup. See the Help tab for the full guide — this only auto-opens once.");
+      } else {
+        showPanel();
+        switchTab(resolveOpenTab());
+      }
+      ensureSvAccessChip();
     }
-    if (profiles().length) {
-      finishOpen();
-      return;
-    }
+
+    finishOpen();
+    if (profiles().length) return;
+    if (runStartupPanelOpen._wait) return;
+    runStartupPanelOpen._wait = true;
+    setStatus("Waiting for band profiles…");
     var t0 = Date.now();
     (function waitProfiles() {
-      if (profiles().length || Date.now() - t0 > 15000) {
-        finishOpen();
+      if (profiles().length || Date.now() - t0 > 30000) {
+        runStartupPanelOpen._wait = false;
+        fillBands();
         return;
       }
-      setTimeout(waitProfiles, 200);
+      setTimeout(waitProfiles, 250);
     })();
   }
 
@@ -2332,12 +2804,44 @@ Plugins.band_survey.init = function () {
     return best || near;
   }
 
+  function profileOverlapsRange(p, startHz, endHz) {
+    var r = parseMhzRange(p && p.label);
+    if (!r) return false;
+    var lo = r.lo * 1e6;
+    var hi = r.hi * 1e6;
+    return hi >= startHz && lo <= endHz;
+  }
+
+  function buildRangeBandSteps(startHz, endHz) {
+    var selected = selectedValues();
+    var selectedSet = {};
+    selected.forEach(function (v) { selectedSet[v] = true; });
+    var steps = [];
+    profiles().forEach(function (p) {
+      if (!selectedSet[p.value]) return;
+      if (!profileOverlapsRange(p, startHz, endHz)) return;
+      var r = parseMhzRange(p.label);
+      var centerHz = r ? Math.round(((r.lo + r.hi) / 2) * 1e6) : null;
+      if (!centerHz) return;
+      steps.push({ freqHz: centerHz, profile: p });
+    });
+    steps.sort(function (a, b) { return a.freqHz - b.freqHz; });
+    return steps;
+  }
+
   function rangeStepHz() {
     var userKhz = Number(S.rangeStepKhz);
     if (isFinite(userKhz) && userKhz > 0) return userKhz * 1000;
     var bw = window.bandwidth;
-    if (bw && bw > 10000) return Math.max(12500, Math.floor(bw * (1 - 2 * EDGE_FRAC)));
-    return 12500;
+    var step = bw && bw > 10000 ? Math.max(12500, Math.floor(bw * (1 - 2 * EDGE_FRAC))) : 12500;
+    var startHz = (Number(S.rangeStartMhz) || 0) * 1e6;
+    var endHz = (Number(S.rangeEndMhz) || 0) * 1e6;
+    if (S.widebandPeaks !== false && isBroadcastFmRange(startHz, endHz)) {
+      step = Math.min(step, 250000);
+    } else if (S.widebandPeaks !== false && isHfBroadcastRange(startHz, endHz)) {
+      step = Math.min(step, 500000);
+    }
+    return step;
   }
 
   function buildRangeCenters(startHz, endHz, stepHz) {
@@ -2363,8 +2867,34 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-end")) S.rangeEndMhz = Number($("bs-range-end").value) || S.rangeEndMhz;
     if ($("bs-range-step")) S.rangeStepKhz = Number($("bs-range-step").value);
     if (!isFinite(S.rangeStepKhz) || S.rangeStepKhz < 0) S.rangeStepKhz = 0;
+    if ($("bs-range-passes")) S.passes = syncPassesUi($("bs-range-passes").value);
+    if ($("bs-range-dwell")) S.dwell = syncDwellUi($("bs-range-dwell").value);
+    if ($("bs-range-thresh")) S.threshDb = syncThreshUi($("bs-range-thresh").value);
+    if ($("bs-range-mute")) S.mute = syncMuteUi($("bs-range-mute").checked);
+    if ($("bs-range-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-range-ownradio").checked);
+    if ($("bs-range-wideband")) S.widebandPeaks = syncWidebandUi($("bs-range-wideband").checked);
+    if ($("bs-range-minhits")) S.minHits = syncMinHitsUi($("bs-range-minhits").value);
+    if ($("bs-range-hidespurs")) S.hideSpurs = syncHideSpursUi($("bs-range-hidespurs").checked);
+    if ($("bs-range-mode-bands") && $("bs-range-mode-bands").checked) S.rangeMode = "bands";
+    else S.rangeMode = "full";
     saveSettings();
     updateRangeEstimate();
+    updateRangeModeUi();
+    if ($("bs-range-hidespurs")) {
+      renderHits();
+      if (rangeSpectrum.startMhz && rangeSpectrum.endMhz) {
+        rangeSpectrum.peaks = peaksInRangeMhz(rangeSpectrum.startMhz, rangeSpectrum.endMhz);
+        drawRangeSpectrum();
+      }
+    }
+  }
+
+  function updateRangeModeUi() {
+    var stepEl = $("bs-range-step");
+    var stepLab = $("bs-range-step-label");
+    var bandsOnly = S.rangeMode === "bands";
+    if (stepEl) stepEl.disabled = bandsOnly;
+    if (stepLab) stepLab.style.opacity = bandsOnly ? "0.45" : "1";
   }
 
   function updateRangeEstimate() {
@@ -2376,13 +2906,26 @@ Plugins.band_survey.init = function () {
       el.textContent = "Set start < end MHz.";
       return;
     }
+    var passes = passesFromUi();
+    if (S.rangeMode === "bands") {
+      var bandSteps = buildRangeBandSteps(startHz, endHz);
+      var ticked = selectedValues().length;
+      if (!bandSteps.length) {
+        el.textContent = "No ticked bands overlap " + rangeLabel() +
+          (ticked ? " — tick bands on the Bands tab or switch to Full range." : " — tick bands on the Bands tab first.");
+        return;
+      }
+      el.textContent = bandSteps.length + " ticked band" + (bandSteps.length === 1 ? "" : "s") +
+        " in range · ×" + passes + " pass(es) · dwell " + dwellFromUi() + "s · dB " + threshFromUi();
+      return;
+    }
     var stepHz = rangeStepHz();
     var n = buildRangeCenters(startHz, endHz, stepHz).length;
     var stepTxt = S.rangeStepKhz > 0
       ? (S.rangeStepKhz + " kHz steps")
       : ("auto ~" + (stepHz / 1000).toFixed(1) + " kHz from waterfall span");
     el.textContent = n + " tune point" + (n === 1 ? "" : "s") + " · " + stepTxt +
-      " · ×" + (S.passes || 2) + " pass(es) from Bands tab";
+      " · ×" + passes + " pass(es) · dwell " + dwellFromUi() + "s · dB " + threshFromUi();
   }
 
   function peaksInRangeMhz(loMhz, hiMhz) {
@@ -2398,7 +2941,144 @@ Plugins.band_survey.init = function () {
   function hideRangeSpectrum() {
     var wrap = $("bs-range-spectrum-wrap");
     if (wrap) wrap.hidden = true;
-    rangeSpectrum.peaks = [];
+  }
+
+  function rangeSpectrumPeakRows() {
+    return (rangeSpectrum.peaks || []).map(function (h) {
+      return {
+        freq: h.freq,
+        seen: h.seen,
+        maxDb: h.maxDb,
+        lastDb: h.lastDb,
+        name: h.name || "",
+        pid: h.pid || "",
+        label: h.label || "",
+        isNew: !!h.isNew,
+        mode: h.mode || ""
+      };
+    });
+  }
+
+  function saveRangeSpectrum() {
+    if (!rangeSpectrum.startMhz || !rangeSpectrum.endMhz || rangeSpectrum.startMhz >= rangeSpectrum.endMhz) return;
+    try {
+      window.localStorage.setItem(LS_RANGE_SPECTRUM, JSON.stringify({
+        startMhz: rangeSpectrum.startMhz,
+        endMhz: rangeSpectrum.endMhz,
+        savedAt: Date.now(),
+        peaks: rangeSpectrumPeakRows()
+      }));
+    } catch (e) {}
+  }
+
+  function loadRangeSpectrumStore() {
+    try {
+      var raw = window.localStorage.getItem(LS_RANGE_SPECTRUM);
+      if (!raw) return false;
+      var o = JSON.parse(raw);
+      var lo = Number(o.startMhz);
+      var hi = Number(o.endMhz);
+      if (!o || !isFinite(lo) || !isFinite(hi) || lo >= hi) return false;
+      rangeSpectrum.startMhz = lo;
+      rangeSpectrum.endMhz = hi;
+      if (Array.isArray(o.peaks) && o.peaks.length) {
+        rangeSpectrum.peaks = o.peaks;
+      } else {
+        rangeSpectrum.peaks = peaksInRangeMhz(lo, hi);
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function restoreRangeSpectrumView() {
+    if (!loadRangeSpectrumStore()) return;
+    var wrap = $("bs-range-spectrum-wrap");
+    if (!wrap) return;
+    var startMhz = rangeSpectrum.startMhz;
+    var endMhz = rangeSpectrum.endMhz;
+    var cap = $("bs-range-spectrum-cap");
+    var n = rangeSpectrum.peaks.length;
+    var newN = rangeSpectrum.peaks.filter(function (h) { return h.isNew; }).length;
+    if (cap) {
+      cap.textContent = n
+        ? (n + " peak" + (n === 1 ? "" : "s") + " in " + Number(startMhz).toFixed(3) + "–" +
+          Number(endMhz).toFixed(3) + " MHz" + (newN ? " · " + newN + " new" : ""))
+        : "No peaks in " + Number(startMhz).toFixed(3) + "–" + Number(endMhz).toFixed(3) +
+          " MHz (try lower dB — wideband on helps FM/AM broadcast; ~2–8 dB).";
+    }
+    wrap.hidden = false;
+    drawRangeSpectrum();
+  }
+
+  function exportRangeSpectrumPng() {
+    var wrap = $("bs-range-spectrum-wrap");
+    var cv = $("bs-range-spectrum");
+    if (!cv || !wrap || wrap.hidden) {
+      setStatus("No range spectrum to save — run a range scan first.");
+      return;
+    }
+    drawRangeSpectrum();
+    try {
+      var lo = Number(rangeSpectrum.startMhz).toFixed(3);
+      var hi = Number(rangeSpectrum.endMhz).toFixed(3);
+      if (cv.toBlob) {
+        cv.toBlob(function (blob) {
+          if (!blob) {
+            setStatus("Could not save spectrum PNG.");
+            return;
+          }
+          downloadBlob("range-spectrum-" + lo + "-" + hi + "MHz.png", blob);
+          setStatus("Saved range spectrum PNG.");
+        }, "image/png");
+        return;
+      }
+      var dataUrl = cv.toDataURL("image/png");
+      var bin = atob(dataUrl.split(",")[1]);
+      var arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      downloadBlob("range-spectrum-" + lo + "-" + hi + "MHz.png", new Blob([arr], { type: "image/png" }));
+      setStatus("Saved range spectrum PNG.");
+    } catch (err) {
+      setStatus(friendlyError(err, "Save spectrum PNG"));
+    }
+  }
+
+  function exportRangeSpectrumCsv() {
+    if (!$("bs-range-spectrum-wrap") || $("bs-range-spectrum-wrap").hidden) {
+      if (!loadRangeSpectrumStore()) {
+        setStatus("No range spectrum to save — run a range scan first.");
+        return;
+      }
+    }
+    if (!rangeSpectrum.peaks.length) {
+      setStatus("Range spectrum has no peaks to export.");
+      return;
+    }
+    try {
+      var lo = Number(rangeSpectrum.startMhz).toFixed(3);
+      var hi = Number(rangeSpectrum.endMhz).toFixed(3);
+      var lines = ["seen,MHz,dB,band,name,new,pid,mode"];
+      rangeSpectrum.peaks.slice().sort(function (a, b) {
+        return a.freq - b.freq;
+      }).forEach(function (h) {
+        lines.push([
+          h.seen || 0,
+          fmtMhzNum(h.freq),
+          Math.round(h.maxDb || h.lastDb || 0),
+          JSON.stringify(h.label || h.pid || ""),
+          JSON.stringify(h.name || ""),
+          h.isNew ? "yes" : "",
+          JSON.stringify(h.pid || ""),
+          JSON.stringify(h.mode || "")
+        ].join(","));
+      });
+      downloadFile("range-spectrum-" + lo + "-" + hi + "MHz.csv", lines.join("\n"), "text/csv");
+      setStatus("Saved range spectrum CSV (" + rangeSpectrum.peaks.length + " peaks).");
+    } catch (err) {
+      setStatus(friendlyError(err, "Save spectrum CSV"));
+    }
   }
 
   function showRangeSpectrum(startMhz, endMhz) {
@@ -2416,10 +3096,59 @@ Plugins.band_survey.init = function () {
         ? (n + " peak" + (n === 1 ? "" : "s") + " in " + Number(startMhz).toFixed(3) + "–" +
           Number(endMhz).toFixed(3) + " MHz" + (newN ? " · " + newN + " new" : ""))
         : "No peaks in " + Number(startMhz).toFixed(3) + "–" + Number(endMhz).toFixed(3) +
-          " MHz (try lower dB threshold).";
+          " MHz (try lower dB — wideband on helps FM/AM broadcast; ~2–8 dB).";
     }
     wrap.hidden = false;
     drawRangeSpectrum();
+    saveRangeSpectrum();
+  }
+
+  function rangeSpecLayout(cssW) {
+    cssW = cssW || (($("bs-range-spectrum") && $("bs-range-spectrum").clientWidth) || 320);
+    return {
+      cssW: cssW,
+      cssH: RANGE_SPEC.cssH,
+      padL: RANGE_SPEC.padL,
+      padR: RANGE_SPEC.padR,
+      padT: RANGE_SPEC.padT,
+      padB: RANGE_SPEC.padB,
+      plotW: cssW - RANGE_SPEC.padL - RANGE_SPEC.padR,
+      plotH: RANGE_SPEC.cssH - RANGE_SPEC.padT - RANGE_SPEC.padB
+    };
+  }
+
+  function rangeSpecXForFreq(freqHz, loMhz, hiMhz, lay) {
+    var frac = (freqHz / 1e6 - loMhz) / (hiMhz - loMhz);
+    return lay.padL + Math.max(0, Math.min(1, frac)) * lay.plotW;
+  }
+
+  function buildRangeSpecBins(peaks, loMhz, hiMhz, nBins) {
+    var bins = [];
+    var i;
+    for (i = 0; i < nBins; i++) bins[i] = 0;
+    var span = hiMhz - loMhz;
+    if (span <= 0) return bins;
+    peaks.forEach(function (h) {
+      var mhz = h.freq / 1e6;
+      var idx = Math.round(((mhz - loMhz) / span) * (nBins - 1));
+      if (idx < 0 || idx >= nBins) return;
+      var db = h.maxDb || h.lastDb || 0;
+      var weight = db * (1 + 0.35 * Math.log10(Math.max(1, h.seen || 1)));
+      bins[idx] = Math.max(bins[idx], weight);
+      if (idx > 0) bins[idx - 1] = Math.max(bins[idx - 1], weight * 0.55);
+      if (idx < nBins - 1) bins[idx + 1] = Math.max(bins[idx + 1], weight * 0.55);
+    });
+    var out = bins.slice();
+    for (i = 1; i < nBins - 1; i++) {
+      out[i] = (bins[i - 1] + bins[i] * 2 + bins[i + 1]) / 4;
+    }
+    return out;
+  }
+
+  function peakMarkerColor(h) {
+    if (isPriority(h.freq)) return { stroke: "#fb7185", fill: "#fda4af", glow: "rgba(244, 114, 182, 0.9)" };
+    if (h.isNew) return { stroke: "#34d399", fill: "#6ee7b7", glow: "rgba(52, 211, 153, 0.85)" };
+    return { stroke: "#fbbf24", fill: "#fde68a", glow: "rgba(251, 191, 36, 0.75)" };
   }
 
   function drawRangeSpectrum() {
@@ -2432,55 +3161,23 @@ Plugins.band_survey.init = function () {
     if (!loMhz || !hiMhz || loMhz >= hiMhz) return;
 
     var dpr = window.devicePixelRatio || 1;
-    var cssW = cv.clientWidth || 320;
-    var cssH = 100;
-    cv.style.height = cssH + "px";
-    cv.width = Math.round(cssW * dpr);
-    cv.height = Math.round(cssH * dpr);
+    var lay = rangeSpecLayout(cv.clientWidth || 320);
+    cv.style.height = lay.cssH + "px";
+    cv.width = Math.round(lay.cssW * dpr);
+    cv.height = Math.round(lay.cssH * dpr);
     var ctx = cv.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    var padL = 36;
-    var padR = 6;
-    var padT = 6;
-    var padB = 18;
-    var plotW = cssW - padL - padR;
-    var plotH = cssH - padT - padB;
+    var bg = ctx.createLinearGradient(0, 0, 0, lay.cssH);
+    bg.addColorStop(0, "#0f172a");
+    bg.addColorStop(0.55, "#0a0f1a");
+    bg.addColorStop(1, "#050508");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, lay.cssW, lay.cssH);
 
-    ctx.fillStyle = "#0a0a0a";
-    ctx.fillRect(0, 0, cssW, cssH);
-    ctx.strokeStyle = "#444";
-    ctx.strokeRect(padL + 0.5, padT + 0.5, plotW - 1, plotH - 1);
-
-    ctx.strokeStyle = "#1f2937";
-    for (var g = 1; g < 4; g++) {
-      var gx = padL + (plotW * g / 4);
-      ctx.beginPath();
-      ctx.moveTo(gx, padT);
-      ctx.lineTo(gx, padT + plotH);
-      ctx.stroke();
-    }
-
-    function xForFreq(freqHz) {
-      var frac = (freqHz / 1e6 - loMhz) / (hiMhz - loMhz);
-      return padL + Math.max(0, Math.min(1, frac)) * plotW;
-    }
-
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(loMhz.toFixed(3), padL, cssH - 4);
-    ctx.textAlign = "center";
-    ctx.fillText(((loMhz + hiMhz) / 2).toFixed(3), padL + plotW / 2, cssH - 4);
-    ctx.textAlign = "right";
-    ctx.fillText(hiMhz.toFixed(3), padL + plotW, cssH - 4);
-
-    if (!peaks.length) {
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#6b7280";
-      ctx.fillText("—", padL + plotW / 2, padT + plotH / 2 + 4);
-      return;
-    }
+    ctx.strokeStyle = "rgba(71, 85, 105, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(lay.padL + 0.5, lay.padT + 0.5, lay.plotW - 1, lay.plotH - 1);
 
     var maxDb = 0;
     var minDb = 999;
@@ -2489,21 +3186,118 @@ Plugins.band_survey.init = function () {
       if (db > maxDb) maxDb = db;
       if (db < minDb) minDb = db;
     });
+    if (!peaks.length) minDb = 0;
     if (maxDb <= minDb) maxDb = minDb + 1;
 
-    var barW = Math.max(2, Math.min(8, plotW / Math.max(peaks.length, 1) * 0.65));
-    peaks.forEach(function (h) {
-      var x = xForFreq(h.freq);
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.fillStyle = "#64748b";
+    ctx.textAlign = "right";
+    var gi;
+    for (gi = 0; gi <= 4; gi++) {
+      var gy = lay.padT + (lay.plotH * gi / 4);
+      ctx.strokeStyle = gi === 4 ? "rgba(51, 65, 85, 0.9)" : "rgba(30, 41, 59, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(lay.padL, gy + 0.5);
+      ctx.lineTo(lay.padL + lay.plotW, gy + 0.5);
+      ctx.stroke();
+      if (gi < 4) {
+        var gdb = Math.round(maxDb - (maxDb - minDb) * (gi / 4));
+        ctx.fillText(gdb + " dB", lay.padL - 4, gy + 3);
+      }
+    }
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(loMhz.toFixed(3), lay.padL, lay.cssH - 5);
+    ctx.textAlign = "center";
+    ctx.fillText(((loMhz + hiMhz) / 2).toFixed(3), lay.padL + lay.plotW / 2, lay.cssH - 5);
+    ctx.textAlign = "right";
+    ctx.fillText(hiMhz.toFixed(3), lay.padL + lay.plotW, lay.cssH - 5);
+
+    if (!peaks.length) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#475569";
+      ctx.font = "12px sans-serif";
+      ctx.fillText("No peaks in range — try a lower dB threshold", lay.padL + lay.plotW / 2, lay.padT + lay.plotH / 2 + 4);
+      return;
+    }
+
+    var bins = buildRangeSpecBins(peaks, loMhz, hiMhz, RANGE_SPEC.bins);
+    var maxBin = 0;
+    bins.forEach(function (v) { if (v > maxBin) maxBin = v; });
+    if (maxBin <= 0) maxBin = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(lay.padL, lay.padT + lay.plotH);
+    var bi;
+    for (bi = 0; bi < bins.length; bi++) {
+      var bx = lay.padL + (bi / (bins.length - 1)) * lay.plotW;
+      var bfrac = bins[bi] / maxBin;
+      var by = lay.padT + lay.plotH - bfrac * (lay.plotH - 6);
+      ctx.lineTo(bx, by);
+    }
+    ctx.lineTo(lay.padL + lay.plotW, lay.padT + lay.plotH);
+    ctx.closePath();
+    var fillGrad = ctx.createLinearGradient(0, lay.padT, 0, lay.padT + lay.plotH);
+    fillGrad.addColorStop(0, "rgba(34, 211, 238, 0.55)");
+    fillGrad.addColorStop(0.35, "rgba(52, 211, 153, 0.42)");
+    fillGrad.addColorStop(0.72, "rgba(245, 158, 11, 0.28)");
+    fillGrad.addColorStop(1, "rgba(30, 64, 175, 0.18)");
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (bi = 0; bi < bins.length; bi++) {
+      bx = lay.padL + (bi / (bins.length - 1)) * lay.plotW;
+      bfrac = bins[bi] / maxBin;
+      by = lay.padT + lay.plotH - bfrac * (lay.plotH - 6);
+      if (bi === 0) ctx.moveTo(bx, by);
+      else ctx.lineTo(bx, by);
+    }
+    ctx.strokeStyle = "rgba(125, 211, 252, 0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    peaks.slice().sort(function (a, b) {
+      return (a.freq || 0) - (b.freq || 0);
+    }).forEach(function (h) {
+      var x = rangeSpecXForFreq(h.freq, loMhz, hiMhz, lay);
       var db = h.maxDb || h.lastDb || minDb;
       var fracH = (db - minDb) / (maxDb - minDb);
-      var barH = Math.max(4, fracH * (plotH - 4));
-      var color = h.isNew ? "#34d399" : "#fbbf24";
-      if (isPriority(h.freq)) color = "#f472b6";
-      ctx.fillStyle = color;
-      ctx.fillRect(x - barW / 2, padT + plotH - barH, barW, barH);
-      ctx.fillStyle = "rgba(255,255,255,0.75)";
-      ctx.fillRect(x - 0.5, padT + plotH - barH, 1, barH);
+      var barH = Math.max(6, fracH * (lay.plotH - 8));
+      var yTop = lay.padT + lay.plotH - barH;
+      var yBot = lay.padT + lay.plotH;
+      var colors = peakMarkerColor(h);
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = colors.glow;
+      ctx.strokeStyle = colors.stroke;
+      ctx.lineWidth = h.isNew || isPriority(h.freq) ? 2 : 1.25;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, yBot);
+      ctx.lineTo(x + 0.5, yTop);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, yTop, isPriority(h.freq) ? 3.5 : 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = colors.fill;
+      ctx.fill();
+      ctx.strokeStyle = colors.stroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     });
+
+    var top = peaks.slice().sort(function (a, b) { return (b.maxDb || 0) - (a.maxDb || 0); })[0];
+    if (top) {
+      var tx = rangeSpecXForFreq(top.freq, loMhz, hiMhz, lay);
+      ctx.shadowBlur = 0;
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.fillStyle = "#e2e8f0";
+      ctx.textAlign = tx > lay.padL + lay.plotW * 0.72 ? "right" : "left";
+      var label = fmtMhz(top.freq) + " · " + Math.round(top.maxDb || top.lastDb || 0) + " dB";
+      if (top.name) label += " · " + top.name;
+      ctx.fillText(label, tx, lay.padT + 10);
+    }
   }
 
   function bindRangeSpectrum() {
@@ -2513,12 +3307,10 @@ Plugins.band_survey.init = function () {
     cv.onclick = function (ev) {
       if (!rangeSpectrum.peaks.length) return;
       var rect = cv.getBoundingClientRect();
-      var padL = 36;
-      var padR = 6;
-      var plotW = rect.width - padL - padR;
-      if (plotW <= 0) return;
+      var lay = rangeSpecLayout(rect.width);
+      if (lay.plotW <= 0) return;
       var x = ev.clientX - rect.left;
-      var frac = (x - padL) / plotW;
+      var frac = (x - lay.padL) / lay.plotW;
       if (frac < 0 || frac > 1) return;
       var mhz = rangeSpectrum.startMhz + frac * (rangeSpectrum.endMhz - rangeSpectrum.startMhz);
       var targetHz = mhz * 1e6;
@@ -2559,7 +3351,13 @@ Plugins.band_survey.init = function () {
     }
     if (stopFlag) return false;
     pluginSetFrequency(freqHz);
+    var target = freqHz;
     var settled = Date.now() + getHopSettleMs();
+    while (Date.now() < settled && !stopFlag) {
+      var c = typeof window.center_freq === "number" ? window.center_freq : 0;
+      if (Math.abs(c - target) < 25000) break;
+      await sleep(Math.min(150, settled - Date.now()));
+    }
     while (Date.now() < settled && !stopFlag) {
       await sleep(Math.min(150, settled - Date.now()));
     }
@@ -2578,20 +3376,85 @@ Plugins.band_survey.init = function () {
     var orig = window.waterfall_add;
     window.waterfall_add = function (data) {
       window.bs_wf_data = data;
-      if (!window.fs_wf_data) window.fs_wf_data = data;
+      window.fs_wf_data = data;
       return orig.apply(this, arguments);
     };
     window._bs_wf_hooked = true;
   }
 
   function wf() {
-    return window.fs_wf_data || window.bs_wf_data || null;
+    return window.bs_wf_data || window.fs_wf_data || null;
   }
 
   function noiseFloor(data) {
     if (!data || data.length < 16) return -80;
     var copy = Array.prototype.slice.call(data).sort(function (a, b) { return a - b; });
     return copy[Math.floor(copy.length * 0.2)];
+  }
+
+  function profileLabelForPid(pid) {
+    var list = profiles();
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === pid) return list[i].label || "";
+    }
+    return "";
+  }
+
+  function isBroadcastFmFreq(freqHz) {
+    return freqHz >= 76000000 && freqHz <= 108500000;
+  }
+
+  function isHfBroadcastFreq(freqHz) {
+    return freqHz >= 150000 && freqHz <= 30000000;
+  }
+
+  function isFmBroadcastProfile(pid, label) {
+    if (/^fm_/i.test(pid || "")) return true;
+    var s = String(label != null ? label : profileLabelForPid(pid)).toLowerCase();
+    return /fm\s*broadcast|broadcast\s*fm/.test(s);
+  }
+
+  function isHfBroadcastProfile(pid, label) {
+    var id = String(pid || "").toLowerCase();
+    if (/^lf$|^hffax$/.test(id)) return true;
+    var s = String(label != null ? label : profileLabelForPid(pid)).toLowerCase();
+    return /broadcast|\bmw\b|\bsw\b|navtex|volmet|fax|wwv|shortwave|mediumwave|medium wave/.test(s);
+  }
+
+  function isBroadcastFmRange(startHz, endHz) {
+    return startHz < 108e6 && endHz > 76e6;
+  }
+
+  function isHfBroadcastRange(startHz, endHz) {
+    return startHz < 30e6 && endHz > 150e3;
+  }
+
+  function useWidebandPeakDetect(pid, label, freqHz) {
+    if (S.widebandPeaks === false) return false;
+    if (isFmBroadcastProfile(pid, label)) return true;
+    if (isHfBroadcastProfile(pid, label)) return true;
+    var f = freqHz || window.center_freq || 0;
+    if (isBroadcastFmFreq(f)) return true;
+    return isHfBroadcastFreq(f);
+  }
+
+  function noiseFloorForDetect(data, pid, label, freqHz) {
+    var floor = noiseFloor(data);
+    if (!useWidebandPeakDetect(pid, label, freqHz)) return floor;
+    var lo = Math.floor(data.length * EDGE_FRAC);
+    var hi = Math.ceil(data.length * (1 - EDGE_FRAC));
+    var edge = [];
+    var i;
+    for (i = lo; i < Math.min(lo + 12, hi); i++) edge.push(data[i]);
+    for (i = Math.max(hi - 12, lo); i < hi; i++) edge.push(data[i]);
+    if (edge.length >= 4) {
+      edge.sort(function (a, b) { return a - b; });
+      floor = Math.min(floor, edge[Math.floor(edge.length * 0.25)]);
+    }
+    var copy = Array.prototype.slice.call(data).sort(function (a, b) { return a - b; });
+    floor = Math.min(floor, copy[Math.floor(copy.length * 0.08)]);
+    return floor;
   }
 
   function freqOf(i, data) {
@@ -2604,6 +3467,9 @@ Plugins.band_survey.init = function () {
     var step = 1000;
     if (/^air_|^vor|vdl2/.test(pid)) step = 25000 / 3;
     else if (/^fm_/.test(pid)) step = 100000;
+    else if (isHfBroadcastProfile(pid) || (isHfBroadcastFreq(freq) && S.widebandPeaks !== false)) {
+      step = freq < 3e6 ? 9000 : 5000;
+    }
     else if (/marine|2m_|70c_|pmr|ais|tetra/.test(pid)) step = 12500;
     return Math.round(freq / step) * step;
   }
@@ -2622,13 +3488,105 @@ Plugins.band_survey.init = function () {
     return mode;
   }
 
-  function findPeaks(pid) {
+  function isFmPid(pid) {
+    return /^fm_/i.test(pid || "");
+  }
+
+  function peakDetectThreshold(floor, pid, label, freqHz) {
+    var t = Number(S.threshDb) || 10;
+    if (useWidebandPeakDetect(pid, label, freqHz)) return floor + Math.max(t, 2);
+    if (isHfBroadcastFreq(freqHz || window.center_freq || 0)) return floor + Math.max(t, 3);
+    return floor + Math.max(t, 4);
+  }
+
+  function mergePeakCandidates(list, pid) {
+    if (!list.length) return list;
+    list.sort(function (a, b) { return a.freq - b.freq; });
+    var tol = mergeHz(pid);
+    var out = [];
+    list.forEach(function (p) {
+      var last = out[out.length - 1];
+      if (last && Math.abs(last.freq - p.freq) <= tol) {
+        if (p.db > last.db) {
+          last.freq = p.freq;
+          last.raw = p.raw;
+          last.db = p.db;
+          last.width = Math.max(last.width || 1, p.width || 1);
+          last.offset = p.offset;
+        }
+        return;
+      }
+      out.push({
+        freq: p.freq,
+        raw: p.raw,
+        db: p.db,
+        width: p.width || 1,
+        offset: p.offset
+      });
+    });
+    return out;
+  }
+
+  function findPeaksFm(data, center, bw, thr, pid) {
+    var lo = Math.floor(data.length * EDGE_FRAC);
+    var hi = Math.ceil(data.length * (1 - EDGE_FRAC));
+    var raw = [];
+    var i = lo;
+    while (i < hi) {
+      if (data[i] < thr) {
+        i++;
+        continue;
+      }
+      var maxV = -999;
+      var maxI = i;
+      var n = 0;
+      while (i < hi && data[i] >= thr) {
+        n++;
+        if (data[i] > maxV) {
+          maxV = data[i];
+          maxI = i;
+        }
+        i++;
+      }
+      if (n >= 1) {
+        var f2 = freqOf(maxI, data);
+        raw.push({
+          freq: snapFreq(f2, pid),
+          raw: f2,
+          db: maxV,
+          width: Math.max(n, 4),
+          offset: f2 - center
+        });
+      }
+    }
+    for (i = lo + 1; i < hi - 1; i++) {
+      if (data[i] < thr) continue;
+      if (data[i] < data[i - 1] || data[i] < data[i + 1]) continue;
+      var f = freqOf(i, data);
+      raw.push({
+        freq: snapFreq(f, pid),
+        raw: f,
+        db: data[i],
+        width: Math.max(4, Math.round(bw / data.length / 80000)),
+        offset: f - center
+      });
+    }
+    var out = [];
+    raw.forEach(function (p) {
+      if (isIgnoredFreq(p.freq)) return;
+      out.push(p);
+    });
+    return mergePeakCandidates(out, pid);
+  }
+
+  function findPeaks(pid, label) {
     var data = wf();
     var center = window.center_freq;
     var bw = window.bandwidth;
     if (!data || !data.length || !bw) return [];
-    var floor = noiseFloor(data);
-    var thr = floor + (Number(S.threshDb) || 10);
+    var floor = noiseFloorForDetect(data, pid, label, center);
+    var thr = peakDetectThreshold(floor, pid, label, center);
+    if (useWidebandPeakDetect(pid, label, center)) return findPeaksFm(data, center, bw, thr, pid);
     var lo = Math.floor(data.length * EDGE_FRAC);
     var hi = Math.ceil(data.length * (1 - EDGE_FRAC));
     var found = [];
@@ -2652,7 +3610,7 @@ Plugins.band_survey.init = function () {
         i++;
       }
       if (!n) continue;
-      // n=1 would always fail max<mean+1.2; only skip flat broadband blobs.
+      // n=1 would always fail max<mean+1.2; only skip flat broadband blobs (not WFM).
       if (n >= 4 && maxV < sum / n + 1.2) continue;
       var f = freqOf(maxI, data);
       if (Math.abs(f - center) < CENTER_GUARD_HZ) continue;
@@ -2665,6 +3623,7 @@ Plugins.band_survey.init = function () {
   function mergeHz(pid) {
     if (/^air_|^vor/.test(pid)) return 4000;
     if (/^fm_/.test(pid)) return 80000;
+    if (isHfBroadcastProfile(pid)) return 10000;
     return 2500;
   }
 
@@ -2683,10 +3642,15 @@ Plugins.band_survey.init = function () {
       h.spurWhy = "ignored";
       return;
     }
+    if (useWidebandPeakDetect(h.pid, h.label, h.freq)) {
+      h.spur = false;
+      h.spurWhy = "";
+      return;
+    }
     var looks = h.looks || 0;
     var duty = looks ? h.seen / looks : 0;
     var live = stddev(h.samples);
-    var voice = !alwaysOnBand(h.pid);
+    var voice = !alwaysOnBand(h.pid, h.label);
 
     if (h.dongle) {
       h.spur = true;
@@ -2747,7 +3711,7 @@ Plugins.band_survey.init = function () {
 
   function recordLook(pid, label) {
     tileLooks[pid] = (tileLooks[pid] || 0) + 1;
-    var peaks = findPeaks(pid);
+    var peaks = findPeaks(pid, label);
     var now = Date.now();
     var seenIds = {};
     peaks.forEach(function (p) {
@@ -2811,8 +3775,14 @@ Plugins.band_survey.init = function () {
     trimPeaksIfNeeded();
   }
 
-  function fmtMhz(hz) {
+  function fmtMhzNum(hz) {
+    if (hz == null || !isFinite(hz)) return "";
     return (hz / 1e6).toFixed(hz >= 3e7 ? 3 : 3);
+  }
+
+  function fmtMhz(hz) {
+    var n = fmtMhzNum(hz);
+    return n ? n + " MHz" : "";
   }
 
   function isAuto(b) {
@@ -3625,6 +4595,13 @@ Plugins.band_survey.init = function () {
       sessionStorage.setItem(SS_TAB, name);
       if (S.rememberTab !== false) window.localStorage.setItem(SS_TAB, name);
     } catch (e) {}
+    if (name === "peaks") {
+      ensureHitsLoaded(function () {
+        ensureHitsClassified();
+        renderHits();
+        updateTabLabels();
+      });
+    }
   }
 
   function visibleBookmarkRows() {
@@ -3664,14 +4641,63 @@ Plugins.band_survey.init = function () {
       var sn = (S.ignoredFreqs || []).length;
       skipBtn.textContent = sn ? ("Skip " + sn) : "Skip";
     }
+    if (!panelLayoutUserSet) {
+      var p = $("bs-panel");
+      if (p && !p.hidden && !p.classList.contains("bs-minimized")) applyPanelLayout();
+    }
+  }
+
+  function measureTabBarMinWidth() {
+    var panel = $("bs-panel");
+    var tabs = $("bs-tabs");
+    if (!panel || !tabs || panel.hidden) return 0;
+    var btns = tabs.querySelectorAll(".bs-tab");
+    if (!btns.length) return 0;
+    var total = 0;
+    for (var i = 0; i < btns.length; i++) total += btns[i].offsetWidth || 0;
+    if (btns.length > 1) total += (btns.length - 1) * 3;
+    var actions = panel.querySelector(".bs-head-actions");
+    if (actions) total += actions.offsetWidth || 0;
+    total += 20;
+    return total;
+  }
+
+  function waterfallLayoutRect() {
+    var vw = window.innerWidth || 1024;
+    var vh = window.innerHeight || 768;
+    var canvas = $("webrx-canvas-container");
+    if (canvas) {
+      var r = canvas.getBoundingClientRect();
+      if (r.width > 120 && r.height > 100) {
+        return {
+          left: Math.round(r.left + 8),
+          top: Math.round(r.top + 8),
+          width: Math.floor(r.width - 16),
+          height: Math.floor(r.height - 16)
+        };
+      }
+    }
+    var top = 52;
+    var bar = $("openwebrx-top-bar") || document.querySelector(".openwebrx-top-bar") || $("webrx-top-container");
+    if (bar) {
+      var br = bar.getBoundingClientRect();
+      if (br.bottom > 20) top = Math.round(br.bottom + 8);
+    }
+    return {
+      left: Math.round(vw * 0.02),
+      top: top,
+      width: Math.floor(vw * 0.96 - 16),
+      height: Math.floor(vh * 0.72)
+    };
   }
 
   function defaultPanelGeometry(vw, vh) {
+    var a = waterfallLayoutRect();
     return {
-      w: Math.round(vw * 0.28),
-      h: Math.round(vh * 0.58),
-      left: Math.round(vw * 0.12),
-      top: Math.round(vh * 0.28)
+      w: a.width,
+      h: Math.min(a.height, Math.max(280, Math.round(a.height * 0.55)), Math.floor(vh * 0.58)),
+      left: a.left,
+      top: a.top
     };
   }
 
@@ -3682,31 +4708,51 @@ Plugins.band_survey.init = function () {
     var vh = window.innerHeight || 768;
     var minW = Math.min(520, Math.max(360, Math.floor(vw * 0.92)));
     var minH = 280;
+    var maxW = Math.floor(vw * 0.96);
     var def = defaultPanelGeometry(vw, vh);
+    var anchorW = waterfallLayoutRect().width;
+    if (anchorW > 120) maxW = Math.min(maxW, anchorW);
     var wRaw = Number(S.panelW);
     var hRaw = Number(S.panelH);
-    var w = (isFinite(wRaw) && wRaw > 0)
-      ? clamp(wRaw, minW, Math.floor(vw * 0.96))
-      : clamp(def.w, minW, Math.floor(vw * 0.96));
+    var w;
+    if (panelLayoutUserSet && isFinite(wRaw) && wRaw > 0) {
+      w = clamp(wRaw, minW, maxW);
+    } else {
+      w = clamp(def.w, minW, maxW);
+      var tabNeed = measureTabBarMinWidth();
+      if (tabNeed > 0) w = clamp(Math.max(w, tabNeed), minW, maxW);
+    }
     var h = (isFinite(hRaw) && hRaw > 0)
       ? clamp(hRaw, minH, Math.floor(vh * 0.88))
       : clamp(def.h, minH, Math.floor(vh * 0.88));
-    S.panelW = w;
+    if (panelLayoutUserSet) S.panelW = w;
+    else S.panelW = 0;
     S.panelH = h;
     p.style.width = w + "px";
     p.style.height = h + "px";
     p.style.maxHeight = "none";
-    var leftRaw = Number(S.panelLeft);
-    var topRaw = Number(S.panelTop);
-    var left = isFinite(leftRaw)
-      ? clamp(leftRaw, 4, Math.max(4, vw - w - 4))
+    var hasUserLeft = panelLayoutUserSet && typeof S.panelLeft === "number" && isFinite(S.panelLeft);
+    var hasUserTop = panelLayoutUserSet && typeof S.panelTop === "number" && isFinite(S.panelTop);
+    var left = hasUserLeft
+      ? clamp(S.panelLeft, 4, Math.max(4, vw - w - 4))
       : clamp(def.left, 4, Math.max(4, vw - w - 4));
-    var top = isFinite(topRaw)
-      ? clamp(topRaw, 4, Math.max(4, vh - h - 4))
+    var top = hasUserTop
+      ? clamp(S.panelTop, 4, Math.max(4, vh - h - 4))
       : clamp(def.top, 4, Math.max(4, vh - h - 4));
     p.style.left = left + "px";
     p.style.top = top + "px";
     p.style.right = "auto";
+    var clamped = clampPanelOnScreen(w, h, left, top, vw, vh);
+    if (clamped.left !== left || clamped.top !== top) {
+      left = clamped.left;
+      top = clamped.top;
+      p.style.left = left + "px";
+      p.style.top = top + "px";
+      if (panelLayoutUserSet) {
+        S.panelLeft = left;
+        S.panelTop = top;
+      }
+    }
   }
 
   function savePanelLayout() {
@@ -3714,12 +4760,14 @@ Plugins.band_survey.init = function () {
     if (!p) return;
     var r = p.getBoundingClientRect();
     if (r.width > 40 && r.height > 40) {
+      panelLayoutUserSet = true;
       S.panelW = Math.round(r.width);
       S.panelH = Math.round(r.height);
       S.panelLeft = Math.round(r.left);
       S.panelTop = Math.round(r.top);
     }
     saveSettings();
+    writePanelLayoutSnapshot();
   }
 
   function layoutDragKind() {
@@ -3798,7 +4846,7 @@ Plugins.band_survey.init = function () {
       }
       var root = t.closest("#bs-panel, #bs-help, #bs-fallback, #bs-fallback-chip, #bs-toggle-btn");
       var host = root && t.closest("[title], [data-tip]");
-      if (host && root.contains(host) && !t.closest(".bs-resize-e, .bs-resize-s, .bs-resize-se, .bs-tab")) {
+      if (host && root.contains(host) && !t.closest("[data-resize], .bs-tab")) {
         showFloatTip(host, ev);
       } else if (hideFloatTip._host) {
         hideFloatTip();
@@ -3810,30 +4858,70 @@ Plugins.band_survey.init = function () {
     applyPanelLayout();
     wireHoverTips();
     var dragging = null;
+    var resizeStart = null;
     function setDragClass(kind) {
-      document.body.classList.remove("bs-layout-drag", "bs-resize-ew", "bs-resize-ns", "bs-resize-nwse");
+      document.body.classList.remove(
+        "bs-layout-drag", "bs-resize-ew", "bs-resize-ns", "bs-resize-nwse", "bs-resize-nesw"
+      );
       if (!kind) return;
       document.body.classList.add("bs-layout-drag");
-      if (kind === "e") document.body.classList.add("bs-resize-ew");
-      else if (kind === "s") document.body.classList.add("bs-resize-ns");
-      else if (kind === "se") document.body.classList.add("bs-resize-nwse");
+      if (kind === "e" || kind === "w") document.body.classList.add("bs-resize-ew");
+      else if (kind === "n" || kind === "s") document.body.classList.add("bs-resize-ns");
+      else if (kind === "nw" || kind === "se") document.body.classList.add("bs-resize-nwse");
+      else if (kind === "ne" || kind === "sw") document.body.classList.add("bs-resize-nesw");
     }
     function onMove(ev) {
-      if (!dragging) return;
+      if (!dragging || !resizeStart) return;
       ev.preventDefault();
       hideFloatTip();
-      var pr = panel.getBoundingClientRect();
-      var w = pr.width;
-      var h = pr.height;
-      if (dragging.indexOf("e") >= 0) w = ev.clientX - pr.left;
-      if (dragging.indexOf("s") >= 0) h = ev.clientY - pr.top;
-      S.panelW = w;
-      S.panelH = h;
-      applyPanelLayout();
+      var vw = window.innerWidth || 1024;
+      var vh = window.innerHeight || 768;
+      var minW = Math.min(520, Math.max(360, Math.floor(vw * 0.92)));
+      var minH = 280;
+      var dx = ev.clientX - resizeStart.clientX;
+      var dy = ev.clientY - resizeStart.clientY;
+      var kind = dragging;
+      var left = resizeStart.left;
+      var top = resizeStart.top;
+      var w = resizeStart.width;
+      var h = resizeStart.height;
+      if (kind.indexOf("e") >= 0) w = resizeStart.width + dx;
+      if (kind.indexOf("w") >= 0) {
+        w = resizeStart.width - dx;
+        left = resizeStart.left + dx;
+      }
+      if (kind.indexOf("s") >= 0) h = resizeStart.height + dy;
+      if (kind.indexOf("n") >= 0) {
+        h = resizeStart.height - dy;
+        top = resizeStart.top + dy;
+      }
+      if (w < minW) {
+        if (kind.indexOf("w") >= 0) left -= (minW - w);
+        w = minW;
+      }
+      if (h < minH) {
+        if (kind.indexOf("n") >= 0) top -= (minH - h);
+        h = minH;
+      }
+      left = clamp(left, 4, Math.max(4, vw - w - 4));
+      top = clamp(top, 4, Math.max(4, vh - h - 4));
+      w = clamp(w, minW, Math.max(minW, vw - left - 4));
+      h = clamp(h, minH, Math.max(minH, vh - top - 4));
+      panelLayoutUserSet = true;
+      S.panelW = Math.round(w);
+      S.panelH = Math.round(h);
+      S.panelLeft = Math.round(left);
+      S.panelTop = Math.round(top);
+      panel.style.width = w + "px";
+      panel.style.height = h + "px";
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+      panel.style.right = "auto";
     }
     function onUp() {
       if (!dragging) return;
       dragging = null;
+      resizeStart = null;
       layoutDragging = false;
       setDragClass("");
       savePanelLayout();
@@ -3844,6 +4932,16 @@ Plugins.band_survey.init = function () {
     Array.prototype.forEach.call(panel.querySelectorAll("[data-resize]"), function (h) {
       h.addEventListener("pointerdown", function (ev) {
         if (ev.button && ev.button !== 0) return;
+        var pr = panel.getBoundingClientRect();
+        resizeStart = {
+          left: pr.left,
+          top: pr.top,
+          width: pr.width,
+          height: pr.height,
+          clientX: ev.clientX,
+          clientY: ev.clientY
+        };
+        panelLayoutUserSet = true;
         dragging = h.getAttribute("data-resize");
         layoutDragging = true;
         setDragClass(dragging);
@@ -4317,6 +5415,7 @@ Plugins.band_survey.init = function () {
     S.selected = selectedValues();
     saveSettings();
     updateCount();
+    updateRangeEstimate();
   }
 
   function updateCount() {
@@ -4416,6 +5515,8 @@ Plugins.band_survey.init = function () {
       return;
     }
     var shown = sortedHits();
+    var totalShown = shown.length;
+    if (shown.length > RENDER_HITS_CAP) shown = shown.slice(0, RENDER_HITS_CAP);
     if (!shown.length) {
       host.innerHTML = '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick “Hide birdies” to un-ign, or Clear always-skip.</p>";
       renderBookmarkPane();
@@ -4431,7 +5532,7 @@ Plugins.band_survey.init = function () {
           : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '" title="Save this peak as a blue bookmark in this browser.">+</button>');
       var tag = spur ? '<span class="bs-spur-tag" title="' + escapeHtml(h.spurWhy || "birdie") + '">birdie</span>' : "";
       var icao = icao833(h.freq);
-      var ch = icao && icao !== fmtMhz(h.freq) ? '<span class="bs-icao">' + icao + "</span> " : "";
+      var ch = icao && icao !== fmtMhzNum(h.freq) ? '<span class="bs-icao">' + icao + "</span> " : "";
       var newb = h.isNew && !spur ? '<span class="bs-new">new</span> ' : "";
       var pri = isPriority(h.freq) && !spur ? '<span class="bs-pri">pri</span> ' : "";
       var nm = h.name || known || "";
@@ -4455,6 +5556,10 @@ Plugins.band_survey.init = function () {
     var extra = S.hideSpurs && spurCount()
       ? '<p class="bs-empty">' + spurCount() + " birdies hidden. Untick Hide birdies to un-ign, or Clear always-skip.</p>"
       : "";
+    if (totalShown > RENDER_HITS_CAP) {
+      extra += '<p class="bs-empty">Showing top ' + RENDER_HITS_CAP + " of " + totalShown +
+        " peaks (" + hits.length + " stored). Export CSV for the full list.</p>";
+    }
     host.innerHTML = extra +
       '<table class="bs-hits"><thead><tr>' +
       '<th data-sort="seen"' + (sortKey === "seen" ? ' class="bs-sort"' : "") + ' title="Sort by how many times this peak was counted.">Seen</th>' +
@@ -4659,12 +5764,15 @@ Plugins.band_survey.init = function () {
     hookWaterfall();
     readForm();
     readRangeForm();
-    S.passes = $("bs-passes") ? Math.max(1, Math.min(MAX_PASSES, Number($("bs-passes").value) || 2)) : S.passes;
-    S.dwell = $("bs-dwell") ? Math.max(0.8, Math.min(15, Number($("bs-dwell").value) || 2.5)) : S.dwell;
-    S.minHits = $("bs-minhits") ? Math.max(1, Math.min(50, Number($("bs-minhits").value) || 3)) : S.minHits;
-    S.threshDb = $("bs-thresh") ? Math.max(4, Math.min(25, Number($("bs-thresh").value) || 10)) : S.threshDb;
+    S.passes = passesFromUi();
+    S.dwell = dwellFromUi();
+    S.minHits = minHitsFromUi();
+    S.threshDb = threshFromUi();
+    S.widebandPeaks = widebandFromUi();
+    S.hideSpurs = hideSpursFromUi();
     if ($("bs-autobm")) S.autoBm = $("bs-autobm").checked;
-    if ($("bs-mute")) S.mute = $("bs-mute").checked;
+    S.mute = muteFromUi();
+    S.ownRadio = ownRadioFromUi();
     saveSettings();
     var startHz = (Number(S.rangeStartMhz) || 0) * 1e6;
     var endHz = (Number(S.rangeEndMhz) || 0) * 1e6;
@@ -4705,6 +5813,10 @@ Plugins.band_survey.init = function () {
     if (fresh) {
       hits = [];
       tileLooks = {};
+      _hitsClassified = false;
+    } else {
+      await ensureHitsLoadedPromise();
+      ensureHitsClassified();
     }
     renderHits();
     setSurveyRunning(true);
@@ -4719,6 +5831,7 @@ Plugins.band_survey.init = function () {
       setSurveyRunning(false);
       if (btn) btn.classList.remove("bs-running");
       muteOff();
+      restoreRangeSpectrumView();
       return;
     }
     try {
@@ -4739,16 +5852,47 @@ Plugins.band_survey.init = function () {
       }
       var stepHz = rangeStepHz();
       var centers = buildRangeCenters(startHz, endHz, stepHz);
-      var total = centers.length * S.passes;
+      var bandSteps = null;
+      if (S.rangeMode === "bands") {
+        bandSteps = buildRangeBandSteps(startHz, endHz);
+        if (!bandSteps.length) {
+          var ticked = selectedValues().length;
+          var msg = ticked
+            ? "No ticked bands overlap " + rangeLabel() + ". Tick overlapping bands or use Full range mode."
+            : "No bands ticked — tick bands on the Bands tab or use Full range mode.";
+          setStatus(msg);
+          toast(msg);
+          running = false;
+          setSurveyRunning(false);
+          if (btn) btn.classList.remove("bs-running");
+          muteOff();
+          switchTab("range");
+          restoreRangeSpectrumView();
+          return;
+        }
+      }
+      var total = S.rangeMode === "bands"
+        ? bandSteps.length * S.passes
+        : centers.length * S.passes;
       var step = 0;
       var lastProfile = p0;
       for (var pass = 1; pass <= S.passes && !stopFlag; pass++) {
-        for (var ci = 0; ci < centers.length && !stopFlag; ci++) {
-          var freqHz = centers[ci];
-          var prof = profileForFreq(freqHz) || lastProfile;
+        var loopN = S.rangeMode === "bands" ? bandSteps.length : centers.length;
+        for (var ci = 0; ci < loopN && !stopFlag; ci++) {
+          var freqHz;
+          var prof;
+          if (S.rangeMode === "bands") {
+            freqHz = bandSteps[ci].freqHz;
+            prof = bandSteps[ci].profile;
+          } else {
+            freqHz = centers[ci];
+            prof = profileForFreq(freqHz) || lastProfile;
+          }
           lastProfile = prof;
           var ptLabel = "Range " + rangeLab + " · " + fmtMhz(freqHz);
-          setStatus("Pass " + pass + "/" + S.passes + " · " + (ci + 1) + "/" + centers.length + " · " + fmtMhz(freqHz));
+          var modeTag = S.rangeMode === "bands" ? "bands" : "full";
+          setStatus("Pass " + pass + "/" + S.passes + " · " + (ci + 1) + "/" + loopN +
+            " · " + fmtMhz(freqHz) + (prof && prof.label ? " · " + prof.label : ""));
           setProgress(step / total);
           if (!(await tuneToCenter(freqHz, prof, "Pass " + pass + "/" + S.passes + " · " + fmtMhz(freqHz)))) break;
           var until = Date.now() + S.dwell * 1000;
@@ -4760,8 +5904,8 @@ Plugins.band_survey.init = function () {
             if (data && data.length) {
               lastNoise = " · noise " + Math.round(noiseFloor(data)) + " dB · " + hits.length + " peaks";
             }
-            setStatus("Pass " + pass + "/" + S.passes + " · " + (ci + 1) + "/" + centers.length +
-              " · " + fmtMhz(freqHz) + lastNoise);
+            setStatus("Pass " + pass + "/" + S.passes + " · " + (ci + 1) + "/" + loopN +
+              " · " + fmtMhz(freqHz) + (modeTag === "bands" && prof ? " · " + prof.label : "") + lastNoise);
             renderHits();
             await sleep(SAMPLE_MS);
           }
@@ -4802,12 +5946,15 @@ Plugins.band_survey.init = function () {
     if (running) return;
     hookWaterfall();
     readForm();
-    S.passes = $("bs-passes") ? Math.max(1, Math.min(MAX_PASSES, Number($("bs-passes").value) || 2)) : S.passes;
-    S.dwell = $("bs-dwell") ? Math.max(0.8, Math.min(15, Number($("bs-dwell").value) || 2.5)) : S.dwell;
-    S.minHits = $("bs-minhits") ? Math.max(1, Math.min(50, Number($("bs-minhits").value) || 3)) : S.minHits;
-    S.threshDb = $("bs-thresh") ? Math.max(4, Math.min(25, Number($("bs-thresh").value) || 10)) : S.threshDb;
+    S.passes = passesFromUi();
+    S.dwell = dwellFromUi();
+    S.minHits = minHitsFromUi();
+    S.threshDb = threshFromUi();
+    S.widebandPeaks = widebandFromUi();
+    S.hideSpurs = hideSpursFromUi();
     if ($("bs-autobm")) S.autoBm = $("bs-autobm").checked;
-    if ($("bs-mute")) S.mute = $("bs-mute").checked;
+    S.mute = muteFromUi();
+    S.ownRadio = ownRadioFromUi();
     var box = $("bs-bands");
     if (box && !box.querySelector("input")) fillBands();
     S.selected = selectedValues();
@@ -4839,6 +5986,10 @@ Plugins.band_survey.init = function () {
     if (fresh) {
       hits = [];
       tileLooks = {};
+      _hitsClassified = false;
+    } else {
+      await ensureHitsLoadedPromise();
+      ensureHitsClassified();
     }
     renderHits();
     setSurveyRunning(true);
@@ -4938,7 +6089,7 @@ Plugins.band_survey.init = function () {
   function copyResults() {
     try {
     var lines = sortedHits().map(function (h) {
-      return h.seen + "\t" + fmtMhz(h.freq) + "\t" + (icao833(h.freq) || "") + "\t" +
+      return h.seen + "\t" + fmtMhzNum(h.freq) + "\t" + (icao833(h.freq) || "") + "\t" +
         Math.round(h.maxDb) + "\t" + (h.label || h.pid) + "\t" + (h.name || "") + "\t" + (h.isNew ? "new" : "");
     });
     lines.unshift("seen\tMHz\tch833\tdB\tband\tname\tnew");
@@ -4998,7 +6149,7 @@ Plugins.band_survey.init = function () {
     }).forEach(function (h) {
       lines.push([
         h.seen,
-        fmtMhz(h.freq),
+        fmtMhzNum(h.freq),
         icao833(h.freq),
         Math.round(h.maxDb),
         JSON.stringify(h.label || h.pid),
@@ -5418,14 +6569,22 @@ Plugins.band_survey.init = function () {
   }
 
   function readForm() {
-    if ($("bs-passes")) S.passes = Math.max(1, Math.min(MAX_PASSES, Number($("bs-passes").value) || 2));
-    if ($("bs-dwell")) S.dwell = Math.max(0.8, Math.min(15, Number($("bs-dwell").value) || 2.5));
-    if ($("bs-minhits")) S.minHits = Math.max(1, Math.min(50, Number($("bs-minhits").value) || 3));
-    if ($("bs-thresh")) S.threshDb = Math.max(4, Math.min(25, Number($("bs-thresh").value) || 10));
+    if ($("bs-passes")) S.passes = syncPassesUi($("bs-passes").value);
+    else if ($("bs-range-passes")) S.passes = syncPassesUi($("bs-range-passes").value);
+    if ($("bs-dwell")) S.dwell = syncDwellUi($("bs-dwell").value);
+    else if ($("bs-range-dwell")) S.dwell = syncDwellUi($("bs-range-dwell").value);
+    if ($("bs-minhits")) S.minHits = syncMinHitsUi($("bs-minhits").value);
+    else if ($("bs-range-minhits")) S.minHits = syncMinHitsUi($("bs-range-minhits").value);
+    if ($("bs-thresh")) S.threshDb = syncThreshUi($("bs-thresh").value);
+    else if ($("bs-range-thresh")) S.threshDb = syncThreshUi($("bs-range-thresh").value);
     S.hideAuto = $("bs-hideauto") ? $("bs-hideauto").checked : S.hideAuto;
     S.autoBm = $("bs-autobm") ? $("bs-autobm").checked : S.autoBm;
-    S.mute = $("bs-mute") ? $("bs-mute").checked : S.mute;
-    S.hideSpurs = $("bs-hidespurs") ? $("bs-hidespurs").checked : S.hideSpurs;
+    if ($("bs-mute")) S.mute = syncMuteUi($("bs-mute").checked);
+    else if ($("bs-range-mute")) S.mute = syncMuteUi($("bs-range-mute").checked);
+    if ($("bs-hidespurs")) S.hideSpurs = syncHideSpursUi($("bs-hidespurs").checked);
+    else if ($("bs-range-hidespurs")) S.hideSpurs = syncHideSpursUi($("bs-range-hidespurs").checked);
+    if ($("bs-wideband")) S.widebandPeaks = syncWidebandUi($("bs-wideband").checked);
+    else if ($("bs-range-wideband")) S.widebandPeaks = syncWidebandUi($("bs-range-wideband").checked);
     S.scanAfter = $("bs-scanafter") ? $("bs-scanafter").checked : S.scanAfter;
     S.holdBusy = $("bs-holdbusy") ? $("bs-holdbusy").checked : S.holdBusy;
     S.continuousBmScan = $("bs-continuousbm") ? $("bs-continuousbm").checked : S.continuousBmScan;
@@ -5433,7 +6592,8 @@ Plugins.band_survey.init = function () {
     readRecSettings();
     S.notifyNew = $("bs-notify") ? $("bs-notify").checked : S.notifyNew;
     S.aloneOnly = $("bs-alone") ? $("bs-alone").checked : S.aloneOnly;
-    S.ownRadio = ownerOverrideAllowed() && $("bs-ownradio") ? $("bs-ownradio").checked : false;
+    if ($("bs-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-ownradio").checked);
+    else if ($("bs-range-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-range-ownradio").checked);
     S.autoOpenPanel = $("bs-autoopen") ? $("bs-autoopen").checked : S.autoOpenPanel;
     if ($("bs-listensec")) S.listenSec = Math.max(1, Math.min(20, Number($("bs-listensec").value) || 4));
     if ($("bs-priority")) S.priority = $("bs-priority").value || "";
@@ -5450,7 +6610,31 @@ Plugins.band_survey.init = function () {
     if ($("bs-quiet-end")) S.quietEnd = $("bs-quiet-end").value || "";
     if ($("bs-pause-tune")) S.pauseOnManualTune = $("bs-pause-tune").checked;
     if ($("bs-settle-ms")) S.profileSettleMs = Math.max(0, Number($("bs-settle-ms").value) || 0);
-    if ($("bs-max-peaks")) S.maxPeaks = Math.max(0, Number($("bs-max-peaks").value) || 0);
+    if ($("bs-max-peaks")) {
+      S.maxPeaks = Math.max(0, Number($("bs-max-peaks").value) || 0);
+      if (_hitsLoaded) {
+        trimPeaksIfNeeded();
+        saveHits();
+      }
+    }
+    if ($("bs-keep-peaks")) {
+      var keepPeaks = $("bs-keep-peaks").checked;
+      if (!keepPeaks && S.keepPeaks !== false) {
+        hits = [];
+        tileLooks = {};
+        _hitsLoaded = true;
+        _hitsClassified = false;
+        try { window.localStorage.removeItem(LS_HITS); } catch (e) {}
+      } else if (keepPeaks && S.keepPeaks === false) {
+        _hitsLoaded = false;
+        ensureHitsLoaded(function () {
+          ensureHitsClassified();
+          renderHits();
+          updateTabLabels();
+        });
+      }
+      S.keepPeaks = keepPeaks;
+    }
     if ($("bs-max-clips")) S.maxAudioClips = Math.max(5, Math.min(200, Number($("bs-max-clips").value) || 40));
     if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
     if ($("bs-copy-done")) S.copyPeaksOnDone = $("bs-copy-done").checked;
@@ -5492,7 +6676,57 @@ Plugins.band_survey.init = function () {
   }
 
   function makePanel() {
-    if ($("bs-panel")) return;
+    var existing = $("bs-panel");
+    var wasOpen = !!(existing && !existing.hidden);
+    if (existing && !$("bs-tab-explore")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-range-mode-full")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-ex-scanall")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-factory-reset")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-minimize")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-ex-minimap-btn")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-resize-nw")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-range-dwell")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-range-wideband")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-range-hidespurs")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-keep-peaks")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-copy-diag")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing) return;
     var panel = document.createElement("div");
     panel.id = "bs-panel";
     panel.hidden = true;
@@ -5501,6 +6735,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-tabs" id="bs-tabs" role="tablist">' +
       '<button type="button" class="bs-tab bs-tab-on" data-tab="bands" role="tab" title="Band presets and tick list.">Bands</button>' +
       '<button type="button" class="bs-tab" data-tab="range" role="tab" title="Scan a custom MHz range (not tied to ticked bands).">Range</button>' +
+      '<button type="button" class="bs-tab" data-tab="explore" role="tab" title="Browse spectrum by profile hop — no band ticks needed.">Explore</button>' +
       '<button type="button" class="bs-tab" data-tab="peaks" role="tab" title="Peak table and export.">Peaks</button>' +
       '<button type="button" class="bs-tab" data-tab="bookmarks" role="tab" title="Local and loaded bookmarks.">Bookmarks</button>' +
       '<button type="button" class="bs-tab" data-tab="audio" role="tab" title="Session audio clips.">Audio</button>' +
@@ -5508,7 +6743,10 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-tab" data-tab="settings" role="tab" title="Panel startup, schedule, and notifications.">Settings</button>' +
       '<button type="button" class="bs-tab" data-tab="help" role="tab" title="Help and install guide.">Help</button>' +
       "</div>" +
-      '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button></div>' +
+      '<div class="bs-head-actions">' +
+      '<button type="button" class="bs-x bs-min" id="bs-minimize" title="Minimize to tab bar only — scans keep running.">−</button>' +
+      '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button>' +
+      "</div></div>" +
       '<div class="bs-toolbar" id="bs-toolbar">' +
       '<div id="bs-health" class="bs-health" hidden></div>' +
       '<p class="bs-note">Tick bands below, then Scan bands (add to Seen) or Fresh scan. Use <b>Range</b> for a custom MHz sweep. Options for each feature are on its tab.</p>' +
@@ -5552,10 +6790,11 @@ Plugins.band_survey.init = function () {
       "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"100\" step=\"1\" style=\"width:3.4em\" title=\"How many times to walk the ticked bands in one run.\"></label>" +
       "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each band while counting peaks.\"></label>" +
       "<label title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\">Min seen <input type=\"number\" id=\"bs-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\" title=\"Peaks below this Seen count are not auto-bookmarked or Scan-bookmarks qualified.\"></label>" +
-      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"4\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
+      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-thresh\" min=\"2\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
       "</div>" +
       '<div class="bs-row bs-chk-grid">' +
       '<label class="bs-chk" title="Hide always-skipped / birdie rows from the list."><input type="checkbox" id="bs-hidespurs"> Hide birdies</label>' +
+      '<label class="bs-chk" title="Detect wide broadcast carriers (FM/WFM and HF AM/MW/SW). Off = narrow peak finder only."><input type="checkbox" id="bs-wideband"> Wideband peaks (FM/AM broadcast)</label>' +
       '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute while running</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
       "</div></details>" +
@@ -5563,22 +6802,58 @@ Plugins.band_survey.init = function () {
       '<div class="bs-bands" id="bs-bands"></div>' +
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-range" data-tab="range" role="tabpanel">' +
-      '<p class="bs-note">Sweep any MHz span — hops profile tiles and tunes <code>UI.setFrequency</code> at each step. Uses <b>Band scan options</b> from the Bands tab (passes, dwell, Min seen, dB). Peaks land on the Peaks tab.</p>' +
+      '<p class="bs-note">Set start–end MHz, pick scan mode and options, then <b>Scan range</b>. Scan options sync with the Bands tab (change on either tab).</p>' +
       '<div class="bs-row">' +
       '<label title="Start of the sweep in MHz (e.g. 109).">Start MHz <input type="number" id="bs-range-start" min="0.1" max="6000" step="0.001" style="width:6em" title="Start of the sweep in MHz (e.g. 109)."></label>' +
       '<label title="End of the sweep in MHz (e.g. 200). Must be greater than start.">End MHz <input type="number" id="bs-range-end" min="0.1" max="6000" step="0.001" style="width:6em" title="End of the sweep in MHz (e.g. 200). Must be greater than start."></label>' +
-      '<label title="Hop size in kHz. 0 = auto (~88% of waterfall span, min 12.5 kHz). Use a larger value (e.g. 500 or 2000) for wide surveys.">Step kHz <input type="number" id="bs-range-step" min="0" max="100000" step="0.1" style="width:5em" title="Hop size in kHz. 0 = auto (~88% of waterfall span, min 12.5 kHz)."></label>' +
+      '<label id="bs-range-step-label" title="Hop size in kHz. 0 = auto (~88% of waterfall span). Full range mode only.">Step kHz <input type="number" id="bs-range-step" min="0" max="100000" step="0.1" style="width:5em" title="Hop size in kHz. 0 = auto. Full range only."></label>' +
       "</div>" +
+      '<div class="bs-range-opts-row">' +
+      '<details class="bs-tab-opts bs-range-scan-opts" open>' +
+      '<summary title="Passes, dwell, sensitivity, and audio for range scans (synced with Bands tab).">Range scan options</summary>' +
+      '<div class="bs-row">' +
+      '<label title="How many times to walk the range in one run.">Passes <input type="number" id="bs-range-passes" min="1" max="100" step="1" style="width:3.4em" title="How many times to walk the range in one run."></label>' +
+      "<label title=\"Seconds to sit on each MHz step while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-range-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\" style=\"width:4em\" title=\"Seconds to sit on each MHz step while counting peaks.\"></label>" +
+      "<label title=\"Peaks below this Seen count are not auto-bookmarked after the scan.\">Min seen <input type=\"number\" id=\"bs-range-minhits\" min=\"1\" max=\"50\" step=\"1\" style=\"width:3.4em\" title=\"Peaks below this Seen count are not auto-bookmarked after the scan.\"></label>" +
+      "<label title=\"How far above the noise floor a peak must be to count.\">dB over noise <input type=\"number\" id=\"bs-range-thresh\" min=\"2\" max=\"25\" step=\"1\" style=\"width:3.4em\" title=\"How far above the noise floor a peak must be to count.\"></label>" +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Hide birdies from Peaks list and range spectrum chart."><input type="checkbox" id="bs-range-hidespurs"> Hide birdies</label>' +
+      '<label class="bs-chk" title="Mute receiver audio while the range survey is running."><input type="checkbox" id="bs-range-mute"> Mute while running</label>' +
+      '<label class="bs-chk" title="Detect wide broadcast carriers on FM and HF AM/MW/SW profiles. Off = narrow peaks only."><input type="checkbox" id="bs-range-wideband"> Wideband peaks (FM/AM broadcast)</label>' +
+      '<label class="bs-chk" title="Skip the 11s wait between profiles. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-range-ownradio"> Own radio — fast hops</label>' +
+      "</div></details>" +
+      '<div class="bs-range-mode-box" id="bs-range-mode-box">' +
+      '<div class="bs-range-mode-title">Scan mode</div>' +
+      '<label class="bs-chk" title="Step through every MHz point in the span (Explorer-style continuous sweep)."><input type="radio" name="bs-range-mode" id="bs-range-mode-full" value="full"> Full range (Explorer)</label>' +
+      '<label class="bs-chk" title="Only scan band profiles ticked on the Bands tab whose MHz range overlaps start–end."><input type="radio" name="bs-range-mode" id="bs-range-mode-bands" value="bands"> Ticked bands in range</label>' +
+      "</div></div>" +
       '<div class="bs-row">' +
       '<button type="button" class="bs-primary" id="bs-range-start-btn" title="Walk the MHz range and add peaks to Seen.">Scan range</button>' +
       '<button type="button" id="bs-range-fresh" title="Clear the peak list, then scan this range from scratch.">Fresh range scan</button>' +
       "</div>" +
       '<p class="bs-hint" id="bs-range-est"></p>' +
       '<div id="bs-range-spectrum-wrap" hidden>' +
+      '<p class="bs-hint bs-range-spectrum-title" id="bs-range-spectrum-title">Range spectrum</p>' +
       '<p class="bs-hint" id="bs-range-spectrum-cap"></p>' +
-      '<canvas id="bs-range-spectrum" title="Peak map for the last range scan. Click a bar to tune."></canvas>' +
-      '<p class="bs-hint bs-range-spectrum-leg">Green = new · amber = seen · pink = priority · bar height = dB · click to tune</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" id="bs-range-spec-png" title="Download the spectrum chart as a PNG image.">Save PNG</button>' +
+      '<button type="button" id="bs-range-spec-csv" title="Download peak data for this range as CSV.">Save CSV</button>' +
       "</div>" +
+      '<canvas id="bs-range-spectrum" title="Range scan spectrum — click a peak marker to tune."></canvas>' +
+      '<p class="bs-hint bs-range-spectrum-leg">Cyan fill = activity envelope · green = new · gold = seen · pink = priority · click marker to tune</p>' +
+      "</div>" +
+      "</div>" +
+      '<div class="bs-tab-pane" id="bs-tab-explore" data-tab="explore" role="tabpanel">' +
+      '<p class="bs-note">Browse the radio without ticking bands. <b>◀ ▶</b> hop profiles (~2.4&nbsp;MHz each). Turn <b>Explore on</b>, then drag the waterfall sideways (≥⅓ width) to hop, short-click to tune, Alt+wheel to hop. For automated scans use <b>Range</b> (full span) or <b>Bands</b> (ticked list).</p>' +
+      '<div class="bs-row bs-ex-toolbar">' +
+      '<button type="button" class="bs-ex-btn bs-primary" id="bs-ex-toggle" title="Enable waterfall drag/wheel hop mode.">Explore off</button>' +
+      '<button type="button" class="bs-ex-btn bs-ex-arrow" id="bs-ex-prev" title="Previous profile.">◀</button>' +
+      '<button type="button" class="bs-ex-btn bs-ex-arrow" id="bs-ex-next" title="Next profile.">▶</button>' +
+      '<button type="button" class="bs-ex-btn" id="bs-ex-minimap-btn" title="Show overview strip under the waterfall.">Minimap</button>' +
+      '<span class="bs-count" id="bs-ex-readout">—</span>' +
+      "</div>" +
+      '<p class="bs-hint" id="bs-ex-status"></p>' +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-peaks" data-tab="peaks" role="tabpanel">' +
       '<div class="bs-row">' +
@@ -5660,6 +6935,10 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
+      '<div class="bs-row bs-factory-row">' +
+      '<button type="button" class="bs-stop" id="bs-factory-reset" title="Wipe all SV data in this browser and restore defaults — peaks, bookmarks, audio, skip list, settings, Explore.">Factory reset</button>' +
+      '<span class="bs-hint bs-factory-hint">Wipe peaks, bookmarks, audio, skip list, and settings in this browser.</span>' +
+      "</div>" +
       '<p class="bs-note">Global panel preferences — scan and bookmark options are on their respective tabs.</p>' +
       '<details class="bs-tab-opts" open>' +
       '<summary title="Panel open behaviour, layout, and text size.">Panel &amp; UI</summary>' +
@@ -5676,7 +6955,9 @@ Plugins.band_survey.init = function () {
       '<option value="small">Small</option><option value="default">Default</option><option value="large">Large</option></select></label>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-reset-layout" title="Restore default position (12% / 28% / 28vw / 58vh).">Reset panel layout</button>' +
+      '<button type="button" id="bs-save-layout" title="Remember current panel position and size. Factory reset restores this layout.">Save panel layout</button>' +
+      '<button type="button" id="bs-reset-layout" title="Restore the last saved panel layout.">Restore saved layout</button>' +
+      '<button type="button" id="bs-default-layout" title="Place panel inside the waterfall below the frequency bar (full tab width).">Waterfall default</button>' +
       '<button type="button" id="bs-restore-check" title="Show Check install on the toolbar again.">Re-show Check install</button>' +
       "</div></details>" +
       '<details class="bs-tab-opts" open>' +
@@ -5719,11 +7000,9 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-reset-settings" title="Reset settings to defaults. Keeps peak list.">Reset settings</button>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<label title="0 = unlimited. Trim oldest peaks when exceeded.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em" title="Peak list size cap."></label>' +
+      '<label title="0 = unlimited. Trim oldest peaks when list grows. Try 1000–2000 if SV feels slow.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em" title="Peak list size cap."></label>' +
+      '<label class="bs-chk" title="Restore Seen peak list from this browser next visit. Off = fresh list each session (faster). Export CSV first if you need the old list."><input type="checkbox" id="bs-keep-peaks"> Keep peaks between sessions</label>' +
       '<label title="Audio clips kept in this browser (5–200).">Max audio clips <input type="number" id="bs-max-clips" min="5" max="200" step="1" style="width:3.8em" title="IndexedDB clip cap."></label>' +
-      "</div>" +
-      '<div class="bs-row">' +
-      '<button type="button" class="bs-stop" id="bs-clear-all-data" title="Wipe peaks, bookmarks, audio, skip list, and settings in this browser.">Clear all plugin data</button>' +
       "</div></details>" +
       '<details class="bs-tab-opts">' +
       '<summary title="Webhooks, alert frequencies, and homelab integrations.">Homelab</summary>' +
@@ -5741,9 +7020,14 @@ Plugins.band_survey.init = function () {
       '<input type="file" id="bs-aud-file" accept="audio/*,.webm,.ogg,.mp3,.wav,.m4a,.opus" multiple hidden>' +
       '<input type="file" id="bs-bm-file" accept=".json,.csv,.txt,application/json,text/csv" hidden>' +
       '<input type="file" id="bs-settings-file" accept=".json,application/json,text/plain" hidden>' +
+      '<div class="bs-resize-n" data-resize="n" title="Drag to resize the top edge."></div>' +
+      '<div class="bs-resize-ne" data-resize="ne" title="Drag to resize the top-right corner."></div>' +
       '<div class="bs-resize-e" data-resize="e" title="Drag to make the panel wider or narrower."></div>' +
+      '<div class="bs-resize-se" data-resize="se" title="Drag to resize the bottom-right corner."></div>' +
       '<div class="bs-resize-s" data-resize="s" title="Drag to make the panel taller or shorter."></div>' +
-      '<div class="bs-resize-se" data-resize="se" title="Drag to resize the panel."></div>';
+      '<div class="bs-resize-sw" data-resize="sw" title="Drag to resize the bottom-left corner."></div>' +
+      '<div class="bs-resize-w" data-resize="w" title="Drag to resize the left edge."></div>' +
+      '<div class="bs-resize-nw" data-resize="nw" title="Drag to resize the top-left corner."></div>';
     document.body.appendChild(panel);
 
     $("bs-passes").value = S.passes;
@@ -5756,6 +7040,7 @@ Plugins.band_survey.init = function () {
     $("bs-hideauto").checked = !!S.hideAuto;
     $("bs-mute").checked = !!S.mute;
     $("bs-hidespurs").checked = S.hideSpurs !== false;
+    $("bs-wideband").checked = S.widebandPeaks !== false;
     $("bs-holdbusy").checked = S.holdBusy !== false;
     $("bs-continuousbm").checked = S.continuousBmScan !== false;
     $("bs-record").checked = !!S.recordBusy;
@@ -5779,20 +7064,29 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-start")) $("bs-range-start").value = S.rangeStartMhz;
     if ($("bs-range-end")) $("bs-range-end").value = S.rangeEndMhz;
     if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz || 0;
+    if ($("bs-range-passes")) $("bs-range-passes").value = S.passes;
+    if ($("bs-range-dwell")) $("bs-range-dwell").value = S.dwell;
+    if ($("bs-range-minhits")) $("bs-range-minhits").value = S.minHits;
+    if ($("bs-range-thresh")) $("bs-range-thresh").value = S.threshDb;
+    if ($("bs-range-hidespurs")) $("bs-range-hidespurs").checked = S.hideSpurs !== false;
+    if ($("bs-range-mute")) $("bs-range-mute").checked = !!S.mute;
+    if ($("bs-range-wideband")) $("bs-range-wideband").checked = S.widebandPeaks !== false;
+    if ($("bs-range-ownradio")) $("bs-range-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
+    if ($("bs-range-mode-full")) $("bs-range-mode-full").checked = S.rangeMode !== "bands";
+    if ($("bs-range-mode-bands")) $("bs-range-mode-bands").checked = S.rangeMode === "bands";
+    updateRangeModeUi();
     updateRangeEstimate();
     bindRangeSpectrum();
+    restoreRangeSpectrumView();
     watchProfiles();
     fillBands();
     applyCaps();
     loadedBookmarks = loadLoadedBookmarks();
-    loadHits();
     loadPersistedAudioClips(function () {
       renderAudioClips();
       updateTabLabels();
     });
-    classifyAll();
     bindPanelLayout(panel);
-    renderHits();
     var bodyEl = $("bs-body");
     if (bodyEl) bodyEl.onclick = onBookmarkPaneClick;
     var tabBar = $("bs-tabs");
@@ -5808,7 +7102,20 @@ Plugins.band_survey.init = function () {
 
     bindHelpTabActions();
 
-    $("bs-close").onclick = function () { panel.hidden = true; };
+    fillBands();
+    applyCaps();
+    updateTabLabels();
+
+    $("bs-close").onclick = function () {
+      panel.hidden = true;
+      window._bs_user_closed_panel = true;
+      window._bs_startup_grace_until = 0;
+      ensureSvAccessChip();
+    };
+    if ($("bs-minimize")) $("bs-minimize").onclick = function (ev) {
+      ev.stopPropagation();
+      togglePanelMinimized();
+    };
     applyCheckInstallDismiss();
     if ($("bs-check-dismiss")) {
       $("bs-check-dismiss").onclick = function (ev) {
@@ -5825,6 +7132,23 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-start")) $("bs-range-start").onchange = readRangeForm;
     if ($("bs-range-end")) $("bs-range-end").onchange = readRangeForm;
     if ($("bs-range-step")) $("bs-range-step").onchange = readRangeForm;
+    if ($("bs-range-passes")) $("bs-range-passes").onchange = readRangeForm;
+    if ($("bs-range-dwell")) $("bs-range-dwell").onchange = readRangeForm;
+    if ($("bs-range-thresh")) $("bs-range-thresh").onchange = readRangeForm;
+    if ($("bs-range-minhits")) $("bs-range-minhits").onchange = readRangeForm;
+    if ($("bs-range-hidespurs")) $("bs-range-hidespurs").onchange = readRangeForm;
+    if ($("bs-range-mute")) $("bs-range-mute").onchange = readRangeForm;
+    if ($("bs-range-wideband")) $("bs-range-wideband").onchange = readRangeForm;
+    if ($("bs-range-ownradio")) $("bs-range-ownradio").onchange = readRangeForm;
+    if ($("bs-range-mode-full")) $("bs-range-mode-full").onchange = readRangeForm;
+    if ($("bs-range-mode-bands")) $("bs-range-mode-bands").onchange = readRangeForm;
+    if ($("bs-range-spec-png")) $("bs-range-spec-png").onclick = exportRangeSpectrumPng;
+    if ($("bs-range-spec-csv")) $("bs-range-spec-csv").onclick = exportRangeSpectrumCsv;
+    if ($("bs-ex-toggle")) $("bs-ex-toggle").onclick = function () { setExploreMode(!explore.on); };
+    if ($("bs-ex-prev")) $("bs-ex-prev").onclick = function () { exploreShiftProfile(-1); };
+    if ($("bs-ex-next")) $("bs-ex-next").onclick = function () { exploreShiftProfile(1); };
+    if ($("bs-ex-minimap-btn")) $("bs-ex-minimap-btn").onclick = function () { setExploreMinimap(!explore.minimapOn); };
+    initExploreUi();
     $("bs-stop").onclick = stopSurvey;
     $("bs-jump").onclick = function () { jumpLoudest(); };
     $("bs-hold").onclick = function () {
@@ -5847,7 +7171,15 @@ Plugins.band_survey.init = function () {
     $("bs-scanafter").onchange = readForm;
     $("bs-hideauto").onchange = readForm;
     $("bs-mute").onchange = readForm;
-    $("bs-hidespurs").onchange = readForm;
+    if ($("bs-wideband")) $("bs-wideband").onchange = readForm;
+    $("bs-hidespurs").onchange = function () {
+      readForm();
+      renderHits();
+      if (rangeSpectrum.startMhz && rangeSpectrum.endMhz) {
+        rangeSpectrum.peaks = peaksInRangeMhz(rangeSpectrum.startMhz, rangeSpectrum.endMhz);
+        drawRangeSpectrum();
+      }
+    };
     $("bs-holdbusy").onchange = readForm;
     $("bs-continuousbm").onchange = readForm;
     $("bs-record").onchange = readForm;
@@ -5869,11 +7201,13 @@ Plugins.band_survey.init = function () {
     });
     [
       "bs-default-tab", "bs-text-size", "bs-sched-action", "bs-quiet-start", "bs-quiet-end",
-      "bs-settle-ms", "bs-max-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset"
+      "bs-settle-ms", "bs-max-peaks", "bs-keep-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset"
     ].forEach(function (id) {
       if ($(id)) $(id).onchange = readForm;
     });
     if ($("bs-reset-layout")) $("bs-reset-layout").onclick = resetPanelLayoutDefaults;
+    if ($("bs-save-layout")) $("bs-save-layout").onclick = savePanelLayoutManual;
+    if ($("bs-default-layout")) $("bs-default-layout").onclick = applyWaterfallPanelDefault;
     if ($("bs-restore-check")) $("bs-restore-check").onclick = restoreCheckInstall;
     if ($("bs-export-settings")) $("bs-export-settings").onclick = exportSettingsJson;
     if ($("bs-import-settings")) $("bs-import-settings").onclick = function () {
@@ -5881,7 +7215,7 @@ Plugins.band_survey.init = function () {
       if (inp) inp.click();
     };
     if ($("bs-reset-settings")) $("bs-reset-settings").onclick = resetSettingsToDefaults;
-    if ($("bs-clear-all-data")) $("bs-clear-all-data").onclick = clearAllPluginData;
+    if ($("bs-factory-reset")) $("bs-factory-reset").onclick = factoryReset;
     if ($("bs-settings-file")) {
       $("bs-settings-file").onchange = function () {
         var f = this.files && this.files[0];
@@ -5907,6 +7241,7 @@ Plugins.band_survey.init = function () {
       S.selected = selectedValues();
       saveSettings();
       updateCount();
+      updateRangeEstimate();
     };
     panel.querySelectorAll("[data-preset]").forEach(function (btn) {
       btn.onclick = function () { applyPreset(btn.getAttribute("data-preset")); };
@@ -5971,6 +7306,7 @@ Plugins.band_survey.init = function () {
     $("bs-clearhits").onclick = function () {
       hits = [];
       tileLooks = {};
+      _hitsClassified = false;
       saveHits();
       renderHits();
       setStatus("List cleared.");
@@ -6016,19 +7352,29 @@ Plugins.band_survey.init = function () {
       }
     };
 
-    var drag = $("bs-drag");
     var ox = 0;
     var oy = 0;
     var dragging = false;
-    drag.addEventListener("mousedown", function (ev) {
-      if (ev.target && ev.target.id === "bs-close") return;
-      if (ev.target && ev.target.closest && ev.target.closest(".bs-tab")) return;
+
+    function isBlankPanelDragTarget(el) {
+      if (!el || !panel.contains(el)) return false;
+      return !el.closest(
+        "button, input, select, textarea, a, summary, label, .bs-tab, .bs-head-actions, [data-resize], " +
+        ".bs-bands, table.bs-hits, .bs-bm-ul, .bs-skip-row, .bs-audio-row, .bs-tab-opts, .bs-check-wrap"
+      );
+    }
+
+    function startPanelDrag(ev) {
+      if (ev.button !== 0) return;
+      if (!isBlankPanelDragTarget(ev.target)) return;
       dragging = true;
       var r = panel.getBoundingClientRect();
       ox = ev.clientX - r.left;
       oy = ev.clientY - r.top;
       ev.preventDefault();
-    });
+    }
+
+    panel.addEventListener("mousedown", startPanelDrag);
     document.addEventListener("mousemove", function (ev) {
       if (!dragging) return;
       panel.style.left = Math.max(4, ev.clientX - ox) + "px";
@@ -6040,6 +7386,32 @@ Plugins.band_survey.init = function () {
       dragging = false;
       savePanelLayout();
     });
+    panel.addEventListener("dblclick", function (ev) {
+      if (!isBlankPanelDragTarget(ev.target)) return;
+      if (panel.classList.contains("bs-minimized")) setPanelMinimized(false);
+    });
+    if (wasOpen) panel.hidden = false;
+    else maintainStartupPanelOpen();
+  }
+
+  function ensureSvAccessChip() {
+    var panel = $("bs-panel");
+    if (!panel || !panel.hidden) {
+      var old = $("bs-sv-chip");
+      if (old) old.remove();
+      return;
+    }
+    if ($("bs-sv-chip")) return;
+    var chip = document.createElement("div");
+    chip.id = "bs-sv-chip";
+    chip.textContent = "SV";
+    chip.title = "Band survey panel is closed — click to open.";
+    chip.onclick = function () {
+      window._bs_user_closed_panel = false;
+      makePanel();
+      showPanel();
+    };
+    document.body.appendChild(chip);
   }
 
   function placeToggle(btn, container) {
@@ -6110,12 +7482,393 @@ Plugins.band_survey.init = function () {
     document.body.appendChild(chip);
   }
 
+  function removeStandaloneExplorer() {
+    ["owrx-se-bar", "owrx-se-minimap-wrap"].forEach(function (id) {
+      var el = $(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+    document.body.classList.remove("owrx-se-explorer-mode");
+  }
+
+  function exploreLoadBool(key, fallback) {
+    try {
+      var v = window.localStorage.getItem(key);
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch (e) {}
+    return fallback;
+  }
+
+  function exploreSaveBool(key, val) {
+    try { window.localStorage.setItem(key, val ? "1" : "0"); } catch (e) {}
+  }
+
+  function exploreGetMagicKey() {
+    return getMagicKey();
+  }
+
+  function exploreSetStatus(msg) {
+    var el = $("bs-ex-status");
+    if (el) el.textContent = msg || "";
+    if (msg) setStatus(msg);
+  }
+
+  function exploreRefreshReadout() {
+    var el = $("bs-ex-readout");
+    if (!el) return;
+    var c = typeof window.center_freq === "number" ? window.center_freq : 0;
+    var bw = typeof window.bandwidth === "number" ? window.bandwidth : 0;
+    el.textContent = (c ? fmtMhz(c) : "—") + (bw ? " · span " + (bw >= 1e6 ? (bw / 1e6).toFixed(2) + " MHz" : Math.round(bw / 1000) + " kHz") : "");
+  }
+
+  function exploreShiftProfile(direction) {
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    if (!sel || !sel.options.length) {
+      exploreSetStatus("No profiles to hop.");
+      return false;
+    }
+    var next = sel.selectedIndex + (direction < 0 ? -1 : 1);
+    if (next < 0 || next >= sel.options.length) {
+      exploreSetStatus(direction < 0 ? "Already at first profile." : "Already at last profile.");
+      return false;
+    }
+    var opt = sel.options[next];
+    switchProfile(opt.value);
+    explore.overview = null;
+    explore.segmentStart = 0;
+    explore.segmentEnd = 0;
+    exploreSetStatus("→ " + (opt.text || opt.value));
+    exploreRefreshReadout();
+    return true;
+  }
+
+  function exploreSendCenter(freq, immediate) {
+    freq = Math.round(freq);
+    if (!isFinite(freq) || freq < 0) return;
+    explore.pendingCenter = freq;
+    if (explore.debounceTimer) clearTimeout(explore.debounceTimer);
+    var fire = function () {
+      explore.debounceTimer = null;
+      explore.pendingCenter = null;
+      bsInternalTune = true;
+      try {
+        var sock = window.ws;
+        if (sock && sock.readyState === 1) {
+          sock.send(JSON.stringify({
+            type: "setfrequency",
+            params: { frequency: freq, key: exploreGetMagicKey() }
+          }));
+          exploreSetStatus("Center → " + fmtMhz(freq));
+        }
+        if (window.UI && typeof UI.toggleScanner === "function") UI.toggleScanner(false);
+      } finally {
+        setTimeout(function () { bsInternalTune = false; }, 0);
+      }
+      exploreRefreshReadout();
+      exploreDrawMinimap();
+    };
+    if (immediate) fire();
+    else explore.debounceTimer = setTimeout(fire, EX_DEBOUNCE_MS);
+  }
+
+  function exploreCanvas() {
+    return $("webrx-canvas-container");
+  }
+
+  function exploreCanvasWidth() {
+    var c = exploreCanvas();
+    if (!c) return 0;
+    var canvas = c.querySelector("canvas");
+    return canvas ? (canvas.clientWidth || canvas.width) : c.clientWidth;
+  }
+
+  function exploreIsPanTarget(target) {
+    if (!explore.on || !target) return false;
+    if (running || listenScanRunning || surveyRunning) return false;
+    if (target.closest && target.closest("#bs-panel, #bs-ex-minimap-wrap, #owrx-se-bar")) return false;
+    if (target.closest && target.closest(".openwebrx-demodulator, .webrx-demodulator")) return false;
+    var container = exploreCanvas();
+    return !!(container && container.contains(target));
+  }
+
+  function exploreBlock(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.stopImmediatePropagation();
+  }
+
+  function exploreOnWheel(ev) {
+    if (!exploreIsPanTarget(ev.target)) return;
+    exploreBlock(ev);
+    var bw = window.bandwidth || 2400000;
+    if (ev.altKey) {
+      exploreShiftProfile(ev.deltaY > 0 ? 1 : -1);
+      return;
+    }
+    var step = bw * (ev.deltaY > 0 ? 0.08 : -0.08);
+    if (ev.shiftKey) step *= 0.25;
+    exploreSendCenter((window.center_freq || 0) + step);
+  }
+
+  function exploreOnDown(ev) {
+    if (!explore.on || ev.button !== 0) return;
+    if (!exploreIsPanTarget(ev.target)) return;
+    exploreBlock(ev);
+    explore.dragging = true;
+    explore.dragStartX = ev.clientX;
+    explore.dragStartCenter = window.center_freq || 0;
+    explore.movedPx = 0;
+    var c = exploreCanvas();
+    if (c) c.classList.add("bs-ex-pan-active");
+    window.addEventListener("mousemove", exploreOnMove, true);
+    window.addEventListener("mouseup", exploreOnUp, true);
+  }
+
+  function exploreOnMove(ev) {
+    if (!explore.dragging) return;
+    exploreBlock(ev);
+    explore.movedPx = Math.max(explore.movedPx, Math.abs(ev.clientX - explore.dragStartX));
+  }
+
+  function exploreOnUp(ev) {
+    window.removeEventListener("mousemove", exploreOnMove, true);
+    window.removeEventListener("mouseup", exploreOnUp, true);
+    if (!explore.dragging) return;
+    explore.dragging = false;
+    var c = exploreCanvas();
+    if (c) c.classList.remove("bs-ex-pan-active");
+    if (explore.movedPx <= EX_CLICK_MAX_PX && c) {
+      exploreBlock(ev);
+      var rect = c.getBoundingClientRect();
+      var x = ev.clientX - rect.left;
+      var bw = window.bandwidth || 2400000;
+      var center = window.center_freq || 0;
+      var freq = (center - bw / 2) + (x / rect.width) * bw;
+      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(Math.round(freq));
+      return;
+    }
+    exploreBlock(ev);
+    var width = exploreCanvasWidth() || 1;
+    var dx = ev.clientX - explore.dragStartX;
+    if (Math.abs(dx) >= width * 0.35) {
+      exploreShiftProfile(dx < 0 ? 1 : -1);
+      return;
+    }
+    var deltaHz = -(dx / width) * (window.bandwidth || 2400000);
+    exploreSendCenter(explore.dragStartCenter + deltaHz, true);
+  }
+
+  function exploreInstallHandlers() {
+    var container = exploreCanvas();
+    if (!container || container._bs_ex_handlers) return;
+    container._bs_ex_handlers = true;
+    var cap = { passive: false, capture: true };
+    container.addEventListener("wheel", exploreOnWheel, cap);
+    container.addEventListener("mousedown", exploreOnDown, cap);
+    explore.handlersOn = true;
+  }
+
+  function exploreNewOverview() {
+    var ov = new Float32Array(EX_MINIMAP_BINS);
+    ov.fill(EX_OVERVIEW_EMPTY);
+    return ov;
+  }
+
+  function exploreEnsureSegment() {
+    var center = window.center_freq || 0;
+    var bw = window.bandwidth || 2400000;
+    var span = Math.max(bw * 12, bw * 4);
+    if (!explore.segmentStart && !explore.segmentEnd) {
+      explore.segmentStart = center - span / 2;
+      explore.segmentEnd = center + span / 2;
+      return;
+    }
+    var margin = span * 0.15;
+    if (center - bw / 2 < explore.segmentStart + margin || center + bw / 2 > explore.segmentEnd - margin) {
+      explore.segmentStart = center - span / 2;
+      explore.segmentEnd = center + span / 2;
+      explore.overview = exploreNewOverview();
+    }
+  }
+
+  function exploreMergeWaterfall(data) {
+    if (!explore.on || !explore.minimapOn || !data || data.length < 8) return;
+    exploreEnsureSegment();
+    if (!explore.overview) explore.overview = exploreNewOverview();
+    var center = window.center_freq || 0;
+    var bw = window.bandwidth || 2400000;
+    var segW = explore.segmentEnd - explore.segmentStart;
+    if (segW <= 0) return;
+    var i;
+    for (i = 0; i < data.length; i++) {
+      var f = (center - bw / 2) + (i / data.length) * bw;
+      if (f < explore.segmentStart || f > explore.segmentEnd) continue;
+      var bin = Math.floor(((f - explore.segmentStart) / segW) * EX_MINIMAP_BINS);
+      if (bin < 0 || bin >= EX_MINIMAP_BINS) continue;
+      if (data[i] > explore.overview[bin]) explore.overview[bin] = data[i];
+    }
+  }
+
+  function exploreHookWaterfall() {
+    if (window._bs_ex_wf_hooked || typeof window.waterfall_add !== "function") return;
+    var orig = window.waterfall_add;
+    window.waterfall_add = function (data) {
+      exploreMergeWaterfall(data);
+      return orig.apply(this, arguments);
+    };
+    window._bs_ex_wf_hooked = true;
+  }
+
+  function exploreDrawMinimap() {
+    if (!explore.minimapOn || !explore.minimapCtx || !explore.on) return;
+    exploreEnsureSegment();
+    var ctx = explore.minimapCtx;
+    var w = explore.minimap.width;
+    var h = explore.minimap.height;
+    ctx.fillStyle = "#0a0a0c";
+    ctx.fillRect(0, 0, w, h);
+    var ov = explore.overview;
+    var minL = -90;
+    var maxL = -30;
+    if (window.waterfall_levels) {
+      if (window.waterfall_levels.min != null) minL = window.waterfall_levels.min;
+      if (window.waterfall_levels.max != null) maxL = window.waterfall_levels.max;
+    }
+    var range = maxL - minL || 1;
+    if (ov) {
+      var x;
+      for (x = 0; x < EX_MINIMAP_BINS; x++) {
+        var v = ov[x];
+        if (!(isFinite(v) && v > EX_OVERVIEW_EMPTY + 1)) continue;
+        var t = Math.max(0, Math.min(1, (v - minL) / range));
+        var g = Math.round(40 + t * 180);
+        ctx.fillStyle = "rgb(" + g + "," + Math.round(g * 0.85) + "," + Math.round(30 + t * 40) + ")";
+        var px = Math.floor((x / EX_MINIMAP_BINS) * w);
+        ctx.fillRect(px, 2, Math.max(1, Math.ceil(w / EX_MINIMAP_BINS)), h - 4);
+      }
+    }
+    var center = window.center_freq || 0;
+    var bw = window.bandwidth || 2400000;
+    var segW = explore.segmentEnd - explore.segmentStart;
+    if (segW > 0) {
+      var vL = ((center - bw / 2) - explore.segmentStart) / segW * w;
+      var vR = ((center + bw / 2) - explore.segmentStart) / segW * w;
+      ctx.strokeStyle = "rgba(120, 200, 255, 0.95)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(Math.max(0, vL), 1, Math.max(4, vR - vL), h - 2);
+      ctx.fillStyle = "rgba(120, 200, 255, 0.12)";
+      ctx.fillRect(Math.max(0, vL), 1, Math.max(4, vR - vL), h - 2);
+    }
+  }
+
+  function exploreEnsureMinimapDom() {
+    var container = exploreCanvas();
+    var wrap = $("bs-ex-minimap-wrap");
+    if (wrap && container && wrap.parentNode !== container) {
+      wrap.parentNode.removeChild(wrap);
+      container.appendChild(wrap);
+    }
+    if (wrap) {
+      explore.minimap = wrap.querySelector("canvas");
+      if (explore.minimap) explore.minimapCtx = explore.minimap.getContext("2d");
+      return;
+    }
+    if (!container) return;
+    wrap = document.createElement("div");
+    wrap.id = "bs-ex-minimap-wrap";
+    explore.minimap = document.createElement("canvas");
+    explore.minimap.id = "bs-ex-minimap-canvas";
+    explore.minimap.className = "bs-ex-minimap-canvas";
+    explore.minimap.width = 900;
+    explore.minimap.height = 44;
+    wrap.appendChild(explore.minimap);
+    container.appendChild(wrap);
+    explore.minimapCtx = explore.minimap.getContext("2d");
+    explore.minimap.addEventListener("click", function (ev) {
+      if (!explore.on) return;
+      var rect = explore.minimap.getBoundingClientRect();
+      var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      var f = explore.segmentStart + frac * (explore.segmentEnd - explore.segmentStart);
+      exploreSendCenter(f, true);
+      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(Math.round(f));
+    });
+    window.addEventListener("resize", function () {
+      if (!explore.minimap) return;
+      var w = wrap.clientWidth;
+      if (w > 64 && Math.abs(explore.minimap.width - w) > 2) {
+        explore.minimap.width = w;
+        exploreDrawMinimap();
+      }
+    });
+  }
+
+  function exploreRefreshButtons() {
+    var tog = $("bs-ex-toggle");
+    if (tog) {
+      tog.textContent = explore.on ? "Explore on" : "Explore off";
+      tog.classList.toggle("bs-on", explore.on);
+      tog.classList.toggle("bs-primary", explore.on);
+    }
+    var mm = $("bs-ex-minimap-btn");
+    if (mm) mm.classList.toggle("bs-on", explore.minimapOn);
+    var wrap = $("bs-ex-minimap-wrap");
+    if (wrap) wrap.style.display = explore.on && explore.minimapOn ? "block" : "none";
+    document.body.classList.toggle("bs-explore-mode", explore.on);
+  }
+
+  function setExploreMode(on) {
+    explore.on = !!on;
+    exploreSaveBool(LS_EXPLORE, explore.on);
+    if (explore.on) {
+      removeStandaloneExplorer();
+      exploreInstallHandlers();
+      exploreHookWaterfall();
+      exploreEnsureMinimapDom();
+      exploreSetStatus("Explore on — drag waterfall to hop profiles · ◀▶ also work.");
+    } else {
+      exploreSetStatus("Explore off.");
+    }
+    exploreRefreshButtons();
+    exploreRefreshReadout();
+    exploreDrawMinimap();
+  }
+
+  function setExploreMinimap(on) {
+    explore.minimapOn = !!on;
+    exploreSaveBool(LS_EXPLORE_MM, explore.minimapOn);
+    if (explore.minimapOn) exploreEnsureMinimapDom();
+    exploreRefreshButtons();
+    exploreDrawMinimap();
+  }
+
+  function initExploreUi() {
+    if (initExploreUi._done) return;
+    initExploreUi._done = true;
+    explore.on = exploreLoadBool(LS_EXPLORE, false);
+    explore.minimapOn = exploreLoadBool(LS_EXPLORE_MM, false);
+    removeStandaloneExplorer();
+    exploreInstallHandlers();
+    exploreHookWaterfall();
+    if (explore.on && explore.minimapOn) exploreEnsureMinimapDom();
+    else {
+      var stale = $("bs-ex-minimap-wrap");
+      if (stale) stale.style.display = "none";
+    }
+    exploreRefreshButtons();
+    exploreRefreshReadout();
+    if (explore.on) exploreSetStatus("Explore on — drag waterfall to hop · ◀▶ previous/next profile.");
+    setInterval(function () {
+      if (!exploreCanvas() || !exploreCanvas()._bs_ex_handlers) exploreInstallHandlers();
+      exploreRefreshReadout();
+      if (explore.on) exploreDrawMinimap();
+    }, 500);
+  }
+
   function ensureUi() {
     hookWaterfall();
     hookHide();
     hookTuneApi();
     makePanel();
-    backupLocalBookmarks("first-ui");
     var container = $("openwebrx-panel-receiver");
     if (!container) {
       if (Date.now() - (window._bs_ui_t0 || (window._bs_ui_t0 = Date.now())) > 8000) {
@@ -6134,24 +7887,27 @@ Plugins.band_survey.init = function () {
         var panel = $("bs-panel");
         if (!panel) return;
         panel.hidden = !panel.hidden;
-        if (!panel.hidden) showPanel();
+        if (!panel.hidden) {
+          window._bs_user_closed_panel = false;
+          showPanel();
+        } else {
+          window._bs_user_closed_panel = true;
+          window._bs_startup_grace_until = 0;
+          ensureSvAccessChip();
+        }
       };
       container.appendChild(btn);
     }
     placeToggle(btn, container);
-    if (S.hideAuto) refreshBookmarks();
-    applySchedule();
-    if ($("bs-panel") && !$("bs-panel").hidden) {
-      setTimeout(function () { renderHealth(); }, 2500);
+    ensureSvAccessChip();
+    if (!window._bs_ui_ready) {
+      window._bs_ui_ready = true;
+      backupLocalBookmarks("first-ui");
+      if (S.hideAuto) refreshBookmarks();
+      applySchedule();
+      runStartupPanelOpen();
     }
-    if (!S.seenHelp && !window._bs_welcomed) {
-      window._bs_welcomed = true;
-      showPanel();
-      switchTab("help");
-      setStatus("Welcome. Your blue bookmarks were copied into a browser backup. See the Help tab for the full guide — this only auto-opens once.");
-    } else if (S.autoOpenPanel) {
-      autoOpenPanelNow();
-    }
+    maintainStartupPanelOpen();
   }
 
   if (Plugins.utils && Plugins.utils.on_ready) {
@@ -6169,6 +7925,7 @@ Plugins.band_survey.init = function () {
     var btn = $("bs-toggle-btn");
     var container = $("openwebrx-panel-receiver");
     if (btn && container) placeToggle(btn, container);
+    ensureSvAccessChip();
   }, 2500);
   return true;
 };
