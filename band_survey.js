@@ -2290,7 +2290,7 @@ Plugins.band_survey.init = function () {
     var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
     var extras = issues.filter(function (x) { return x.level === "info"; }).length;
     if (!hard && !warns) {
-      setStatus("Install looks good. Orange SV is this plugin. Optional extras are listed only so you know they are not required.");
+      setStatus("Install looks good. Top-bar Survey (or orange SV) is this plugin. Optional extras are listed only so you know they are not required.");
     } else {
       setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
         (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
