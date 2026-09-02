@@ -1,10 +1,48 @@
 /* Band survey — floating panel. Do not size #openwebrx-panel-receiver. */
 
-#bs-toggle-btn {
+/* Top bar (OpenWebRX+): between Help and Status — match native .button + svg style */
+.openwebrx-main-buttons .bs-top-sv,
+#bs-toggle-btn.bs-top-sv {
+  position: static;
+  bottom: auto;
+  left: auto;
+  z-index: auto;
+  display: block;
+  width: 55px;
+  cursor: pointer;
+  user-select: none;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border: 0;
+  line-height: initial;
+  overflow: visible;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.openwebrx-main-buttons .bs-top-sv svg.bs-top-sv-icon {
+  /* Keep inline like native Help/Status icons — display:block + br pushed "Survey" off-screen */
+  height: 38px;
+  width: auto;
+  fill: none;
+  stroke: currentColor;
+  vertical-align: top;
+}
+
+.openwebrx-main-buttons .bs-top-sv.bs-running svg.bs-top-sv-icon {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.95));
+}
+
+/* Legacy fallback: bottom of receiver freq bar when top bar is unavailable */
+#bs-toggle-btn.bs-freqbar-fallback {
   position: absolute;
   bottom: 3px;
   left: 4px;
-  z-index: 99;
+  z-index: 10080;
   font-size: 13px;
   font-weight: bold;
   color: #ddd;
@@ -17,10 +55,15 @@
   line-height: 13px;
 }
 
-#bs-toggle-btn.bs-running {
+#bs-toggle-btn.bs-freqbar-fallback.bs-running {
   color: #111;
   background: #f59e0b;
   border-color: #fbbf24;
+}
+
+#openwebrx-panel-receiver {
+  position: relative;
+  z-index: 100;
 }
 
 #bs-panel {
@@ -231,6 +274,46 @@
   line-height: 1.4;
 }
 
+#bs-panel #bs-tab-range .bs-range-opts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+#bs-panel #bs-tab-range .bs-range-scan-opts {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+
+#bs-panel #bs-tab-range .bs-range-mode-box {
+  flex: 0 1 168px;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  background: rgba(17, 24, 39, 0.55);
+}
+
+#bs-panel #bs-tab-range .bs-range-mode-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #eab308;
+  user-select: none;
+}
+
+#bs-panel #bs-tab-range .bs-range-mode-box label.bs-chk {
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 #bs-panel .bs-tab[data-tab="peaks"] {
   --bs-tab-accent: #4ade80;
   --bs-tab-accent-dim: rgba(74, 222, 128, 0.45);
@@ -399,6 +482,29 @@
 #bs-panel .bs-chk-grid label.bs-chk {
   margin: 0;
   font-size: 12px;
+}
+
+#bs-panel .bs-visible-tabs-box {
+  margin: 6px 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  background: #0b1220;
+}
+
+#bs-panel .bs-visible-tabs-box .bs-range-mode-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e5e7eb;
+  margin-bottom: 2px;
+}
+
+#bs-panel .bs-visible-tabs-box .bs-hint {
+  margin: 0 0 6px;
+}
+
+#bs-panel #bs-tabs .bs-tab[hidden] {
+  display: none !important;
 }
 
 #bs-panel .bs-rec-tune {
@@ -864,7 +970,24 @@
   position: fixed;
   bottom: 14px;
   right: 14px;
-  z-index: 10070;
+  z-index: 10080;
+  font-size: 14px;
+  font-weight: bold;
+  color: #111;
+  cursor: pointer;
+  background: #f59e0b;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #fbbf24;
+  user-select: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+#bs-sv-chip {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 10080;
   font-size: 14px;
   font-weight: bold;
   color: #111;
@@ -1059,31 +1182,64 @@ body.bs-layout-drag.bs-resize-nesw {
 
 #bs-panel #bs-range-spectrum-wrap {
   flex: 0 0 auto;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid #333;
+  margin-top: 8px;
+  padding: 8px 8px 6px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 12, 22, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(148, 163, 184, 0.08),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+#bs-panel .bs-range-spectrum-title {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+#bs-panel #bs-range-spectrum-cap {
+  margin: 0 0 6px;
+  color: #cbd5e1;
+  font-weight: 600;
 }
 
 #bs-panel #bs-range-spectrum {
   display: block;
   width: 100%;
-  height: 100px;
-  border: 1px solid #444;
-  border-radius: 4px;
-  background: #0a0a0a;
+  height: 172px;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #050508;
   cursor: crosshair;
+  box-shadow:
+    inset 0 0 24px rgba(14, 165, 233, 0.06),
+    0 0 16px rgba(56, 189, 248, 0.1);
 }
 
 #bs-panel .bs-range-spectrum-leg {
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
 }
 
-/* Explore mode — waterfall hop + minimap (was spectrum_explorer) */
-#bs-ex-minimap-wrap {
+/* Explore minimap — inside waterfall only, must not cover receiver panel */
+#webrx-canvas-container {
   position: relative;
-  z-index: 10150;
-  margin: 0 0 6px 0;
+}
+
+#bs-ex-minimap-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  margin: 0;
+  pointer-events: auto;
 }
 
 #bs-ex-minimap-wrap canvas,

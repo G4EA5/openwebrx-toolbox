@@ -1,18 +1,19 @@
-# Band survey — OpenWebRX+ plugin (v86)
+# Band survey — OpenWebRX+ plugin (v91)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 
-**Recent:** Smart `install.sh` with `--check` / `--report` diagnostic logs; Range tab scan
-options (Hide birdies, Min seen); deferred peak loading for faster panel open; Help →
-**Copy diagnostic report** for browser-side troubleshooting.
+**Recent (v91):** Top-bar **Survey** button (between Help and Status); **Explore** whole-spectrum
+browsing; **Visible tabs** for a minimal panel; **Only if alone** on Range / Bands / Settings;
+range spectrum with ≥12 frequency labels; single hover tip (no double native+custom tips);
+`install.sh` forces world-readable plugin/`init.js` modes after copy.
 
 
 <p>
   <img src="screenshots/range-fm-spectrum.png" alt="Range tab — FM broadcast spectrum after a range scan" width="640">
 </p>
 
-<p><em>Orange <strong>SV</strong> on the right-hand receiver panel opens the survey.</em></p>
+<p><em><strong>Survey</strong> in the top bar (between Help and Status) opens the panel. Fallback UI may show orange <strong>SV</strong>.</em></p>
 
 ### Screenshots — FM broadcast range survey (88–108 MHz)
 
@@ -51,7 +52,7 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click orange **SV**
+Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click **Survey**
 → **Check install**.
 
 Verify without writing files (writes a full diagnostic log):
@@ -289,14 +290,14 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 ## Quick start
 
 1. Hard-refresh: **Ctrl+Shift+R** / **Cmd+Shift+R**.
-2. Click orange **SV** on the right-hand panel.
+2. Click **Survey** in the top bar (between **Help** and **Status**).
 3. Click **Check install**. Green = ready.
 4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
-5. Results appear on the **Peaks** tab. Hover any control for a tip.
+5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time).
 
 | You see | Meaning |
 | --- | --- |
-| Orange **SV** | Plugin loaded |
+| **Survey** (or orange **SV**) | Plugin loaded |
 | Band checkboxes | Profiles visible |
 | **Check install** “looks good” | Ready to survey |
 | Red / yellow box | Follow on-screen fix, then Check install again |
@@ -347,6 +348,8 @@ wraps.
   - **dB over noise** — peak must be this far above the noise floor.
 - **Hide birdies** — hide always-skipped rows from the peak list.
 - **Mute while running** — silence audio during band/range survey walks.
+- **Only if alone** — do not retune when other listeners are online (also on Range and
+  Settings → Courtesy).
 - **Own radio — fast hops** — ~1 s between profile changes instead of ~11 s. Only on a
   receiver you run yourself. Locked on public installs (`./install.sh --public`).
 
@@ -359,10 +362,22 @@ Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profile
   500–2000 kHz for wide surveys.
 - **Scan range** — add peaks to Seen.
 - **Fresh range scan** — clear peak list first.
+- **Full range (Explorer)** vs **Ticked bands only** — full span hops every step; bands
+  mode only covers overlapping ticked profiles.
 - **Range scan options** (on Range tab, synced with Bands): Passes, Dwell, Min seen,
-  dB, Hide birdies, Wideband peaks, Mute, Own radio.
+  dB, Hide birdies, Wideband peaks, Mute, **Only if alone**, Own radio.
 - **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
-  bar height = dB; click a bar to tune.
+  bar height = dB; ≥12 frequency labels on the X-axis; click a bar to tune.
+
+### Explore
+
+Browse the **whole** spectrum — every SDR profile in frequency order (not the ticked
+Bands list).
+
+- Turn **Explore on**, then drag the waterfall sideways (≥⅓ width) to hop tiles,
+  short-click to tune, Alt+wheel to hop.
+- **◀ ▶** hop ~2.4 MHz tiles.
+- For automated sweeps use **Range → Full range (Explorer)**.
 
 ### Peaks
 
@@ -456,7 +471,8 @@ Global panel preferences. Scan and bookmark options live on their respective tab
 | **Remember last tab** | on | Restore tab between sessions |
 | **Default tab** | Last used | Tab shown on open (Bands, Range, Peaks, …) |
 | **UI text size** | Default | Small (~90%), Default, Large (~110%) |
-| **Reset panel layout** | — | Restore default position and size |
+| **Visible tabs** | all on | Untick tabs for a minimal bar. Settings always stays on; **Show all tabs** restores |
+| **Reset panel layout** | — | Restore default / waterfall / saved position |
 | **Re-show Check install** | — | Put Check install back on toolbar |
 
 ### After scan
@@ -487,7 +503,7 @@ Runs while **this browser tab** stays open.
 | --- | --- | --- |
 | **Pause scan when I tune manually** | off | Stop survey if you click the waterfall |
 | **Notify new peak** | on | Browser notification for unseen peaks |
-| **Only if alone** | on | Do not retune when other listeners online |
+| **Only if alone** | on | Do not retune when other listeners online (also on Range / Bands) |
 | **Profile settle ms** | 0 | Wait after profile change before sampling (0 = ~700 ms) |
 
 ### Data & housekeeping
@@ -581,7 +597,7 @@ OpenWebRX **bot-ban** if you need the server to kick hoppers.
 
 ## Restore backups
 
-**Peaks/Seen:** SV → **Import CSV** or **Import JSON**.
+**Peaks/Seen:** Survey → **Import CSV** or **Import JSON**.
 
 **Blue bookmarks:** Help tab → **Restore first-run bookmarks** or **Restore last backup**.
 
@@ -605,17 +621,18 @@ array on the radio host.
 | Problem | Fix |
 | --- | --- |
 | **Server check OK but no SV button** | Hard-refresh the **receiver** page (Ctrl+Shift+R / Cmd+Shift+R). Not map-only or admin. Pi: `sudo systemctl restart varnish nginx`. Run `./install.sh --report` and check browser steps in the log. |
-| **No SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
+| **No Survey / SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
+| **PermissionError on init.js** | Files left mode `600`. Re-run `./install.sh` (v91+ sets `chmod 644` on plugin + `init.js`). |
 | **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
-| **Slow panel / many stored peaks** | Settings → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open SV, not on page load. |
+| **Slow panel / many stored peaks** | Settings → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open Survey, not on page load. |
 | **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
 | **No waterfall data** | Wait after connect; check SDR is started. |
 | **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
-| **Other listeners online** | Untick **Only if alone**. |
+| **Other listeners online** | Untick **Only if alone** on Range, Bands, or Settings → Courtesy. |
 | **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. Wideband peaks for FM/HF broadcast. |
 | **Banned / kicked** | Leave **Own radio — fast hops** off on shared receivers. |
 
-**Diagnostic logs:** `./install.sh --report` on the radio host (SSH). **Browser side:** SV → Help → **Copy diagnostic report**. Send both if asking for help.
+**Diagnostic logs:** `./install.sh --report` on the radio host (SSH). **Browser side:** Survey → Help → **Copy diagnostic report**. Send both if asking for help.
 
 Toolbar **Check install** hides after use; Help tab **Check install now** always works.
 
