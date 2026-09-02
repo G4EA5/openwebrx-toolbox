@@ -16,12 +16,23 @@ talks to the OpenWebRX+ UI, not to USB hardware directly. See
 hover tip; experimental **Analyzer** tab (live spectrum, off by default); `install.sh`
 `chmod 644` on plugin/`init.js` after copy.
 
+## Where to start
+
+After [install](#install) and a hard-refresh (**Ctrl+Shift+R** / **Cmd+Shift+R**), open the
+receiver page and click **Survey** in the **top bar** — between **Help** and **Status**
+(bar-graph icon). That opens the Band survey panel. If the top bar is missing, look for
+orange **SV** on the frequency bar (fallback).
 
 <p>
-  <img src="screenshots/range-fm-spectrum.png" alt="Range tab — FM broadcast spectrum after a range scan" width="640">
+  <img src="screenshots/topbar-survey-button.png" alt="OpenWebRX+ top bar — Help, Survey (between Help and Status), Status, Chat, Receiver, Map, Files, Settings" width="720">
 </p>
 
-<p><em><strong>Survey</strong> in the top bar (between Help and Status) opens the panel. Fallback UI may show orange <strong>SV</strong>.</em></p>
+<p><em>Click <strong>Survey</strong> (highlighted above) to open the panel, then use <strong>Check install</strong> on the toolbar.</em></p>
+
+**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
+optional extras if you already load them.
+
+---
 
 ### Screenshots — FM broadcast range survey (88–108 MHz)
 
@@ -41,9 +52,6 @@ hover tip; experimental **Analyzer** tab (live spectrum, off by default); `insta
   <strong>Bands</strong> — scan options (wideband peaks, dB threshold, passes)<br>
   <img src="screenshots/bands-scan-options.png" alt="Bands tab — scan options" width="640">
 </p>
-
-**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
-optional extras if you already load them.
 
 ---
 
@@ -328,7 +336,7 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 ## Quick start
 
 1. Hard-refresh: **Ctrl+Shift+R** / **Cmd+Shift+R**.
-2. Click **Survey** in the top bar (between **Help** and **Status**).
+2. Click **Survey** in the top bar (between **Help** and **Status**) — see [Where to start](#where-to-start).
 3. Click **Check install**. Green = ready.
 4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
 5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time — no double browser+custom tips).
