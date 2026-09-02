@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 96;
+Plugins.band_survey._version = 97;
 /* Homelab magic_key for continuous center retune (setfrequency). Override if needed. */
 Plugins.band_survey.magic_key = Plugins.band_survey.magic_key || "memagic";
 
@@ -155,6 +155,8 @@ Plugins.band_survey.init = function () {
   var EDGE_FRAC = 0.06;
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
+  /* TAB_IDS must be defined before loadSettings() — sanitizeLayoutSettings uses it. */
+  var TAB_IDS = ["bands", "range", "explore", "analyzer", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
   var S = loadSettings();
   var panelLayoutUserSet = Number(S.panelW) > 0;
   var hits = [];
@@ -194,7 +196,6 @@ Plugins.band_survey.init = function () {
   var SS_TAB = "owrx_band_survey_tab_v1";
   var LS_CHECK_DISMISS = "owrx_band_survey_check_dismiss_v1";
   var LS_PANEL_LAYOUT = "owrx_band_survey_panel_layout_v1";
-  var TAB_IDS = ["bands", "range", "explore", "analyzer", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
   var LS_EXPLORE = "owrx_band_survey_explore_v1";
   var LS_EXPLORE_MM = "owrx_band_survey_explore_mm_v1";
   var LS_RANGE_SPECTRUM = "owrx_band_survey_range_spectrum_v1";
