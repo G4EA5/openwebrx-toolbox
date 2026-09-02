@@ -118,11 +118,12 @@ sudo systemctl restart varnish nginx
    cp -a /var/lib/openwebrx/settings.json ~/owrx-band-survey-backups/manual/ 2>/dev/null || true
    ```
 
-3. Copy this folder:
+3. Copy the plugin files into `htdocs` (repo root is the plugin — there is no nested `band_survey/` folder):
 
    ```bash
-   sudo mkdir -p "$HTDOCS/plugins/receiver"
-   sudo cp -a . "$HTDOCS/plugins/receiver/band_survey"
+   sudo mkdir -p "$HTDOCS/plugins/receiver/band_survey"
+   sudo cp -a band_survey.js band_survey.css README.md LICENSE install.sh \
+     "$HTDOCS/plugins/receiver/band_survey/"
    ```
 
 4. Add to `$HTDOCS/plugins/receiver/init.js`:
