@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 91;
+Plugins.band_survey._version = 96;
 /* Homelab magic_key for continuous center retune (setfrequency). Override if needed. */
 Plugins.band_survey.magic_key = Plugins.band_survey.magic_key || "memagic";
 
@@ -194,7 +194,7 @@ Plugins.band_survey.init = function () {
   var SS_TAB = "owrx_band_survey_tab_v1";
   var LS_CHECK_DISMISS = "owrx_band_survey_check_dismiss_v1";
   var LS_PANEL_LAYOUT = "owrx_band_survey_panel_layout_v1";
-  var TAB_IDS = ["bands", "range", "explore", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+  var TAB_IDS = ["bands", "range", "explore", "analyzer", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
   var LS_EXPLORE = "owrx_band_survey_explore_v1";
   var LS_EXPLORE_MM = "owrx_band_survey_explore_mm_v1";
   var LS_RANGE_SPECTRUM = "owrx_band_survey_range_spectrum_v1";
@@ -291,7 +291,19 @@ Plugins.band_survey.init = function () {
       alertFreqs: "",
       alertOffsetKhz: 25,
       uiTextSize: "default",
-      hiddenTabs: []
+      saStartMhz: 88,
+      saEndMhz: 108,
+      saFollowTile: false,
+      saPeakHold: true,
+      saAvg: true,
+      saAvgN: 6,
+      saAutoDb: true,
+      saDbMin: -100,
+      saDbMax: -20,
+      saHopMs: 450,
+      saLiveOnOpen: false,
+      hiddenTabs: ["analyzer"],
+      analyzerTabMigrated: true
     };
     try {
       var raw = window.localStorage.getItem(LS);
@@ -332,6 +344,15 @@ Plugins.band_survey.init = function () {
     d.hiddenTabs = d.hiddenTabs.filter(function (id) {
       return TAB_IDS.indexOf(id) >= 0 && id !== "settings";
     });
+    /* Analyzer tab is experimental — default off for new + existing installs. */
+    if (!d.analyzerTabMigrated) {
+      if (d.hiddenTabs.indexOf("analyzer") < 0) d.hiddenTabs.push("analyzer");
+      d.analyzerTabMigrated = true;
+    }
+    /* Drop removed Freq tab from saved hidden lists */
+    d.hiddenTabs = d.hiddenTabs.filter(function (id) { return id !== "freq"; });
+    delete d.freqTabMigrated;
+    saDefaultsPatch(d);
     delete d.leftTopSplit1;
     delete d.leftTopSplit2;
     return d;
@@ -1144,7 +1165,19 @@ Plugins.band_survey.init = function () {
       alertFreqs: "",
       alertOffsetKhz: 25,
       uiTextSize: "default",
-      hiddenTabs: []
+      saStartMhz: 88,
+      saEndMhz: 108,
+      saFollowTile: false,
+      saPeakHold: true,
+      saAvg: true,
+      saAvgN: 6,
+      saAutoDb: true,
+      saDbMin: -100,
+      saDbMax: -20,
+      saHopMs: 450,
+      saLiveOnOpen: false,
+      hiddenTabs: ["analyzer"],
+      analyzerTabMigrated: true
     };
   }
 
@@ -1247,6 +1280,7 @@ Plugins.band_survey.init = function () {
   }
 
   function doFactoryReset() {
+    if (typeof saStop === "function") saStop();
     hits = [];
     tileLooks = {};
     _hitsLoaded = false;
@@ -2451,7 +2485,7 @@ Plugins.band_survey.init = function () {
       ? "<li><b>Own radio — fast hops</b> (Bands / Range) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>Band survey — help (v91)</h2>" +
+      "<h2>Band survey — help (v96)</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
@@ -2464,10 +2498,19 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
       "<h3>What this is</h3>" +
       "<p>Standalone <b>OpenWebRX+ receiver plugin</b>. Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Does <b>not</b> need freq_scanner, scan_hunt, uikit, or notify — those are optional if already loaded.</p>" +
+      "<h3>SDR hardware (HackRF, RTL-SDR, Airspy, Lime, …)</h3>" +
+      "<p>This plugin does <b>not</b> talk to USB radios directly. It uses the OpenWebRX+ receiver page: SDR <b>profiles</b>, the live <b>waterfall</b>, retune / profile hop, and local bookmarks. If OpenWebRX already drives your SDR (HackRF via Soapy, RTL-SDR, Airspy, LimeSDR, etc.) and you see a normal waterfall + profile list, Band survey works on that radio.</p>" +
+      "<ul>" +
+      "<li><b>Profiles must cover the MHz you scan</b> — Range / Explore / Analyzer only hop where profiles allow. One wide HackRF profile behaves differently from many narrow RTL slices.</li>" +
+      "<li><b>Bandwidth comes from OpenWebRX</b> (<code>window.bandwidth</code>) — hop step and “tile” size follow the active profile, not a fixed HackRF sweep width.</li>" +
+      "<li><b>Presets</b> (Air, FM, …) match common profile id/name patterns. Custom names still work — tick bands manually.</li>" +
+      "<li><b>Analyzer</b> is experimental and only as good as the live OWRX waterfall (relative dB). It is <b>not</b> a standalone <code>hackrf_sweep</code> console.</li>" +
+      "<li>Requires <b>OpenWebRX+</b> (plugin loader). Vanilla OpenWebRX cannot load this plugin.</li>" +
+      "</ul>" +
       "<h3>Install</h3>" +
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Smart checks: <code>./install.sh --check</code> or <code>./install.sh --report</code> writes a full log (Pi/Docker/Mac hints). Public site: <code>./install.sh --public</code>. On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</p>" +
       "<h3>Title bar tabs</h3>" +
-      "<p><b>Bands</b> · <b>Range</b> · <b>Explore</b> · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b>. Hide any tab under Settings → <b>Visible tabs</b> (Settings always stays on). Drag the title bar to move the panel.</p>" +
+      "<p><b>Bands</b> · <b>Range</b> · <b>Explore</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b>. Enable Analyzer under Settings → <b>Visible tabs</b>. Settings always stays on. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (always visible)</h3>" +
       "<ul>" +
       "<li><b>Scan bands</b> / <b>Scanning bands</b> — walk ticked bands; adds to Seen counts. Label changes while a band or range scan runs.</li>" +
@@ -2503,6 +2546,13 @@ Plugins.band_survey.init = function () {
       "<li>Browse the <b>whole</b> spectrum — every SDR profile in frequency order (not the ticked Bands list).</li>" +
       "<li><b>Explore on</b> then drag the waterfall sideways (≥⅓ width) to hop tiles, short-click to tune, Alt+wheel to hop. <b>◀ ▶</b> hop ~2.4&nbsp;MHz tiles.</li>" +
       "<li>For automated sweeps use <b>Range → Full range (Explorer)</b>.</li>" +
+      "</ul>" +
+      "<h3>Analyzer tab (experimental)</h3>" +
+      "<ul>" +
+      "<li><b>Experimental</b> — off by default. Enable under Settings → <b>Visible tabs</b> → <b>Analyzer · experimental</b>. <b>Show all tabs</b> does not turn it on.</li>" +
+      "<li>Basic live spectrum + waterfall from the OpenWebRX waterfall (relative dB), not a full HackRF sweep console.</li>" +
+      "<li>Set <b>Start</b>/<b>End</b> MHz (or presets), press <b>Live on</b>. Wide spans hop tiles; <b>Follow tile</b> stays on the current waterfall only.</li>" +
+      "<li>Click the plot to tune. Analyzer settings (peak hold, averaging, dB scale, hop ms) are on the Analyzer tab.</li>" +
       "</ul>" +
       "<h3>Peaks tab</h3>" +
       "<ul>" +
@@ -2545,7 +2595,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Remember last tab</b> — restore the tab you last used.</li>" +
       "<li><b>Default tab</b> — which tab on open (Last used, Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, Help).</li>" +
       "<li><b>UI text size</b> — Small / Default / Large.</li>" +
-      "<li><b>Visible tabs</b> — untick tabs for a minimal bar. Settings cannot be hidden; <b>Show all tabs</b> restores everything.</li>" +
+      "<li><b>Visible tabs</b> — untick tabs for a minimal bar. <b>Analyzer</b> is experimental and off by default; <b>Show all tabs</b> still leaves Analyzer off. Settings cannot be hidden.</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "<li><b>Re-show Check install</b> — put Check install back on the toolbar.</li>" +
       "</ul><p><b>After scan</b> (normal finish, not Stop)</p><ul>" +
@@ -3478,6 +3528,529 @@ Plugins.band_survey.init = function () {
       .map(function (p) { return p.value; });
   }
 
+
+  /* —— Spectrum Analyzer tab (basic live spectrum / waterfall; OWRX tile + optional hop) —— */
+  var SA_N_BINS = 512;
+  var SA_WF_ROWS = 96;
+  var sa = {
+    running: false,
+    hopGen: 0,
+    bins: null,
+    peakBins: null,
+    avgBins: null,
+    avgCount: 0,
+    wf: null,
+    wfRow: 0,
+    dirty: false,
+    hoverMhz: null,
+    hoverDb: null,
+    peakMhz: null,
+    peakDb: null,
+    bound: false
+  };
+
+  function saDefaultsPatch(d) {
+    if (typeof d.saStartMhz !== "number" || !isFinite(d.saStartMhz)) d.saStartMhz = 88;
+    if (typeof d.saEndMhz !== "number" || !isFinite(d.saEndMhz)) d.saEndMhz = 108;
+    if (typeof d.saFollowTile !== "boolean") d.saFollowTile = false;
+    if (typeof d.saPeakHold !== "boolean") d.saPeakHold = true;
+    if (typeof d.saAvg !== "boolean") d.saAvg = true;
+    if (typeof d.saAvgN !== "number" || !isFinite(d.saAvgN)) d.saAvgN = 6;
+    if (typeof d.saAutoDb !== "boolean") d.saAutoDb = true;
+    if (typeof d.saDbMin !== "number" || !isFinite(d.saDbMin)) d.saDbMin = -100;
+    if (typeof d.saDbMax !== "number" || !isFinite(d.saDbMax)) d.saDbMax = -20;
+    if (typeof d.saHopMs !== "number" || !isFinite(d.saHopMs)) d.saHopMs = 450;
+    if (typeof d.saLiveOnOpen !== "boolean") d.saLiveOnOpen = false;
+    return d;
+  }
+
+  function saEnsureBuffers() {
+    if (!sa.bins || sa.bins.length !== SA_N_BINS) {
+      sa.bins = new Float32Array(SA_N_BINS);
+      sa.peakBins = new Float32Array(SA_N_BINS);
+      sa.avgBins = new Float32Array(SA_N_BINS);
+      sa.wf = new Float32Array(SA_N_BINS * SA_WF_ROWS);
+      sa.avgCount = 0;
+      sa.wfRow = 0;
+      var i;
+      for (i = 0; i < SA_N_BINS; i++) {
+        sa.bins[i] = -120;
+        sa.peakBins[i] = -120;
+        sa.avgBins[i] = -120;
+      }
+      for (i = 0; i < sa.wf.length; i++) sa.wf[i] = -120;
+    }
+  }
+
+  function saSpanHz() {
+    if (S.saFollowTile) {
+      var c = Number(window.center_freq) || 0;
+      var bw = Number(window.bandwidth) || 2.4e6;
+      return { lo: c - bw / 2, hi: c + bw / 2 };
+    }
+    var lo = (Number(S.saStartMhz) || 88) * 1e6;
+    var hi = (Number(S.saEndMhz) || 108) * 1e6;
+    if (hi <= lo) hi = lo + 1e6;
+    return { lo: lo, hi: hi };
+  }
+
+  function saResetTraces() {
+    saEnsureBuffers();
+    var i;
+    for (i = 0; i < SA_N_BINS; i++) {
+      sa.bins[i] = -120;
+      sa.peakBins[i] = -120;
+      sa.avgBins[i] = -120;
+    }
+    for (i = 0; i < sa.wf.length; i++) sa.wf[i] = -120;
+    sa.avgCount = 0;
+    sa.wfRow = 0;
+    sa.peakMhz = null;
+    sa.peakDb = null;
+    sa.dirty = true;
+  }
+
+  function saSetStatus(msg) {
+    var el = $("bs-sa-status");
+    if (el) el.textContent = msg || "";
+  }
+
+  function saReadForm() {
+    if ($("bs-sa-start")) S.saStartMhz = Math.max(0.01, Number($("bs-sa-start").value) || S.saStartMhz);
+    if ($("bs-sa-end")) S.saEndMhz = Math.max(S.saStartMhz + 0.05, Number($("bs-sa-end").value) || S.saEndMhz);
+    if ($("bs-sa-follow")) S.saFollowTile = $("bs-sa-follow").checked;
+    if ($("bs-sa-peak")) S.saPeakHold = $("bs-sa-peak").checked;
+    if ($("bs-sa-avg")) S.saAvg = $("bs-sa-avg").checked;
+    if ($("bs-sa-avgn")) S.saAvgN = Math.max(1, Math.min(32, Number($("bs-sa-avgn").value) || 6));
+    if ($("bs-sa-autodb")) S.saAutoDb = $("bs-sa-autodb").checked;
+    if ($("bs-sa-dbmin")) S.saDbMin = Number($("bs-sa-dbmin").value);
+    if ($("bs-sa-dbmax")) S.saDbMax = Number($("bs-sa-dbmax").value);
+    if ($("bs-sa-hop")) S.saHopMs = Math.max(150, Math.min(5000, Number($("bs-sa-hop").value) || 450));
+    if ($("bs-sa-live-open")) S.saLiveOnOpen = $("bs-sa-live-open").checked;
+    if (S.saDbMax <= S.saDbMin) S.saDbMax = S.saDbMin + 10;
+    saveSettings();
+  }
+
+  function saFillForm() {
+    saDefaultsPatch(S);
+    if ($("bs-sa-start")) $("bs-sa-start").value = S.saStartMhz;
+    if ($("bs-sa-end")) $("bs-sa-end").value = S.saEndMhz;
+    if ($("bs-sa-follow")) $("bs-sa-follow").checked = !!S.saFollowTile;
+    if ($("bs-sa-peak")) $("bs-sa-peak").checked = S.saPeakHold !== false;
+    if ($("bs-sa-avg")) $("bs-sa-avg").checked = S.saAvg !== false;
+    if ($("bs-sa-avgn")) $("bs-sa-avgn").value = S.saAvgN || 6;
+    if ($("bs-sa-autodb")) $("bs-sa-autodb").checked = S.saAutoDb !== false;
+    if ($("bs-sa-dbmin")) $("bs-sa-dbmin").value = S.saDbMin;
+    if ($("bs-sa-dbmax")) $("bs-sa-dbmax").value = S.saDbMax;
+    if ($("bs-sa-hop")) $("bs-sa-hop").value = S.saHopMs || 450;
+    if ($("bs-sa-live-open")) $("bs-sa-live-open").checked = !!S.saLiveOnOpen;
+    saUpdateLiveBtn();
+  }
+
+  function saUpdateLiveBtn() {
+    var btn = $("bs-sa-live");
+    if (!btn) return;
+    btn.textContent = sa.running ? "Live on" : "Live off";
+    btn.classList.toggle("bs-on", sa.running);
+    btn.classList.toggle("bs-primary", sa.running);
+    btn.title = sa.running
+      ? "Stop live spectrum (stops hopping; leaves receiver where it is)."
+      : "Start live spectrum across Start–End MHz (or current tile if Follow tile).";
+  }
+
+  function saIngestTile() {
+    if (!sa.running) return;
+    hookWaterfall();
+    var data = wf();
+    if (!data || !data.length) return;
+    var center = Number(window.center_freq);
+    var bw = Number(window.bandwidth);
+    if (!center || !bw) return;
+    saEnsureBuffers();
+    var span = saSpanHz();
+    var lo = span.lo;
+    var hi = span.hi;
+    var spanHz = hi - lo;
+    if (spanHz <= 0) return;
+    var tileLo = center - bw / 2;
+    var tileHi = center + bw / 2;
+    var i;
+    var peakDb = -999;
+    var peakMhz = null;
+    for (i = 0; i < data.length; i++) {
+      var f = tileLo + (i / data.length) * bw;
+      if (f < lo || f > hi) continue;
+      var bi = Math.round(((f - lo) / spanHz) * (SA_N_BINS - 1));
+      if (bi < 0 || bi >= SA_N_BINS) continue;
+      var db = Number(data[i]);
+      if (!isFinite(db)) continue;
+      /* keep loudest sample in bin this frame */
+      if (db > sa.bins[bi] || sa.bins[bi] <= -119) sa.bins[bi] = db;
+      if (S.saPeakHold !== false) sa.peakBins[bi] = Math.max(sa.peakBins[bi], db);
+      if (S.saAvg !== false) {
+        var n = Math.max(1, S.saAvgN || 6);
+        if (sa.avgCount < 1) sa.avgBins[bi] = db;
+        else sa.avgBins[bi] = sa.avgBins[bi] + (db - sa.avgBins[bi]) / Math.min(n, sa.avgCount + 1);
+      }
+    }
+    sa.avgCount++;
+    /* push waterfall row from displayed trace */
+    var row = sa.wfRow % SA_WF_ROWS;
+    for (i = 0; i < SA_N_BINS; i++) {
+      var v = (S.saAvg !== false) ? sa.avgBins[i] : sa.bins[i];
+      if (S.saPeakHold !== false) v = Math.max(v, sa.peakBins[i] > -119 ? sa.peakBins[i] : v);
+      sa.wf[row * SA_N_BINS + i] = v;
+      if (v > peakDb) {
+        peakDb = v;
+        peakMhz = lo / 1e6 + (i / (SA_N_BINS - 1)) * (spanHz / 1e6);
+      }
+    }
+    sa.wfRow++;
+    sa.peakDb = peakDb > -900 ? peakDb : null;
+    sa.peakMhz = peakMhz;
+    /* decay live bins slightly so motion shows */
+    for (i = 0; i < SA_N_BINS; i++) {
+      if (sa.bins[i] > -119) sa.bins[i] *= 0.92;
+      if (sa.bins[i] < -120) sa.bins[i] = -120;
+    }
+    sa.dirty = true;
+    saDraw();
+  }
+
+  function saDbRange() {
+    if (S.saAutoDb !== false) {
+      var i, mn = 999, mx = -999, seen = 0;
+      for (i = 0; i < SA_N_BINS; i++) {
+        var v = sa.avgBins[i];
+        if (S.saPeakHold !== false && sa.peakBins[i] > v) v = sa.peakBins[i];
+        if (v <= -119) continue;
+        seen++;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+      if (seen < 8) return { min: S.saDbMin, max: S.saDbMax };
+      if (mx <= mn) mx = mn + 10;
+      return { min: mn - 5, max: mx + 3 };
+    }
+    return { min: S.saDbMin, max: S.saDbMax };
+  }
+
+  function saColor(t) {
+    /* simple turbo-ish: blue → cyan → yellow → red */
+    t = Math.max(0, Math.min(1, t));
+    var r, g, b;
+    if (t < 0.25) {
+      r = 0; g = Math.round(40 + t / 0.25 * 180); b = 255;
+    } else if (t < 0.5) {
+      r = 0; g = 255; b = Math.round(255 - (t - 0.25) / 0.25 * 255);
+    } else if (t < 0.75) {
+      r = Math.round((t - 0.5) / 0.25 * 255); g = 255; b = 0;
+    } else {
+      r = 255; g = Math.round(255 - (t - 0.75) / 0.25 * 200); b = 0;
+    }
+    return [r, g, b];
+  }
+
+  function saDraw() {
+    if (!sa.dirty && !sa.running) return;
+    var cv = $("bs-sa-spec");
+    var wfCv = $("bs-sa-wf");
+    if (!cv || !wfCv) return;
+    saEnsureBuffers();
+    var span = saSpanHz();
+    var loMhz = span.lo / 1e6;
+    var hiMhz = span.hi / 1e6;
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = cv.clientWidth || 320;
+    var specH = 150;
+    var wfH = 110;
+    var padL = 42, padR = 8, padT = 10, padB = 22;
+    var plotW = cssW - padL - padR;
+    var plotH = specH - padT - padB;
+    cv.style.height = specH + "px";
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(specH * dpr);
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#05080f";
+    ctx.fillRect(0, 0, cssW, specH);
+    var dbR = saDbRange();
+    var i, x, y, v, t;
+    ctx.strokeStyle = "rgba(51,65,85,0.7)";
+    ctx.strokeRect(padL + 0.5, padT + 0.5, plotW - 1, plotH - 1);
+    ctx.fillStyle = "#64748b";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    for (i = 0; i <= 4; i++) {
+      y = padT + (plotH * i / 4);
+      ctx.strokeStyle = "rgba(30,41,59,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(padL, y + 0.5);
+      ctx.lineTo(padL + plotW, y + 0.5);
+      ctx.stroke();
+      ctx.fillText(Math.round(dbR.max - (dbR.max - dbR.min) * (i / 4)) + "", padL - 4, y + 3);
+    }
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#94a3b8";
+    var ticks = Math.max(6, Math.min(12, Math.floor(plotW / 48)));
+    for (i = 0; i < ticks; i++) {
+      var frac = i / (ticks - 1);
+      x = padL + frac * plotW;
+      ctx.fillText((loMhz + frac * (hiMhz - loMhz)).toFixed(hiMhz - loMhz > 20 ? 1 : 3), x, specH - 6);
+    }
+    function trace(arr, color, width) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      var started = false;
+      for (i = 0; i < SA_N_BINS; i++) {
+        v = arr[i];
+        if (v <= -119) continue;
+        t = (v - dbR.min) / (dbR.max - dbR.min || 1);
+        x = padL + (i / (SA_N_BINS - 1)) * plotW;
+        y = padT + plotH - Math.max(0, Math.min(1, t)) * plotH;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      if (started) ctx.stroke();
+    }
+    if (S.saPeakHold !== false) trace(sa.peakBins, "rgba(248,113,113,0.85)", 1.2);
+    if (S.saAvg !== false) trace(sa.avgBins, "#38bdf8", 1.6);
+    else trace(sa.bins, "#38bdf8", 1.6);
+    if (sa.hoverMhz != null) {
+      x = padL + ((sa.hoverMhz - loMhz) / (hiMhz - loMhz || 1)) * plotW;
+      ctx.strokeStyle = "rgba(250,204,21,0.8)";
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, padT);
+      ctx.lineTo(x + 0.5, padT + plotH);
+      ctx.stroke();
+    }
+    var read = $("bs-sa-readout");
+    if (read) {
+      var bits = [];
+      if (sa.peakMhz != null) bits.push("Peak " + sa.peakMhz.toFixed(4) + " MHz · " + (sa.peakDb != null ? sa.peakDb.toFixed(1) + " dB" : ""));
+      if (sa.hoverMhz != null) bits.push("Cursor " + sa.hoverMhz.toFixed(4) + " MHz" + (sa.hoverDb != null ? " · " + sa.hoverDb.toFixed(1) + " dB" : ""));
+      bits.push("uncalibrated");
+      read.textContent = bits.join("  ·  ");
+    }
+
+    /* waterfall */
+    wfCv.style.height = wfH + "px";
+    wfCv.width = Math.round(cssW * dpr);
+    wfCv.height = Math.round(wfH * dpr);
+    var wctx = wfCv.getContext("2d");
+    wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var img = wctx.createImageData(Math.max(1, Math.floor(cssW)), Math.max(1, Math.floor(wfH)));
+    var w = img.width, h = img.height;
+    var row, col, srcRow, bi, c3, idx;
+    for (row = 0; row < h; row++) {
+      srcRow = (sa.wfRow - 1 - row + SA_WF_ROWS * 8) % SA_WF_ROWS;
+      for (col = 0; col < w; col++) {
+        bi = Math.floor((col / w) * SA_N_BINS);
+        v = sa.wf[srcRow * SA_N_BINS + bi];
+        t = (v - dbR.min) / (dbR.max - dbR.min || 1);
+        c3 = saColor(t);
+        idx = (row * w + col) * 4;
+        img.data[idx] = c3[0];
+        img.data[idx + 1] = c3[1];
+        img.data[idx + 2] = c3[2];
+        img.data[idx + 3] = 255;
+      }
+    }
+    wctx.putImageData(img, 0, 0);
+    sa.dirty = false;
+  }
+
+  function saMhzFromEvent(ev, canvas) {
+    var span = saSpanHz();
+    var r = canvas.getBoundingClientRect();
+    var padL = 42, padR = 8;
+    var plotW = Math.max(1, r.width - padL - padR);
+    var x = ev.clientX - r.left - padL;
+    var frac = Math.max(0, Math.min(1, x / plotW));
+    return span.lo / 1e6 + frac * ((span.hi - span.lo) / 1e6);
+  }
+
+  function saBindUi() {
+    if (sa.bound) return;
+    sa.bound = true;
+    function apply() {
+      saReadForm();
+      saResetTraces();
+      saSetStatus("Span " + Number(S.saStartMhz).toFixed(3) + "–" + Number(S.saEndMhz).toFixed(3) + " MHz");
+      if (sa.running && !S.saFollowTile) {
+        sa.hopGen++;
+        saStartHopLoop();
+      }
+    }
+    ["bs-sa-start", "bs-sa-end", "bs-sa-follow", "bs-sa-peak", "bs-sa-avg", "bs-sa-avgn",
+     "bs-sa-autodb", "bs-sa-dbmin", "bs-sa-dbmax", "bs-sa-hop", "bs-sa-live-open"].forEach(function (id) {
+      if ($(id)) $(id).onchange = apply;
+    });
+    if ($("bs-sa-apply")) $("bs-sa-apply").onclick = apply;
+    if ($("bs-sa-live")) $("bs-sa-live").onclick = function () {
+      if (sa.running) saStop();
+      else saStart();
+    };
+    if ($("bs-sa-clear-peak")) $("bs-sa-clear-peak").onclick = function () {
+      saEnsureBuffers();
+      var i;
+      for (i = 0; i < SA_N_BINS; i++) sa.peakBins[i] = -120;
+      sa.dirty = true;
+      saDraw();
+      saSetStatus("Peak hold cleared.");
+    };
+    if ($("bs-sa-presets")) {
+      $("bs-sa-presets").onclick = function (ev) {
+        var b = ev.target && ev.target.closest("[data-sa-preset]");
+        if (!b) return;
+        var p = b.getAttribute("data-sa-preset").split("-");
+        if ($("bs-sa-start")) $("bs-sa-start").value = p[0];
+        if ($("bs-sa-end")) $("bs-sa-end").value = p[1];
+        if ($("bs-sa-follow")) $("bs-sa-follow").checked = false;
+        apply();
+      };
+    }
+    function onMove(ev) {
+      var cv = $("bs-sa-spec");
+      if (!cv) return;
+      sa.hoverMhz = saMhzFromEvent(ev, cv);
+      var span = saSpanHz();
+      var bi = Math.round(((sa.hoverMhz * 1e6 - span.lo) / (span.hi - span.lo || 1)) * (SA_N_BINS - 1));
+      bi = Math.max(0, Math.min(SA_N_BINS - 1, bi));
+      sa.hoverDb = sa.avgBins[bi] > -119 ? sa.avgBins[bi] : sa.bins[bi];
+      sa.dirty = true;
+      saDraw();
+    }
+    function onLeave() {
+      sa.hoverMhz = null;
+      sa.hoverDb = null;
+      sa.dirty = true;
+      saDraw();
+    }
+    function onClick(ev) {
+      var cv = $("bs-sa-spec");
+      if (!cv) return;
+      var mhz = saMhzFromEvent(ev, cv);
+      var hz = Math.round(mhz * 1e6);
+      var p = profileForFreq(hz);
+      if (p) {
+        bsInternalTune = true;
+        tuneToCenter(hz, p, "Analyzer · tune").then(function () {
+          bsInternalTune = false;
+          saSetStatus("Tuned " + mhz.toFixed(4) + " MHz");
+        }).catch(function () { bsInternalTune = false; });
+      } else if (typeof UI !== "undefined" && UI.setFrequency) {
+        UI.setFrequency(hz);
+        saSetStatus("Tuned " + mhz.toFixed(4) + " MHz");
+      }
+    }
+    var spec = $("bs-sa-spec");
+    var wfc = $("bs-sa-wf");
+    if (spec) {
+      spec.addEventListener("mousemove", onMove);
+      spec.addEventListener("mouseleave", onLeave);
+      spec.addEventListener("click", onClick);
+    }
+    if (wfc) {
+      wfc.addEventListener("mousemove", onMove);
+      wfc.addEventListener("mouseleave", onLeave);
+      wfc.addEventListener("click", onClick);
+    }
+  }
+
+  function saBuildCenters() {
+    var span = saSpanHz();
+    var step = rangeStepHz();
+    return buildRangeCenters(span.lo, span.hi, step);
+  }
+
+  function saStartHopLoop() {
+    var gen = ++sa.hopGen;
+    (async function loop() {
+      while (sa.running && sa.hopGen === gen) {
+        if (running || listenScanRunning) {
+          saSetStatus("Survey/bookmark scan running — analyzer hop paused (still drawing current tile).");
+          saIngestTile();
+          await sleep(400);
+          continue;
+        }
+        if (S.saFollowTile) {
+          saIngestTile();
+          saSetStatus("Follow tile · " + fmtMhz(window.center_freq || 0) + " ± " +
+            ((Number(window.bandwidth) || 0) / 2e6).toFixed(3) + " MHz");
+          await sleep(120);
+          continue;
+        }
+        if (typeof courtesyBlocked === "function" && courtesyBlocked("analyzer")) {
+          saSetStatus("Other listeners online — hop paused (Only if alone). Untick to hop.");
+          saIngestTile();
+          await sleep(800);
+          continue;
+        }
+        var centers = saBuildCenters();
+        if (!centers.length) {
+          saSetStatus("No hop centers for this span — check Start/End MHz.");
+          await sleep(800);
+          continue;
+        }
+        var ci;
+        for (ci = 0; ci < centers.length && sa.running && sa.hopGen === gen; ci++) {
+          if (running || listenScanRunning) break;
+          if (typeof courtesyBlocked === "function" && courtesyBlocked("analyzer")) break;
+          var freqHz = centers[ci];
+          var p = profileForFreq(freqHz);
+          if (!p) continue;
+          saSetStatus("Live · hop " + (ci + 1) + "/" + centers.length + " · " + fmtMhz(freqHz));
+          try {
+            stopFlag = false;
+            await tuneToCenter(freqHz, p, "Analyzer");
+          } catch (e1) {}
+          var waitUntil = Date.now() + Math.max(150, S.saHopMs || 450);
+          while (Date.now() < waitUntil && sa.running && sa.hopGen === gen) {
+            saIngestTile();
+            await sleep(80);
+          }
+        }
+      }
+    })();
+  }
+
+  function saStart() {
+    saReadForm();
+    hookWaterfall();
+    saEnsureBuffers();
+    sa.running = true;
+    saUpdateLiveBtn();
+    saSetStatus("Live spectrum starting…");
+    saStartHopLoop();
+  }
+
+  function saStop() {
+    sa.running = false;
+    sa.hopGen++;
+    saUpdateLiveBtn();
+    saSetStatus("Live off.");
+  }
+
+  function saOnWaterfall() {
+    if (!sa.running) return;
+    if (S.saFollowTile || !sa.running) saIngestTile();
+    else saIngestTile();
+  }
+
+  function saOnTab(name) {
+    if (name === "analyzer") {
+      saFillForm();
+      saBindUi();
+      sa.dirty = true;
+      saDraw();
+      if (S.saLiveOnOpen && !sa.running) saStart();
+    } else if (sa.running && name !== "analyzer") {
+      /* keep running in background so hop can continue; optional stop — keep running */
+    }
+  }
+
   function hookWaterfall() {
     if (window._bs_wf_hooked) return;
     if (typeof window.waterfall_add !== "function") return;
@@ -3485,6 +4058,7 @@ Plugins.band_survey.init = function () {
     window.waterfall_add = function (data) {
       window.bs_wf_data = data;
       window.fs_wf_data = data;
+      try { if (typeof saOnWaterfall === "function") saOnWaterfall(); } catch (eSa) {}
       return orig.apply(this, arguments);
     };
     window._bs_wf_hooked = true;
@@ -4685,6 +5259,7 @@ Plugins.band_survey.init = function () {
     return 28;
   }
 
+
   function switchTab(name, force) {
     if (TAB_IDS.indexOf(name) < 0) name = "bands";
     if (!force && isTabHidden(name)) name = firstVisibleTab();
@@ -4711,6 +5286,7 @@ Plugins.band_survey.init = function () {
         updateTabLabels();
       });
     }
+    if (typeof saOnTab === "function") saOnTab(name);
   }
 
   function visibleBookmarkRows() {
@@ -6877,6 +7453,10 @@ Plugins.band_survey.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && !$("bs-tab-analyzer")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing) return;
     var panel = document.createElement("div");
     panel.id = "bs-panel";
@@ -6887,6 +7467,7 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-tab bs-tab-on" data-tab="bands" role="tab" title="Band presets and tick list.">Bands</button>' +
       '<button type="button" class="bs-tab" data-tab="range" role="tab" title="Scan a custom MHz range (not tied to ticked bands).">Range</button>' +
       '<button type="button" class="bs-tab" data-tab="explore" role="tab" title="Browse spectrum by profile hop — no band ticks needed.">Explore</button>' +
+      '<button type="button" class="bs-tab" data-tab="analyzer" role="tab" title="Experimental live spectrum analyzer. Off by default — enable under Settings → Visible tabs.">Analyzer · exp</button>' +
       '<button type="button" class="bs-tab" data-tab="peaks" role="tab" title="Peak table and export.">Peaks</button>' +
       '<button type="button" class="bs-tab" data-tab="bookmarks" role="tab" title="Local and loaded bookmarks.">Bookmarks</button>' +
       '<button type="button" class="bs-tab" data-tab="audio" role="tab" title="Session audio clips.">Audio</button>' +
@@ -7007,6 +7588,41 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<p class="bs-hint" id="bs-ex-status"></p>' +
       "</div>" +
+      '<div class="bs-tab-pane" id="bs-tab-analyzer" data-tab="analyzer" role="tabpanel">' +
+      '<p class="bs-note"><b>Experimental.</b> Live spectrum + waterfall from the OpenWebRX waterfall (relative dB). Basic freq span / hop only — not a full HackRF sweep console. Off by default; enable under Settings → <b>Visible tabs</b>. Set Start–End MHz and press <b>Live on</b>.</p>' +
+      '<div class="bs-row" id="bs-sa-presets">' +
+      '<button type="button" class="bs-tiny" data-sa-preset="88-108" title="FM broadcast">FM</button>' +
+      '<button type="button" class="bs-tiny" data-sa-preset="118-137" title="Airband">Air</button>' +
+      '<button type="button" class="bs-tiny" data-sa-preset="144-148" title="2m ham">2m</button>' +
+      '<button type="button" class="bs-tiny" data-sa-preset="430-440" title="70cm">70cm</button>' +
+      '<button type="button" class="bs-tiny" data-sa-preset="1090-1090.5" title="ADS-B">ADS-B</button>' +
+      '<label title="Start of analyzer span (MHz).">Start <input type="number" id="bs-sa-start" min="0.01" max="6000" step="0.001" style="width:6em"></label>' +
+      '<label title="End of analyzer span (MHz).">End <input type="number" id="bs-sa-end" min="0.05" max="6000" step="0.001" style="width:6em"></label>' +
+      '<button type="button" id="bs-sa-apply" title="Apply Start/End and reset traces.">Apply</button>' +
+      '<button type="button" class="bs-primary" id="bs-sa-live" title="Start or stop live spectrum.">Live off</button>' +
+      '<label class="bs-chk" title="Do not hop — only draw the current waterfall tile."><input type="checkbox" id="bs-sa-follow"> Follow tile</label>' +
+      "</div>" +
+      '<p class="bs-hint" id="bs-sa-status"></p>' +
+      '<p class="bs-hint" id="bs-sa-readout">—</p>' +
+      '<canvas id="bs-sa-spec" class="bs-sa-canvas" title="Click to tune. Hover for frequency."></canvas>' +
+      '<canvas id="bs-sa-wf" class="bs-sa-canvas bs-sa-wf" title="Waterfall — click to tune."></canvas>' +
+      '<details class="bs-tab-opts" id="bs-sa-settings" open>' +
+      '<summary title="Experimental analyzer display and hop settings.">Analyzer settings (experimental)</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Keep maximum envelope across frames."><input type="checkbox" id="bs-sa-peak"> Peak hold</label>' +
+      '<label class="bs-chk" title="Smooth the live trace."><input type="checkbox" id="bs-sa-avg"> Averaging</label>' +
+      '<label class="bs-chk" title="Scale dB axis from current data."><input type="checkbox" id="bs-sa-autodb"> Auto dB scale</label>' +
+      '<label class="bs-chk" title="Experimental: start Live automatically when opening Analyzer (still requires the tab to be enabled)."><input type="checkbox" id="bs-sa-live-open"> Live on tab open</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Averaging depth (frames).">Avg N <input type="number" id="bs-sa-avgn" min="1" max="32" step="1" style="width:3.4em"></label>' +
+      '<label title="Manual dB floor when Auto dB is off.">dB min <input type="number" id="bs-sa-dbmin" step="1" style="width:4em"></label>' +
+      '<label title="Manual dB ceiling when Auto dB is off.">dB max <input type="number" id="bs-sa-dbmax" step="1" style="width:4em"></label>' +
+      '<label title="Dwell per hop tile when sweeping a wide span.">Hop ms <input type="number" id="bs-sa-hop" min="150" max="5000" step="50" style="width:4.5em"></label>' +
+      '<button type="button" class="bs-tiny" id="bs-sa-clear-peak" title="Clear the peak-hold envelope.">Clear peak hold</button>' +
+      "</div>" +
+      '<p class="bs-hint">Levels are relative (uncalibrated), same as the OpenWebRX waterfall — not absolute dBm.</p>' +
+      "</details></div>" +
       '<div class="bs-tab-pane" id="bs-tab-peaks" data-tab="peaks" role="tabpanel">' +
       '<div class="bs-row">' +
       '<button type="button" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
@@ -7101,6 +7717,7 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<label title="Which tab to show when the panel opens. Last used follows Remember last tab.">Default tab <select id="bs-default-tab">' +
       '<option value="last">Last used</option><option value="bands">Always Bands</option><option value="range">Always Range</option>' +
+      '<option value="explore">Always Explore</option><option value="analyzer">Always Analyzer (experimental)</option>' +
       '<option value="peaks">Always Peaks</option><option value="bookmarks">Always Bookmarks</option><option value="audio">Always Audio</option>' +
       '<option value="skip">Always Skip</option><option value="settings">Always Settings</option><option value="help">Always Help</option></select></label>' +
       '<label title="Scale panel text: Small ~90%, Default 100%, Large ~110%.">UI text size <select id="bs-text-size">' +
@@ -7108,11 +7725,12 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-visible-tabs-box" title="Untick tabs for a minimal tab bar. Settings always stays on so you can restore tabs.">' +
       '<div class="bs-range-mode-title">Visible tabs</div>' +
-      '<p class="bs-hint">Default: all on. Untick any tab you want hidden (Settings stays so you can bring them back).</p>' +
+      '<p class="bs-hint">Default: all on except <b>Analyzer</b> (experimental, off). <b>Show all tabs</b> still leaves Analyzer off. Settings stays so you can restore tabs.</p>' +
       '<div class="bs-row bs-chk-grid" id="bs-visible-tabs">' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="bands" checked> Bands</label>' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="range" checked> Range</label>' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="explore" checked> Explore</label>' +
+      '<label class="bs-chk" title="Experimental live spectrum tab. Off by default. Unticked = hidden."><input type="checkbox" class="bs-tab-vis" data-tab="analyzer"> Analyzer · experimental (off by default)</label>' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="peaks" checked> Peaks</label>' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="bookmarks" checked> Bookmarks</label>' +
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="audio" checked> Audio</label>' +
@@ -7280,6 +7898,7 @@ Plugins.band_survey.init = function () {
       panel.hidden = true;
       window._bs_user_closed_panel = true;
       window._bs_startup_grace_until = 0;
+      if (typeof saStop === "function") saStop();
       ensureSvAccessChip();
     };
     if ($("bs-minimize")) $("bs-minimize").onclick = function (ev) {
@@ -7388,11 +8007,12 @@ Plugins.band_survey.init = function () {
     }
     if ($("bs-tabs-show-all")) {
       $("bs-tabs-show-all").onclick = function () {
-        S.hiddenTabs = [];
+        /* Analyzer stays off — experimental; enable via its Visible tabs checkbox. */
+        S.hiddenTabs = ["analyzer"];
         fillVisibleTabsForm();
         saveSettings();
         applyHiddenTabs();
-        setStatus("All tabs visible.");
+        setStatus("All tabs visible except Analyzer (experimental — still off).");
       };
     }
     if ($("bs-export-settings")) $("bs-export-settings").onclick = exportSettingsJson;
@@ -7546,7 +8166,8 @@ Plugins.band_survey.init = function () {
       if (!el || !panel.contains(el)) return false;
       return !el.closest(
         "button, input, select, textarea, a, summary, label, .bs-tab, .bs-head-actions, [data-resize], " +
-        ".bs-bands, table.bs-hits, .bs-bm-ul, .bs-skip-row, .bs-audio-row, .bs-tab-opts, .bs-check-wrap"
+        ".bs-bands, table.bs-hits, .bs-bm-ul, .bs-skip-row, .bs-audio-row, .bs-tab-opts, .bs-check-wrap, " +
+        "#bs-tab-analyzer, #bs-sa-spec, #bs-sa-wf, #openwebrx-panel-receiver, .openwebrx-panel"
       );
     }
 
@@ -8149,7 +8770,8 @@ Plugins.band_survey.init = function () {
         } else {
           window._bs_user_closed_panel = true;
           window._bs_startup_grace_until = 0;
-          ensureSvAccessChip();
+          if (typeof saStop === "function") saStop();
+              ensureSvAccessChip();
         }
       };
     }
