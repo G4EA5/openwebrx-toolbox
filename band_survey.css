@@ -386,6 +386,7 @@
   overflow: auto;
 }
 
+
 #bs-panel .bs-band-filters {
   flex: 0 0 auto;
   flex-shrink: 0;
@@ -1316,4 +1317,23 @@ body.bs-layout-drag.bs-resize-nesw {
 
 #webrx-canvas-container.bs-ex-pan-active {
   cursor: grabbing;
+}
+
+
+/* Spectrum Analyzer tab */
+#bs-panel #bs-tab-analyzer {
+  cursor: default;
+}
+#bs-panel .bs-sa-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 4px 0;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  background: #05080f;
+  cursor: crosshair;
+}
+#bs-panel .bs-sa-wf {
+  cursor: crosshair;
 }

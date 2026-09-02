@@ -1,12 +1,16 @@
-# Band survey — OpenWebRX+ plugin (v91)
+# Band survey — OpenWebRX+ plugin (v96)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 
-**Recent (v91):** Top-bar **Survey** button (between Help and Status); **Explore** whole-spectrum
-browsing; **Visible tabs** for a minimal panel; **Only if alone** on Range / Bands / Settings;
-range spectrum with ≥12 frequency labels; single hover tip (no double native+custom tips);
-`install.sh` forces world-readable plugin/`init.js` modes after copy.
+**Works with any SDR OpenWebRX+ supports** (HackRF, RTL-SDR, Airspy, Lime, …) — the plugin
+talks to the OpenWebRX+ UI, not to USB hardware directly. See
+[SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
+
+**Recent (v96):** Top-bar **Survey** button; **Explore**; **Visible tabs** (minimal panel);
+**Only if alone** on Range / Bands / Settings; range spectrum ≥12 frequency labels; single
+hover tip; experimental **Analyzer** tab (live spectrum, off by default); `install.sh`
+`chmod 644` on plugin/`init.js` after copy.
 
 
 <p>
@@ -36,6 +40,34 @@ range spectrum with ≥12 frequency labels; single hover tip (no double native+c
 
 **Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
 optional extras if you already load them.
+
+---
+
+## SDR hardware (HackRF, RTL-SDR, Airspy, Lime, …)
+
+Band survey is an **OpenWebRX+ browser plugin**. It does **not** open `/dev/hackrf0`,
+run `hackrf_sweep`, or talk to Soapy/USB itself.
+
+| Layer | Role |
+| --- | --- |
+| Your SDR (HackRF, RTL-SDR, …) | Owned by OpenWebRX+ / SoapySDR |
+| OpenWebRX+ receiver page | Profiles, waterfall FFT, tune / profile hop |
+| Band survey | Reads waterfall, switches profiles, bookmarks in **this browser** |
+
+**If** OpenWebRX already shows a normal waterfall and an SDR profile list for that radio,
+this plugin can survey it — same code path for HackRF, RTL-SDR, Airspy, Lime, etc.
+
+Practical differences by setup:
+
+- **Profiles must cover the MHz you scan.** Range, Explore, and Analyzer only hop where
+  profiles allow. One wide HackRF profile behaves differently from many ~2.4 MHz RTL slices.
+- **Bandwidth comes from OpenWebRX** (`window.bandwidth`). Hop step and “tile” size follow
+  the active profile, not a fixed HackRF sweep bin width.
+- **Presets** (Air, FM, …) match common profile id/name patterns (`air_`, `fm_`, …). Custom
+  names still work — tick bands manually or use **All**.
+- **Analyzer** (experimental, off by default) draws from the live OWRX waterfall (relative
+  dB). It is **not** a standalone [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1).
+- Vanilla OpenWebRX (no `+`) cannot load plugins.
 
 ---
 
@@ -145,6 +177,8 @@ sudo systemctl restart varnish nginx
 
 - [OpenWebRX+](https://github.com/luarvique/openwebrx) (the `+` fork). Vanilla OpenWebRX
   has no plugin loader.
+- An SDR that OpenWebRX+ already drives (RTL-SDR, HackRF, Airspy, LimeSDR, etc.) with at
+  least one **profile** and a live **waterfall** on the receiver page.
 - SSH or file copy onto the radio host (for local install).
 - A **hard** refresh after install.
 
@@ -219,7 +253,7 @@ docker restart openwebrx
 ```
 
 Then hard-refresh the receiver page (**Ctrl+Shift+R** / **Cmd+Shift+R**) and click
-orange **SV**.
+**Survey** (or orange **SV**).
 
 If auto-detect cannot find htdocs inside the container:
 
@@ -293,7 +327,7 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 2. Click **Survey** in the top bar (between **Help** and **Status**).
 3. Click **Check install**. Green = ready.
 4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
-5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time).
+5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time — no double browser+custom tips).
 
 | You see | Meaning |
 | --- | --- |
@@ -306,8 +340,11 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 
 ## Panel layout
 
-Nine tabs: **Bands**, **Range**, **Explore**, **Peaks**, **Bookmarks**, **Audio**,
-**Skip**, **Settings**, **Help**.
+Tabs: **Bands**, **Range**, **Explore**, **Analyzer** (experimental, off by default),
+**Peaks**, **Bookmarks**, **Audio**, **Skip**, **Settings**, **Help**.
+
+Hide any tab under Settings → **Visible tabs**. **Show all tabs** restores everything
+except Analyzer (still off until you tick it). Settings always stays on.
 
 Scan controls stay pinned in the **toolbar** below the tabs. Drag panel edges or the
 corner to resize; drag the title bar to move. Default position: 12 vw from left, 28 vh
@@ -372,12 +409,25 @@ Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profile
 ### Explore
 
 Browse the **whole** spectrum — every SDR profile in frequency order (not the ticked
-Bands list).
+Bands list). Tile width follows the active profile bandwidth (often ~2.4 MHz on RTL
+setups; wider on many HackRF profiles).
 
 - Turn **Explore on**, then drag the waterfall sideways (≥⅓ width) to hop tiles,
   short-click to tune, Alt+wheel to hop.
-- **◀ ▶** hop ~2.4 MHz tiles.
+- **◀ ▶** hop one tile at a time.
 - For automated sweeps use **Range → Full range (Explorer)**.
+
+### Analyzer (experimental)
+
+Live spectrum + mini-waterfall from the OpenWebRX waterfall (relative / uncalibrated dB).
+**Off by default** — enable under Settings → **Visible tabs** → **Analyzer · experimental**.
+**Show all tabs** does not turn it on.
+
+- Set **Start** / **End** MHz (or presets: FM, Air, 2m, 70cm, ADS-B), press **Live on**.
+- Wide spans hop tiles like Range; **Follow tile** stays on the current waterfall only.
+- Peak hold, averaging, dB scale, and hop ms live under **Analyzer settings** on that tab.
+- Click the plot to tune.
+- Basic only — not a full HackRF sweep console.
 
 ### Peaks
 
@@ -471,7 +521,7 @@ Global panel preferences. Scan and bookmark options live on their respective tab
 | **Remember last tab** | on | Restore tab between sessions |
 | **Default tab** | Last used | Tab shown on open (Bands, Range, Peaks, …) |
 | **UI text size** | Default | Small (~90%), Default, Large (~110%) |
-| **Visible tabs** | all on | Untick tabs for a minimal bar. Settings always stays on; **Show all tabs** restores |
+| **Visible tabs** | all on except Analyzer | Untick tabs for a minimal bar. **Analyzer** is experimental and off by default; **Show all tabs** still leaves Analyzer off. Settings always stays on |
 | **Reset panel layout** | — | Restore default / waterfall / saved position |
 | **Re-show Check install** | — | Put Check install back on toolbar |
 
@@ -626,7 +676,10 @@ array on the radio host.
 | **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
 | **Slow panel / many stored peaks** | Settings → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open Survey, not on page load. |
 | **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
-| **No waterfall data** | Wait after connect; check SDR is started. |
+| **No waterfall data** | Wait after connect; check SDR is started in OpenWebRX. Plugin needs the receiver waterfall, not a standalone HackRF app. |
+| **Range/Analyzer skip large spans** | No profile covers that MHz — add OpenWebRX profiles, or narrow Start/End. |
+| **Presets tick nothing** | Profile ids do not match Air/FM patterns — tick bands manually or use **All**. |
+| **Analyzer missing** | Experimental and off by default. Settings → **Visible tabs** → enable **Analyzer · experimental**. |
 | **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
 | **Other listeners online** | Untick **Only if alone** on Range, Bands, or Settings → Courtesy. |
 | **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. Wideband peaks for FM/HF broadcast. |
