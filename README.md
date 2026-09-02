@@ -1,5 +1,9 @@
 # Band survey — OpenWebRX+ plugin (v97)
 
+> **Broken after updating to v91–v96?** No Survey button but `./install.sh --check` says OK?  
+> Pull **v97+**, re-run `./install.sh`, then hard-refresh the receiver page (Ctrl+Shift+R).  
+> F12 console may show `TAB_IDS` / `indexOf` — that was a startup crash in v91–v96, fixed in v97.
+
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 

@@ -353,6 +353,10 @@ collect_openwebrx() {
     if [[ -n "$src_ver" && -n "$live_ver" && "$src_ver" != "$live_ver" ]]; then
       r_warn "Installed plugin v$live_ver but this folder has v$src_ver — re-run ./install.sh to update"
     fi
+    if [[ -n "$live_ver" && "$live_ver" -ge 91 && "$live_ver" -le 96 ]]; then
+      r_fail "Plugin v$live_ver crashes on load (TAB_IDS bug) — no Survey/SV button. Pull v97+, ./install.sh, hard-refresh."
+      r_info "install.sh --check can still pass while the browser plugin is broken on v91–v96."
+    fi
   fi
 
   if init_loads_band_survey "$init"; then
