@@ -481,6 +481,17 @@ copy_if() {
   return 1
 }
 
+chmod_world_readable() {
+  # Prefer 644 so www-data / nginx / browsers can read plugin + init.js
+  # (cp -a can leave root-owned 600 files that break the receiver).
+  local f="$1"
+  if [[ -w "$f" ]]; then
+    chmod 644 "$f" 2>/dev/null || true
+  else
+    sudo chmod 644 "$f" 2>/dev/null || true
+  fi
+}
+
 sudo_cp() {
   local from="$1" dest="$2"
   if [[ -w "$(dirname "$dest")" ]] && { [[ ! -e "$dest" ]] || [[ -w "$dest" ]]; }; then
@@ -491,6 +502,7 @@ sudo_cp() {
     sudo mkdir -p "$(dirname "$dest")"
     sudo cp -a "$from" "$dest"
   fi
+  chmod_world_readable "$dest"
 }
 
 sudo_mkdir() {
@@ -651,6 +663,7 @@ Typical paths:
   say "Copied plugin into $DEST"
 
   append_load_line "$INIT"
+  chmod_world_readable "$INIT"
 
   if [[ "$PROFILE" == "pi" ]] || systemctl is-active --quiet varnish 2>/dev/null; then
     if command -v systemctl >/dev/null 2>&1; then
