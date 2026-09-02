@@ -1,4 +1,4 @@
-# Band survey — OpenWebRX+ plugin (v96)
+# Band survey — OpenWebRX+ plugin (v97)
 
 Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
 real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
@@ -7,7 +7,7 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 talks to the OpenWebRX+ UI, not to USB hardware directly. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
-**Recent (v96):** Top-bar **Survey** button; **Explore**; **Visible tabs** (minimal panel);
+**Recent (v97):** Fix init crash in v91–v96 (`TAB_IDS` used before defined → no Survey button even when `install.sh --check` passed). **v96:** Top-bar **Survey** button; **Explore**; **Visible tabs** (minimal panel);
 **Only if alone** on Range / Bands / Settings; range spectrum ≥12 frequency labels; single
 hover tip; experimental **Analyzer** tab (live spectrum, off by default); `install.sh`
 `chmod 644` on plugin/`init.js` after copy.
@@ -670,7 +670,7 @@ array on the radio host.
 
 | Problem | Fix |
 | --- | --- |
-| **Server check OK but no SV button** | Hard-refresh the **receiver** page (Ctrl+Shift+R / Cmd+Shift+R). Not map-only or admin. Pi: `sudo systemctl restart varnish nginx`. Run `./install.sh --report` and check browser steps in the log. |
+| **Server check OK but no SV button** | Hard-refresh the **receiver** page (Ctrl+Shift+R / Cmd+Shift+R). Not map-only or admin. Pi: `sudo systemctl restart varnish nginx`. Run `./install.sh --report` and check browser steps in the log. If you updated to **v91–v96**, pull **v97+** — those builds could crash on load (`TAB_IDS`) with a clean server check; F12 console showed the error. |
 | **No Survey / SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
 | **PermissionError on init.js** | Files left mode `600`. Re-run `./install.sh` (v91+ sets `chmod 644` on plugin + `init.js`). |
 | **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
