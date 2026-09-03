@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 97;
+Plugins.band_survey._version = 110;
 /* Homelab magic_key for continuous center retune (setfrequency). Override if needed. */
 Plugins.band_survey.magic_key = Plugins.band_survey.magic_key || "memagic";
 
@@ -155,9 +155,40 @@ Plugins.band_survey.init = function () {
   var EDGE_FRAC = 0.06;
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
-  /* TAB_IDS must be defined before loadSettings() — sanitizeLayoutSettings uses it. */
   var TAB_IDS = ["bands", "range", "explore", "analyzer", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+
+  /* Optional Extras — off by default; Settings → Extras ticks reveal UI on existing tabs. */
+  var EXTRAS_DEFS = [
+    { id: "sessionLog", label: "Session log", where: "Bookmarks", tip: "Log bookmark-scan hops (time, MHz, busy, clip). Export CSV." },
+    { id: "whatsNew", label: "What’s new filter", where: "Peaks", tip: "Filter the peak table to only new peaks since the last survey." },
+    { id: "peakNativeBm", label: "Peak → named bookmark", where: "Peaks", tip: "Extra button to save a peak as a named blue bookmark (not [auto])." },
+    { id: "watchlist", label: "Watchlist panel", where: "Bookmarks", tip: "Show alert MHz list on Bookmarks for quick edit while scanning." },
+    { id: "clipMeta", label: "Clip duration / voice %", where: "Audio", tip: "Show length and voice activity on each audio clip row." },
+    { id: "keyboard", label: "Keyboard shortcuts", where: "Global", tip: "S=Stop, B=Scan bookmarks, H=Hold, K=Skip when the panel is open." },
+    { id: "surveyDiff", label: "Survey snapshot / diff", where: "Peaks", tip: "Save a peak snapshot and highlight changes vs that snapshot." },
+    { id: "freqNotes", label: "Frequency notes", where: "Peaks / Bookmarks", tip: "Per-MHz notes stored in this browser." },
+    { id: "spectrumHistory", label: "Range spectrum history", where: "Range", tip: "Keep the last few range charts and flip between them." },
+    { id: "recCaps", label: "Max clip length", where: "Audio", tip: "Cap Record busy clips at N seconds (default 60)." },
+    { id: "scanOrder", label: "Bookmark scan order", where: "Bookmarks", tip: "Priority / freq / name / random order for Scan bookmarks." },
+    { id: "copyTuneLink", label: "Copy tune link", where: "Peaks / Bookmarks", tip: "Copy MHz + mode text for chat or notes." },
+    { id: "publicMode", label: "Public / shared receiver mode", where: "Settings", tip: "Force alone-only, disable fast hops and factory reset." },
+    { id: "idlePresets", label: "Quiet-hours presets", where: "Settings", tip: "One-click night / evening quiet-hour presets for scheduled scans." },
+    { id: "waterfallSnap", label: "Waterfall snapshot", where: "Peaks", tip: "Save a PNG of the waterfall when bookmarking a peak (best-effort)." },
+    { id: "speechToText", label: "Clip transcribe (browser)", where: "Audio", tip: "Try Web Speech API while a clip plays (Chrome; quality varies)." },
+    { id: "nearbyTraffic", label: "Nearby traffic hint", where: "Peaks", tip: "If aircraft/AIS data is on the page, show a short nearby hint on peak rows." },
+    { id: "userBmShortcuts", label: "Load user bookmarks · Current / Ticked", where: "Bookmarks", tip: "Show Current and Ticked shortcut buttons next to Load user bookmarks." }
+  ];
+  var LS_FREQ_NOTES = "owrx_band_survey_freq_notes_v1";
+  var LS_SESSION_LOG = "owrx_band_survey_session_log_v1";
+  var LS_SURVEY_SNAP = "owrx_band_survey_survey_snap_v1";
+  var LS_SPEC_HIST = "owrx_band_survey_spec_hist_v1";
+
   var S = loadSettings();
+  if (!S.extras) S.extras = extrasDefaults();
+  loadFreqNotes();
+  loadSessionLog();
+  loadSurveySnap();
+  loadSpectrumHist();
   var panelLayoutUserSet = Number(S.panelW) > 0;
   var hits = [];
   var tileLooks = {};
@@ -272,6 +303,9 @@ Plugins.band_survey.init = function () {
       rangeStartMhz: 109,
       rangeEndMhz: 200,
       rangeStepKhz: 0,
+      rangeOffsetKhz: 0,
+      rangeChannelGrid: false,
+      rangeGridPreset: "auto",
       rangeMode: "full",
       rememberTab: true,
       defaultTab: "last",
@@ -287,11 +321,20 @@ Plugins.band_survey.init = function () {
       maxPeaks: 0,
       keepPeaks: true,
       maxAudioClips: 40,
+      clipPreviewSec: 3,
+      clipVolume: 80,
+      loadUserBmBands: [],
+      extras: null,
+      maxClipSec: 60,
+      listenScanOrder: "priority",
+      showNewOnly: false,
+      showDiffOnly: false,
       webhookUrl: "",
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
       uiTextSize: "default",
+      hideToolbar: false,
       saStartMhz: 88,
       saEndMhz: 108,
       saFollowTile: false,
@@ -330,6 +373,408 @@ Plugins.band_survey.init = function () {
     return sanitizeLayoutSettings(d);
   }
 
+  function extrasDefaults() {
+    var o = {};
+    EXTRAS_DEFS.forEach(function (e) { o[e.id] = false; });
+    return o;
+  }
+
+  function sanitizeExtras(raw) {
+    var d = extrasDefaults();
+    if (!raw || typeof raw !== "object") return d;
+    EXTRAS_DEFS.forEach(function (e) {
+      if (typeof raw[e.id] === "boolean") d[e.id] = raw[e.id];
+    });
+    return d;
+  }
+
+  function extraOn(id) {
+    return !!(S.extras && S.extras[id]);
+  }
+
+  function readExtrasFromForm() {
+    if (!S.extras) S.extras = extrasDefaults();
+    EXTRAS_DEFS.forEach(function (e) {
+      var el = $("bs-extra-" + e.id);
+      if (el) S.extras[e.id] = !!el.checked;
+    });
+    if ($("bs-max-clip-sec")) S.maxClipSec = Math.max(5, Math.min(600, Number($("bs-max-clip-sec").value) || 60));
+    if ($("bs-listen-order")) S.listenScanOrder = $("bs-listen-order").value || "priority";
+    if ($("bs-show-new-only")) S.showNewOnly = !!$("bs-show-new-only").checked;
+    if ($("bs-show-diff-only")) S.showDiffOnly = !!$("bs-show-diff-only").checked;
+  }
+
+  function fillExtrasForm() {
+    if (!S.extras) S.extras = extrasDefaults();
+    EXTRAS_DEFS.forEach(function (e) {
+      var el = $("bs-extra-" + e.id);
+      if (el) el.checked = !!S.extras[e.id];
+    });
+    if ($("bs-max-clip-sec")) $("bs-max-clip-sec").value = S.maxClipSec || 60;
+    if ($("bs-listen-order")) $("bs-listen-order").value = S.listenScanOrder || "priority";
+    if ($("bs-show-new-only")) $("bs-show-new-only").checked = !!S.showNewOnly;
+    if ($("bs-show-diff-only")) $("bs-show-diff-only").checked = !!S.showDiffOnly;
+  }
+
+  function extrasSettingsHtml() {
+    var rows = EXTRAS_DEFS.map(function (e) {
+      return '<label class="bs-chk" title="' + escapeHtml(e.tip) + ' · shows on ' + escapeHtml(e.where) +
+        '"><input type="checkbox" class="bs-extra-tog" id="bs-extra-' + e.id + '" data-extra-id="' + e.id +
+        '"> ' + escapeHtml(e.label) +
+        ' <span class="bs-hint">(' + escapeHtml(e.where) + ')</span></label>';
+    }).join("");
+    return '<details class="bs-tab-opts" id="bs-extras-wrap">' +
+      '<summary title="Optional features — all off by default. Tick to add controls on existing tabs.">Extras</summary>' +
+      '<p class="bs-hint">Optional add-ons. Off by default. Tick one and its controls appear on the tab in parentheses — no new tabs.</p>' +
+      '<div class="bs-row bs-chk-grid" id="bs-extras">' + rows + "</div>" +
+      '<div class="bs-row" data-extra="idlePresets">' +
+      '<button type="button" class="bs-tiny" id="bs-quiet-night" title="Set quiet hours 22:00–06:00.">Quiet · night</button>' +
+      '<button type="button" class="bs-tiny" id="bs-quiet-eve" title="Set quiet hours 18:00–08:00.">Quiet · evening</button>' +
+      '<button type="button" class="bs-tiny" id="bs-quiet-clear" title="Clear quiet hours.">Clear quiet hours</button>' +
+      "</div>" +
+      '<div class="bs-row" data-extra="publicMode">' +
+      '<span class="bs-hint">Public mode: alone-only on, Own radio off, Factory reset hidden.</span>' +
+      "</div></details>";
+  }
+
+  function applyExtrasUi() {
+    Array.prototype.forEach.call(document.querySelectorAll("#bs-panel [data-extra]"), function (el) {
+      var id = el.getAttribute("data-extra");
+      if (!id) return;
+      el.hidden = !extraOn(id);
+    });
+    applyPublicModeExtra();
+    if (typeof renderSessionLogPane === "function") renderSessionLogPane();
+    if (typeof renderWatchlistPane === "function") renderWatchlistPane();
+    if (typeof updateSpectrumHistoryUi === "function") updateSpectrumHistoryUi();
+  }
+
+  function applyPublicModeExtra() {
+    var on = extraOn("publicMode");
+    if (on) {
+      S.aloneOnly = true;
+      S.ownRadio = false;
+      syncAloneUi(true);
+      syncOwnRadioUi(false);
+      applyOwnerLock();
+    }
+    var fr = $("bs-factory-reset");
+    if (fr) fr.hidden = on;
+    var hint = document.querySelector(".bs-factory-hint");
+    if (hint) hint.hidden = on;
+  }
+
+  var freqNotesMap = {};
+  var sessionLog = [];
+  var surveySnapPeaks = null;
+  var spectrumHist = [];
+  var spectrumHistIdx = -1;
+
+  function loadFreqNotes() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_FREQ_NOTES) || "{}");
+      freqNotesMap = (o && typeof o === "object") ? o : {};
+    } catch (e) { freqNotesMap = {}; }
+  }
+  function saveFreqNotes() {
+    try { window.localStorage.setItem(LS_FREQ_NOTES, JSON.stringify(freqNotesMap)); } catch (e) {}
+  }
+  function noteForFreq(freq) {
+    var k = String(Math.round(Number(freq) || 0));
+    return freqNotesMap[k] || "";
+  }
+  function setNoteForFreq(freq, text) {
+    var k = String(Math.round(Number(freq) || 0));
+    text = String(text || "").trim().slice(0, 120);
+    if (!text) delete freqNotesMap[k];
+    else freqNotesMap[k] = text;
+    saveFreqNotes();
+  }
+
+  function loadSessionLog() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_SESSION_LOG) || "[]");
+      sessionLog = Array.isArray(o) ? o.slice(-200) : [];
+    } catch (e) { sessionLog = []; }
+  }
+  function saveSessionLog() {
+    try { window.localStorage.setItem(LS_SESSION_LOG, JSON.stringify(sessionLog.slice(-200))); } catch (e) {}
+  }
+  function pushSessionLog(row) {
+    if (!extraOn("sessionLog")) return;
+    sessionLog.push(row);
+    if (sessionLog.length > 200) sessionLog = sessionLog.slice(-200);
+    saveSessionLog();
+    renderSessionLogPane();
+  }
+  function clearSessionLog() {
+    sessionLog = [];
+    saveSessionLog();
+    renderSessionLogPane();
+    setStatus("Session log cleared.");
+  }
+  function exportSessionLogCsv() {
+    if (!sessionLog.length) {
+      setStatus("Session log is empty.");
+      return;
+    }
+    var lines = ["when,freq_mhz,name,busy,clip,db"];
+    sessionLog.forEach(function (r) {
+      lines.push([
+        new Date(r.at || 0).toISOString(),
+        ((r.freq || 0) / 1e6).toFixed(3),
+        JSON.stringify(String(r.name || "")),
+        r.busy ? "yes" : "no",
+        r.clip ? "yes" : "no",
+        r.db != null ? Math.round(r.db) : ""
+      ].join(","));
+    });
+    downloadFile("band-survey-session-log.csv", lines.join("\n"), "text/csv");
+    setStatus("Exported " + sessionLog.length + " session log row(s).");
+  }
+  function renderSessionLogPane() {
+    var host = $("bs-session-log");
+    if (!host) return;
+    if (!extraOn("sessionLog")) {
+      host.innerHTML = "";
+      return;
+    }
+    if (!sessionLog.length) {
+      host.innerHTML = '<p class="bs-empty">No hops logged yet. Run Scan bookmarks with Session log on.</p>';
+      return;
+    }
+    var rows = sessionLog.slice().reverse().slice(0, 80).map(function (r) {
+      return '<div class="bs-skip-row">' +
+        '<span class="bs-hint">' + escapeHtml(new Date(r.at || 0).toLocaleTimeString()) + "</span>" +
+        '<button type="button" class="bs-tune" data-log-tune="' + (r.freq || 0) + '">' + fmtMhz(r.freq) + "</button>" +
+        '<span class="bs-bm-name">' + escapeHtml(r.name || "") + "</span>" +
+        '<span class="bs-hint">' + (r.busy ? "busy" : "quiet") + (r.clip ? " · clip" : "") +
+        (r.db != null ? " · " + Math.round(r.db) + " dB" : "") + "</span></div>";
+    }).join("");
+    host.innerHTML = rows;
+  }
+
+  function renderWatchlistPane() {
+    var ta = $("bs-watchlist-freqs");
+    if (ta && extraOn("watchlist") && document.activeElement !== ta) {
+      ta.value = S.alertFreqs || "";
+    }
+  }
+
+  function loadSurveySnap() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_SURVEY_SNAP) || "null");
+      surveySnapPeaks = (o && Array.isArray(o.freqs)) ? o : null;
+    } catch (e) { surveySnapPeaks = null; }
+  }
+  function saveSurveySnapNow() {
+    var freqs = hits.filter(function (h) { return !isSpur(h); }).map(function (h) { return Math.round(h.freq); });
+    surveySnapPeaks = { when: Date.now(), freqs: freqs };
+    try { window.localStorage.setItem(LS_SURVEY_SNAP, JSON.stringify(surveySnapPeaks)); } catch (e) {}
+    setStatus("Survey snapshot saved (" + freqs.length + " peaks). New peaks vs this snap show as changed.");
+    renderHits();
+  }
+  function peakChangedVsSnap(h) {
+    if (!surveySnapPeaks || !surveySnapPeaks.freqs || !surveySnapPeaks.freqs.length) return false;
+    var f = Math.round(h.freq);
+    for (var i = 0; i < surveySnapPeaks.freqs.length; i++) {
+      if (Math.abs(surveySnapPeaks.freqs[i] - f) < 2500) return false;
+    }
+    return true;
+  }
+
+  function loadSpectrumHist() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_SPEC_HIST) || "[]");
+      spectrumHist = Array.isArray(o) ? o.slice(-8) : [];
+      spectrumHistIdx = spectrumHist.length ? spectrumHist.length - 1 : -1;
+    } catch (e) { spectrumHist = []; spectrumHistIdx = -1; }
+  }
+  function pushSpectrumHist(entry) {
+    if (!extraOn("spectrumHistory") || !entry) return;
+    spectrumHist.push(entry);
+    if (spectrumHist.length > 8) spectrumHist = spectrumHist.slice(-8);
+    spectrumHistIdx = spectrumHist.length - 1;
+    try { window.localStorage.setItem(LS_SPEC_HIST, JSON.stringify(spectrumHist)); } catch (e) {}
+    updateSpectrumHistoryUi();
+  }
+  function updateSpectrumHistoryUi() {
+    var lab = $("bs-spec-hist-lab");
+    if (!lab) return;
+    if (!extraOn("spectrumHistory") || !spectrumHist.length) {
+      lab.textContent = "";
+      return;
+    }
+    lab.textContent = (spectrumHistIdx + 1) + "/" + spectrumHist.length;
+  }
+  function showSpectrumHist(delta) {
+    if (!spectrumHist.length) return;
+    spectrumHistIdx = Math.max(0, Math.min(spectrumHist.length - 1, spectrumHistIdx + delta));
+    var e = spectrumHist[spectrumHistIdx];
+    if (!e || !e.payload) return;
+    try {
+      if (typeof applyRangeSpectrumPayload === "function") applyRangeSpectrumPayload(e.payload);
+      else if (typeof restoreRangeSpectrum === "function") {
+        /* fall through to stored LS restore path by writing then reload */
+        window.localStorage.setItem(LS_RANGE_SPECTRUM, JSON.stringify(e.payload));
+        if (typeof loadRangeSpectrum === "function") loadRangeSpectrum();
+      }
+    } catch (err) {}
+    updateSpectrumHistoryUi();
+    setStatus("Range spectrum history " + (spectrumHistIdx + 1) + "/" + spectrumHist.length);
+  }
+
+  function copyTuneText(freq, mode) {
+    var mhz = fmtMhzNum(freq);
+    var text = mhz + " MHz" + (mode ? (" " + mode) : "");
+    function ok() { setStatus("Copied: " + text); }
+    function fail() { try { prompt("Copy:", text); } catch (e) {} }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else fail();
+  }
+
+  function addNamedBookmarkFromPeak(freq) {
+    var hit = null;
+    for (var i = 0; i < hits.length; i++) {
+      if (Math.abs(hits[i].freq - freq) < 2500) { hit = hits[i]; break; }
+    }
+    if (!hit) {
+      setStatus("Peak not found.");
+      return;
+    }
+    var name = window.prompt("Bookmark name:", hit.name || existingName(hit.freq) || fmtMhz(hit.freq));
+    if (name == null) return;
+    name = String(name).trim();
+    if (!name) return;
+    hit.name = name;
+    hit.auto = false;
+    var r = addBookmark(hit);
+    if (r && !r.already) {
+      /* force non-auto name */
+      try {
+        var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+        var list = store.getBookmarks() || [];
+        for (var j = 0; j < list.length; j++) {
+          if (Math.abs(list[j].frequency - hit.freq) < 2500) {
+            list[j].name = name;
+            list[j].auto = false;
+            store.setBookmarks(list);
+            if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") bookmarks.loadLocalBookmarks();
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+    refreshBookmarks();
+    setStatus("Saved named bookmark: " + name);
+  }
+
+  function captureWaterfallPng() {
+    var canvases = document.querySelectorAll("canvas");
+    var best = null;
+    var bestA = 0;
+    for (var i = 0; i < canvases.length; i++) {
+      var c = canvases[i];
+      var a = (c.width || 0) * (c.height || 0);
+      if (a > bestA && c.width > 100 && c.height > 40) {
+        bestA = a;
+        best = c;
+      }
+    }
+    if (!best) {
+      setStatus("No waterfall canvas found to snapshot.");
+      return;
+    }
+    try {
+      best.toBlob(function (blob) {
+        if (!blob) {
+          setStatus("Could not export waterfall PNG.");
+          return;
+        }
+        downloadBlob("sv-waterfall-" + Date.now() + ".png", blob);
+        setStatus("Waterfall snapshot saved.");
+      }, "image/png");
+    } catch (e) {
+      setStatus("Waterfall snapshot blocked (canvas tainted or unsupported).");
+    }
+  }
+
+  function nearbyTrafficHint(freq) {
+    if (!extraOn("nearbyTraffic")) return "";
+    try {
+      if (window.Planes && typeof Planes.getPlanes === "function") {
+        var planes = Planes.getPlanes() || [];
+        if (planes.length) return '<span class="bs-hint" title="Aircraft data present on page">✈' + planes.length + "</span> ";
+      }
+    } catch (e) {}
+    try {
+      if (document.getElementById("openwebrx-map") || document.querySelector(".aircraft, .adsb, #aircraft")) {
+        return '<span class="bs-hint" title="Map/traffic UI detected on page">map</span> ';
+      }
+    } catch (e2) {}
+    return "";
+  }
+
+  function sortListenItemsExtra(items) {
+    var order = S.listenScanOrder || "priority";
+    if (!extraOn("scanOrder") || order === "priority") return sortListenPriority(items);
+    var copy = (items || []).slice();
+    if (order === "freq") copy.sort(function (a, b) { return (a.freq || a.frequency || 0) - (b.freq || b.frequency || 0); });
+    else if (order === "name") copy.sort(function (a, b) {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    else if (order === "random") {
+      for (var i = copy.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp;
+      }
+    }
+    return copy;
+  }
+
+  function bindExtrasKeyboard() {
+    if (bindExtrasKeyboard._on) return;
+    bindExtrasKeyboard._on = true;
+    window.addEventListener("keydown", function (ev) {
+      if (!extraOn("keyboard")) return;
+      if (!$("bs-panel") || $("bs-panel").hidden) return;
+      var tag = (ev.target && ev.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ev.target && ev.target.isContentEditable)) return;
+      var k = (ev.key || "").toLowerCase();
+      if (k === "s") { ev.preventDefault(); if ($("bs-stop")) $("bs-stop").click(); }
+      else if (k === "b") { ev.preventDefault(); if ($("bs-listen-top")) $("bs-listen-top").click(); }
+      else if (k === "h") { ev.preventDefault(); if ($("bs-hold")) $("bs-hold").click(); }
+      else if (k === "k") { ev.preventDefault(); if ($("bs-skip")) $("bs-skip").click(); }
+    });
+  }
+
+  function tryTranscribeClip(id) {
+    if (!extraOn("speechToText")) return;
+    var Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Rec) {
+      setStatus("Speech recognition not available in this browser (try Chrome).");
+      return;
+    }
+    var clip = null;
+    for (var i = 0; i < audioClips.length; i++) if (audioClips[i].id === id) clip = audioClips[i];
+    if (!clip || !clip.url) return;
+    playAudioClip(id);
+    var rec = new Rec();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.onresult = function (ev) {
+      var text = "";
+      for (var i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + " ";
+      text = text.trim();
+      clip.transcript = text;
+      setStatus("Transcript: " + text.slice(0, 120));
+      renderAudioClips();
+    };
+    rec.onerror = function () { setStatus("Transcribe failed or mic/permission issue."); };
+    try { rec.start(); } catch (e) { setStatus("Could not start speech recognition."); }
+  }
+
   function sanitizeLayoutSettings(d) {
     var layoutDefaults = {
       panelW: 0, panelH: 0, splitPct: 62, leftSplitPct: 58,
@@ -343,7 +788,9 @@ Plugins.band_survey.init = function () {
     if (typeof d.panelTop !== "number" || !isFinite(d.panelTop)) d.panelTop = null;
     if (!Array.isArray(d.hiddenTabs)) d.hiddenTabs = [];
     d.hiddenTabs = d.hiddenTabs.filter(function (id) {
-      return TAB_IDS.indexOf(id) >= 0 && id !== "settings";
+      if (!id || id === "settings") return false;
+      if (!TAB_IDS || !TAB_IDS.length) return id !== "freq";
+      return TAB_IDS.indexOf(id) >= 0;
     });
     /* Analyzer tab is experimental — default off for new + existing installs. */
     if (!d.analyzerTabMigrated) {
@@ -353,7 +800,21 @@ Plugins.band_survey.init = function () {
     /* Drop removed Freq tab from saved hidden lists */
     d.hiddenTabs = d.hiddenTabs.filter(function (id) { return id !== "freq"; });
     delete d.freqTabMigrated;
-    saDefaultsPatch(d);
+    if (typeof d.hideToolbar !== "boolean") d.hideToolbar = false;
+    if (!Array.isArray(d.loadUserBmBands)) {
+      d.loadUserBmBands = [];
+      var old = d.loadUserBmScope;
+      if (typeof old === "string" && old.indexOf("p:") === 0) {
+        d.loadUserBmBands = [old.slice(2)];
+      }
+    }
+    delete d.loadUserBmScope;
+    d.extras = sanitizeExtras(d.extras);
+    d.maxClipSec = Math.max(5, Math.min(600, Number(d.maxClipSec) || 60));
+    if (!d.listenScanOrder) d.listenScanOrder = "priority";
+    if (typeof d.showNewOnly !== "boolean") d.showNewOnly = false;
+    if (typeof d.showDiffOnly !== "boolean") d.showDiffOnly = false;
+    if (typeof saDefaultsPatch === "function") saDefaultsPatch(d);
     delete d.leftTopSplit1;
     delete d.leftTopSplit2;
     return d;
@@ -1023,6 +1484,15 @@ Plugins.band_survey.init = function () {
     if (!cur || isTabHidden(cur)) switchTab(firstVisibleTab(), true);
   }
 
+  function applyToolbarVisibility() {
+    var tb = $("bs-toolbar");
+    var p = $("bs-panel");
+    var hide = !!S.hideToolbar;
+    if (tb) tb.hidden = hide;
+    if (p) p.classList.toggle("bs-hide-toolbar", hide);
+    if ($("bs-hide-toolbar")) $("bs-hide-toolbar").checked = hide;
+  }
+
   function applyUiTextSize() {
     var p = $("bs-panel");
     if (!p) return;
@@ -1146,6 +1616,9 @@ Plugins.band_survey.init = function () {
       rangeStartMhz: 109,
       rangeEndMhz: 200,
       rangeStepKhz: 0,
+      rangeOffsetKhz: 0,
+      rangeChannelGrid: false,
+      rangeGridPreset: "auto",
       rangeMode: "full",
       rememberTab: true,
       defaultTab: "last",
@@ -1161,11 +1634,20 @@ Plugins.band_survey.init = function () {
       maxPeaks: 0,
       keepPeaks: true,
       maxAudioClips: 40,
+      clipPreviewSec: 3,
+      clipVolume: 80,
+      loadUserBmBands: [],
+      extras: null,
+      maxClipSec: 60,
+      listenScanOrder: "priority",
+      showNewOnly: false,
+      showDiffOnly: false,
       webhookUrl: "",
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
       uiTextSize: "default",
+      hideToolbar: false,
       saStartMhz: 88,
       saEndMhz: 108,
       saFollowTile: false,
@@ -1216,7 +1698,11 @@ Plugins.band_survey.init = function () {
     if ($("bs-alert-offset")) $("bs-alert-offset").value = S.alertOffsetKhz || 25;
     if ($("bs-text-size")) $("bs-text-size").value = S.uiTextSize || "default";
     if ($("bs-autoopen")) $("bs-autoopen").checked = !!S.autoOpenPanel;
+    if ($("bs-hide-toolbar")) $("bs-hide-toolbar").checked = !!S.hideToolbar;
+    fillExtrasForm();
     fillVisibleTabsForm();
+    applyToolbarVisibility();
+    applyExtrasUi();
     syncAloneUi(S.aloneOnly !== false);
     $("bs-notify").checked = S.notifyNew !== false;
     $("bs-alone").checked = S.aloneOnly !== false;
@@ -1233,6 +1719,8 @@ Plugins.band_survey.init = function () {
         S.ignoredFreqs = Array.isArray(obj[k]) ? obj[k].slice() : S.ignoredFreqs;
       } else if (k === "hiddenTabs") {
         S.hiddenTabs = Array.isArray(obj[k]) ? obj[k].slice() : S.hiddenTabs;
+      } else if (k === "extras") {
+        S.extras = sanitizeExtras(obj[k]);
       } else {
         S[k] = obj[k];
       }
@@ -1241,6 +1729,7 @@ Plugins.band_survey.init = function () {
     saveSettings();
     fillSettingsForm();
     applyHiddenTabs();
+    applyToolbarVisibility();
     applySchedule();
     renderBookmarkPane();
     updateTabLabels();
@@ -1268,6 +1757,7 @@ Plugins.band_survey.init = function () {
     applySchedule();
     applyPanelLayout();
     applyHiddenTabs();
+    applyToolbarVisibility();
     setStatus("Settings reset to defaults.");
   }
 
@@ -1282,6 +1772,8 @@ Plugins.band_survey.init = function () {
 
   function doFactoryReset() {
     if (typeof saStop === "function") saStop();
+    if (typeof stopClipPreview === "function") stopClipPreview({ silent: true });
+    else if (typeof stopClipPlayback === "function") stopClipPlayback();
     hits = [];
     tileLooks = {};
     _hitsLoaded = false;
@@ -1374,6 +1866,7 @@ Plugins.band_survey.init = function () {
   var audioClips = [];
   var clipSeq = 1;
   var clipPlaying = null;
+  var clipPreview = { running: false, index: 0, timer: null, gen: 0 };
   var recCap = { rec: null, chunks: [], meta: null, mime: "", usingOwrx: false };
   var IDB_AUDIO = "owrx_band_survey_audio_v1";
   var IDB_AUDIO_STORE = "clips";
@@ -1727,7 +2220,9 @@ Plugins.band_survey.init = function () {
       url: url,
       mime: mime,
       ext: extForMime(mime),
-      loaded: false
+      loaded: false,
+      durationMs: durationMs,
+      activeMs: activeMs
     };
     addAudioClip(clip).then(function (ok) {
       if (!ok) setStatus("Clip added but browser storage failed — use Save on the clip before refresh.");
@@ -1926,14 +2421,14 @@ Plugins.band_survey.init = function () {
 
   function clearLoadedBookmarks() {
     if (!loadedBookmarks.length) {
-      setStatus("No loaded bookmarks to clear.");
+      setStatus("No user bookmarks to clear.");
       return;
     }
-    if (!window.confirm("Remove all " + loadedBookmarks.length + " loaded bookmark(s)? Local [auto] bookmarks are not touched.")) return;
+    if (!window.confirm("Remove all " + loadedBookmarks.length + " user/[load] bookmark(s)? Local blue bookmarks are not touched.")) return;
     loadedBookmarks = [];
     saveLoadedBookmarks();
     renderBookmarkPane();
-    setStatus("Cleared loaded bookmarks.");
+    setStatus("Cleared user bookmarks.");
   }
 
   function scanTargetItems(allBookmarks) {
@@ -1976,6 +2471,254 @@ Plugins.band_survey.init = function () {
     var inp = $("bs-bm-file");
     if (!inp) return;
     inp.click();
+  }
+
+  function bandSurveyAssetUrl(name) {
+    try {
+      var scripts = document.getElementsByTagName("script");
+      var i;
+      for (i = scripts.length - 1; i >= 0; i--) {
+        var src = scripts[i].src || "";
+        if (/\/band_survey\.js(\?|$)/.test(src)) {
+          return src.replace(/band_survey\.js(\?.*)?$/, name);
+        }
+      }
+    } catch (e) {}
+    return "static/plugins/receiver/band_survey/" + name;
+  }
+
+  function collectOwrxClientBookmarks() {
+    var rows = [];
+    var seen = {};
+    function add(list) {
+      (list || []).forEach(function (b) {
+        var n = normalizeLoadedBookmark(b);
+        if (!n || seen[n.frequency]) return;
+        seen[n.frequency] = true;
+        rows.push(n);
+      });
+    }
+    add(localBookmarkList());
+    try {
+      if (window.bookmarks && bookmarks.bookmarks) {
+        add(bookmarks.bookmarks.server);
+        add(bookmarks.bookmarks.local);
+      }
+    } catch (e) {}
+    try {
+      if (window.bookmarks && typeof bookmarks.getAllBookmarks === "function") {
+        add(bookmarks.getAllBookmarks());
+      }
+    } catch (e2) {}
+    try {
+      var raw = window.localStorage.getItem("bookmarks");
+      if (raw) add(JSON.parse(raw));
+    } catch (e3) {}
+    return rows;
+  }
+
+  function loadUserBmSelectedValues() {
+    var box = $("bs-bm-loaduser-bands");
+    if (box) {
+      var allCb = $("bs-bm-lu-allbands");
+      if (allCb && allCb.checked) return [];
+      return Array.prototype.map.call(box.querySelectorAll("input.bs-bm-lu-band:checked"), function (el) {
+        return el.value;
+      }).filter(Boolean);
+    }
+    return Array.isArray(S.loadUserBmBands) ? S.loadUserBmBands.slice() : [];
+  }
+
+  function setLoadUserBmSelection(values) {
+    var box = $("bs-bm-loaduser-bands");
+    var allCb = $("bs-bm-lu-allbands");
+    var set = {};
+    (values || []).forEach(function (v) { set[v] = true; });
+    var useAll = !values || !values.length;
+    if (allCb) allCb.checked = useAll;
+    if (box) {
+      Array.prototype.forEach.call(box.querySelectorAll("input.bs-bm-lu-band"), function (el) {
+        el.checked = !useAll && !!set[el.value];
+        el.disabled = useAll;
+      });
+    }
+    S.loadUserBmBands = useAll ? [] : Object.keys(set);
+  }
+
+  function fillLoadUserBmBandSelect() {
+    var box = $("bs-bm-loaduser-bands");
+    if (!box) return;
+    var prev = Array.isArray(S.loadUserBmBands) ? S.loadUserBmBands.slice() : [];
+    var useAll = !prev.length;
+    var list = profiles();
+    var allCb = $("bs-bm-lu-allbands");
+    if (allCb) allCb.checked = useAll;
+    if (!list.length) {
+      box.innerHTML = '<p class="bs-empty">No profiles yet — wait for the radio to connect.</p>';
+      return;
+    }
+    var set = {};
+    prev.forEach(function (v) { set[v] = true; });
+    box.innerHTML = "";
+    list.forEach(function (p) {
+      var lab = document.createElement("label");
+      lab.className = "bs-chk";
+      lab.title = "Include bookmarks in this band when loading user bookmarks.";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "bs-bm-lu-band";
+      cb.value = p.value;
+      cb.checked = !useAll && !!set[p.value];
+      cb.disabled = useAll;
+      var id = document.createElement("span");
+      id.className = "bs-id";
+      id.textContent = p.id || "";
+      var name = document.createElement("span");
+      name.textContent = p.label || p.value;
+      lab.appendChild(cb);
+      if (p.id) lab.appendChild(id);
+      lab.appendChild(name);
+      box.appendChild(lab);
+    });
+    S.loadUserBmBands = useAll ? [] : prev.filter(function (v) { return set[v]; });
+  }
+
+  function onLoadUserBmBandsClick(ev) {
+    var t = ev.target;
+    if (!t) return;
+    if (t.id === "bs-bm-lu-allbands") {
+      if (t.checked) setLoadUserBmSelection([]);
+      else {
+        /* turning All off with nothing else ticked — leave empty until user ticks */
+        var box = $("bs-bm-loaduser-bands");
+        if (box) {
+          Array.prototype.forEach.call(box.querySelectorAll("input.bs-bm-lu-band"), function (el) {
+            el.disabled = false;
+          });
+        }
+        S.loadUserBmBands = [];
+      }
+      saveSettings();
+      return;
+    }
+    if (t.classList && t.classList.contains("bs-bm-lu-band")) {
+      var allCb = $("bs-bm-lu-allbands");
+      if (allCb) allCb.checked = false;
+      S.loadUserBmBands = loadUserBmSelectedValues();
+      saveSettings();
+    }
+  }
+
+  function applyLoadUserBmPreset(kind) {
+    if (kind === "all") {
+      setLoadUserBmSelection([]);
+      try { saveSettings(); } catch (e) {}
+      return;
+    }
+    if (kind === "current") {
+      var cur = currentProfileValue();
+      setLoadUserBmSelection(cur ? [cur] : []);
+      try { saveSettings(); } catch (e2) {}
+      return;
+    }
+    if (kind === "ticked") {
+      var chosen = selectedValues();
+      if (!chosen.length && S.selected && S.selected.length) chosen = S.selected.slice();
+      setLoadUserBmSelection(chosen.length ? chosen : []);
+      try { saveSettings(); } catch (e3) {}
+    }
+  }
+
+  function rangesForLoadUserBmBands(values) {
+    values = values || [];
+    if (!values.length) return { ranges: null, label: "all bands" };
+    var list = profiles();
+    var byVal = {};
+    list.forEach(function (p) { byVal[p.value] = p; });
+    var ranges = [];
+    var labels = [];
+    values.forEach(function (v) {
+      var p = byVal[v];
+      if (!p) return;
+      var r = parseMhzRange(p.label);
+      if (!r) return;
+      ranges.push(r);
+      labels.push(p.id || p.label || p.value);
+    });
+    if (!ranges.length) {
+      return { ranges: [], label: values.length + " band(s) (no MHz ranges)" };
+    }
+    if (labels.length <= 3) {
+      return { ranges: ranges, label: labels.join(", ") };
+    }
+    return {
+      ranges: ranges,
+      label: labels.length + " bands (" + labels.slice(0, 2).join(", ") + "…)"
+    };
+  }
+
+  function filterBookmarksByRanges(rows, ranges) {
+    if (!ranges) return rows.slice();
+    return (rows || []).filter(function (b) {
+      var f = Number(b && b.frequency);
+      if (!f) return false;
+      for (var i = 0; i < ranges.length; i++) {
+        var lo = ranges[i].lo * 1e6;
+        var hi = ranges[i].hi * 1e6;
+        if (f >= lo && f <= hi) return true;
+      }
+      return false;
+    });
+  }
+
+  function loadUserBookmarksFromStore() {
+    fillLoadUserBmBandSelect();
+    var allCb = $("bs-bm-lu-allbands");
+    var values = loadUserBmSelectedValues();
+    if ((!allCb || !allCb.checked) && !values.length) {
+      setStatus("Tick All bands, or tick one or more bands below, then Load user bookmarks.");
+      return;
+    }
+    S.loadUserBmBands = values.slice();
+    try { saveSettings(); } catch (eSave) {}
+    var scopeInfo = rangesForLoadUserBmBands(values);
+    function finish(rows, source) {
+      var filtered = filterBookmarksByRanges(rows, scopeInfo.ranges);
+      if (!rows || !rows.length) {
+        setStatus("No OpenWebRX user bookmarks found (browser localStorage / server list empty).");
+        return;
+      }
+      if (!filtered.length) {
+        setStatus("No bookmarks in " + scopeInfo.label + " (" + rows.length + " total available). Tick other bands or All bands.");
+        return;
+      }
+      applyLoadedBookmarks(filtered, (source || "OpenWebRX") + " · " + scopeInfo.label);
+      if (filtered.length < rows.length) {
+        setStatus("Loaded " + filtered.length + " of " + rows.length + " bookmark(s) for " + scopeInfo.label + ".");
+      }
+    }
+    var clientRows = collectOwrxClientBookmarks();
+    var url = bandSurveyAssetUrl("owrx-bookmarks.json");
+    if (typeof fetch !== "function") {
+      finish(clientRows, "OpenWebRX");
+      return;
+    }
+    setStatus("Loading OpenWebRX bookmarks (" + scopeInfo.label + ")…");
+    fetch(url, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("no file");
+      return r.json();
+    }).then(function (data) {
+      var arr = Array.isArray(data) ? data : (data && Array.isArray(data.bookmarks) ? data.bookmarks : []);
+      var rows = arr.map(normalizeLoadedBookmark).filter(Boolean);
+      var seen = {};
+      rows.forEach(function (b) { seen[b.frequency] = true; });
+      clientRows.forEach(function (b) {
+        if (!seen[b.frequency]) rows.push(b);
+      });
+      finish(rows, "OpenWebRX storage");
+    }).catch(function () {
+      finish(clientRows, "OpenWebRX");
+    });
   }
 
   function restoreLocalBookmarkList(list, source) {
@@ -2325,7 +3068,7 @@ Plugins.band_survey.init = function () {
     var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
     var extras = issues.filter(function (x) { return x.level === "info"; }).length;
     if (!hard && !warns) {
-      setStatus("Install looks good. Top-bar Survey (or orange SV) is this plugin. Optional extras are listed only so you know they are not required.");
+      setStatus("Install looks good. Top-bar Survey is this plugin. Orange SV only appears if the top bar is missing.");
     } else {
       setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
         (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
@@ -2354,7 +3097,7 @@ Plugins.band_survey.init = function () {
     }
     var html = "";
     if (!hard.length && !warns.length) {
-      html += "<p><b>Install looks good.</b> Top-bar <b>Survey</b> (or orange <b>SV</b>) is this plugin. Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Scan bands. Help is on the Help tab.</p>";
+      html += "<p><b>Install looks good.</b> Top-bar <b>Survey</b> is this plugin (orange <b>SV</b> only if the top bar is missing). Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Scan bands. Help is on the Help tab.</p>";
     }
     html += hard.concat(warns).map(renderIssueP).join("");
     if (showExtra && extras.length) {
@@ -2486,11 +3229,11 @@ Plugins.band_survey.init = function () {
       ? "<li><b>Own radio — fast hops</b> (Bands / Range) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>Band survey — help (v96)</h2>" +
+      "<h2>Band survey — help (v110)</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
-      "<li>Click <b>Survey</b> in the top bar (between <b>Help</b> and <b>Status</b>). Fallback UI may show orange <b>SV</b>.</li>" +
+      "<li>Click <b>Survey</b> in the top bar (between <b>Help</b> and <b>Status</b>). An orange <b>SV</b> chip appears only if that top-bar button is missing (legacy / no toolbar).</li>" +
       "<li>Click <b>Check install</b>. Green = ready. Red or yellow shows the fix on screen.</li>" +
       "<li>Tick bands (or a preset) and press <b>Scan bands</b> — or use <b>Range</b> / <b>Explore</b>.</li>" +
       "<li>Hover any control for a tip (one tip at a time). Drag panel edges or the corner to resize — position and size are remembered in this browser.</li>" +
@@ -2512,7 +3255,7 @@ Plugins.band_survey.init = function () {
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Smart checks: <code>./install.sh --check</code> or <code>./install.sh --report</code> writes a full log (Pi/Docker/Mac hints). Public site: <code>./install.sh --public</code>. On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</p>" +
       "<h3>Title bar tabs</h3>" +
       "<p><b>Bands</b> · <b>Range</b> · <b>Explore</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b>. Enable Analyzer under Settings → <b>Visible tabs</b>. Settings always stays on. Drag the title bar to move the panel.</p>" +
-      "<h3>Toolbar (always visible)</h3>" +
+      "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
       "<ul>" +
       "<li><b>Scan bands</b> / <b>Scanning bands</b> — walk ticked bands; adds to Seen counts. Label changes while a band or range scan runs.</li>" +
       "<li><b>Fresh scan</b> — clear the peak list, then scan ticked bands from scratch.</li>" +
@@ -2535,8 +3278,10 @@ Plugins.band_survey.init = function () {
       "<h3>Range tab</h3>" +
       "<ul>" +
       "<li><b>Start MHz</b> / <b>End MHz</b> — sweep span (e.g. 109–200). Not tied to ticked bands; plugin picks covering profiles.</li>" +
-      "<li><b>Step kHz</b> — hop size. <b>0</b> = auto (~88% of waterfall span, min 12.5&nbsp;kHz). Use 500–2000&nbsp;kHz for wide surveys.</li>" +
-      "<li><b>Full range (Explorer)</b> vs <b>Ticked bands only</b> — full span hops every step; bands mode only covers overlapping ticked profiles.</li>" +
+      "<li><b>Step kHz</b> — hop size. In <b>Auto coverage</b>, <b>0</b> = ~88% of waterfall span (min 12.5&nbsp;kHz). In <b>Channel grid</b>, this is the channel spacing (e.g. 12.5 for PMR446).</li>" +
+      "<li><b>Offset kHz</b> — with Channel grid on: first tune = Start + offset (PMR446: Start 446, Offset 6.25 → 446.00625).</li>" +
+      "<li><b>Channel grid</b> — hop exact channel centres instead of waterfall-coverage tiles. Pick a <b>Grid preset</b> (Airband, PMR446, LPD433, Marine, 2m, 70cm, CB, FM, MW) or choose Custom and set Step/Offset yourself.</li>" +
+      "<li><b>Full range (Explorer)</b> vs <b>Ticked bands only</b> — full span hops every step; bands mode only covers overlapping ticked profiles (grid N/A).</li>" +
       "<li><b>Scan range</b> — add peaks to Seen. <b>Fresh range scan</b> — clear peak list first.</li>" +
       "<li><b>Range spectrum</b> bar chart appears after a scan — kept across page reload and factory reset. Axis shows ≥12 frequency labels. <b>Save PNG</b> / <b>Save CSV</b> on the Range tab.</li>" +
       "<li><b>Passes</b>, <b>Dwell s</b>, <b>Min seen</b>, <b>dB over noise</b>, <b>Hide birdies</b>, <b>Mute while running</b>, <b>Only if alone</b>, and <b>Own radio — fast hops</b> on this tab (synced with Bands / Settings). <b>Stop</b> auto-bookmarks like band scan.</li>" +
@@ -2568,7 +3313,7 @@ Plugins.band_survey.init = function () {
       "<h3>Bookmarks tab</h3>" +
       "<ul>" +
       "<li><b>Blue</b> local bookmarks — <b>[auto]</b> from surveys vs named. <b>Amber [load]</b> — imported list (separate from blue).</li>" +
-      "<li><b>Save bookmarks</b> · <b>Load bookmarks</b> · <b>Clear loaded</b> · <b>Clear bookmarks</b> · <b>Clear auto bookmarks</b> · <b>ren</b> to rename.</li>" +
+      "<li><b>Save bookmarks</b> · <b>Load bookmarks</b> · <b>Load user bookmarks</b> (tick <b>All bands</b> or band checkboxes; optional Current / Ticked via Extras) · <b>Clear user bookmarks</b> · <b>Clear bookmarks</b> · <b>Clear auto bookmarks</b> · <b>ren</b> to rename.</li>" +
       "<li><b>Listen s</b> — minimum seconds on each bookmark after ~0.7s tune settle.</li>" +
       "<li><b>Priority</b> — MHz list (e.g. 121.5); guard/tower/ATIS names added automatically; listened first.</li>" +
       "<li><b>Auto-bookmark actives</b> — save busy peaks as <b>[auto]</b> bookmarks (on scan end and Stop).</li>" +
@@ -2580,7 +3325,9 @@ Plugins.band_survey.init = function () {
       "</ul>" +
       "<h3>Audio tab</h3>" +
       "<ul>" +
-      "<li><b>Save all</b> · <b>Save all · ZIP</b> · <b>Load audio</b> · <b>Clear all</b> — manage clips (IndexedDB; nothing uploaded).</li>" +
+      "<li><b>Save all</b> · <b>Save all · ZIP</b> · <b>Preview all</b> (first N seconds of each clip in order; highlights the playing row) · <b>Load audio</b> · <b>Clear all</b> — manage clips (IndexedDB; nothing uploaded).</li>" +
+      "<li><b>Vol</b> — clip playback / preview volume (0–100%, remembered). Does not change OpenWebRX receiver volume.</li>" +
+      "<li><b>First s</b> (next to Preview all) — how many seconds of each clip to hear (1–15, default 3). Click <b>Stop preview</b> or Play on a row to interrupt.</li>" +
       "<li><b>Record mode</b> — <b>Original</b> (default): record on first waterfall-busy sample; no squelch/voice gating. <b>Balanced</b>: squelch open + light debounce. <b>Strict voice</b>: squelch + S-meter + SNR, pause on quiet, discard hiss.</li>" +
       "<li>Fine-tune (Balanced/Strict; Original ignores): <b>Squelch open only</b>, <b>Debounce ms</b>, <b>Quiet pause ms</b>, <b>Min SNR dB</b>, <b>Squelch headroom dB</b>, <b>Min clip voice %</b> (0 = mode default).</li>" +
       "<li>Clips persist across refresh/restart (default cap 40 clips or ~48&nbsp;MB; set <b>Max audio clips</b> on Settings). Scanner waits ≥2s before hopping so clips are not cut off.</li>" +
@@ -2591,12 +3338,14 @@ Plugins.band_survey.init = function () {
       "<li><b>Lockout min</b> — how long a toolbar <b>Lockout</b> skip lasts (default 30&nbsp;min).</li>" +
       "</ul>" +
       "<h3>Settings tab</h3>" +
+      "<p><b>Extras</b> — optional features, all off by default. Tick one and its controls appear on the tab named in parentheses (Peaks, Bookmarks, Audio, Range, Settings). No new tabs.</p>" +
       "<p><b>Panel &amp; UI</b></p><ul>" +
       "<li><b>Open panel on startup</b> — open Survey when OpenWebRX loads (waits for band profiles).</li>" +
       "<li><b>Remember last tab</b> — restore the tab you last used.</li>" +
       "<li><b>Default tab</b> — which tab on open (Last used, Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, Help).</li>" +
       "<li><b>UI text size</b> — Small / Default / Large.</li>" +
       "<li><b>Visible tabs</b> — untick tabs for a minimal bar. <b>Analyzer</b> is experimental and off by default; <b>Show all tabs</b> still leaves Analyzer off. Settings cannot be hidden.</li>" +
+      "<li><b>Hide top toolbar</b> — hide the always-visible strip (Scan bands, Fresh scan, Stop, Scan bookmarks, Jump loudest, Check install, Hold/Skip…). Band/Range tab buttons still work.</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "<li><b>Re-show Check install</b> — put Check install back on the toolbar.</li>" +
       "</ul><p><b>After scan</b> (normal finish, not Stop)</p><ul>" +
@@ -2989,7 +3738,35 @@ Plugins.band_survey.init = function () {
     return step;
   }
 
+  function rangeOffsetHz() {
+    var khz = Number(S.rangeOffsetKhz);
+    if (!isFinite(khz) || khz < 0) return 0;
+    return khz * 1000;
+  }
+
+  function rangeUsesChannelGrid() {
+    return !!S.rangeChannelGrid && S.rangeMode !== "bands";
+  }
+
+  /** Channel centres: start + offset, then + step … while ≤ end (PMR446 / airband style). */
+  function buildChannelGridCenters(startHz, endHz, stepHz, offsetHz) {
+    var centers = [];
+    if (!stepHz || stepHz <= 0) return centers;
+    var off = Math.max(0, offsetHz || 0);
+    var f = startHz + off;
+    var guard = 0;
+    while (f < startHz - 0.5 && guard++ < 100000) f += stepHz;
+    while (f <= endHz + 0.5 && centers.length < 100000) {
+      if (f >= startHz - 0.5) centers.push(Math.round(f));
+      f += stepHz;
+    }
+    return centers;
+  }
+
   function buildRangeCenters(startHz, endHz, stepHz) {
+    if (rangeUsesChannelGrid()) {
+      return buildChannelGridCenters(startHz, endHz, stepHz, rangeOffsetHz());
+    }
     var bw = window.bandwidth || stepHz * 1.15;
     var halfUsable = (bw * (1 - 2 * EDGE_FRAC)) / 2;
     var centers = [];
@@ -3003,6 +3780,100 @@ Plugins.band_survey.init = function () {
     return centers;
   }
 
+  /** Presets for channelised bands (step + offset from Start). */
+  function rangeGridPresets() {
+    var air833 = 25 / 3; // 8.333… kHz
+    return [
+      { id: "auto", label: "Auto coverage (waterfall tiles)", grid: false },
+      { id: "custom", label: "Custom channel grid…", grid: true },
+      { id: "air25", label: "Airband 25 kHz (118–137)", grid: true,
+        start: 118, end: 137, step: 25, offset: 0 },
+      { id: "air833", label: "Airband 8.33 kHz (118–137)", grid: true,
+        start: 118, end: 137, step: air833, offset: 0 },
+      { id: "pmr446", label: "PMR446 12.5 kHz (16 ch)", grid: true,
+        start: 446, end: 446.2, step: 12.5, offset: 6.25 },
+      { id: "pmr446-625", label: "PMR446 6.25 kHz (digital)", grid: true,
+        start: 446, end: 446.2, step: 6.25, offset: 6.25 },
+      { id: "lpd433", label: "LPD433 25 kHz (69 ch)", grid: true,
+        start: 433.075, end: 434.775, step: 25, offset: 0 },
+      { id: "marine25", label: "Marine VHF ~25 kHz (156–162)", grid: true,
+        start: 156, end: 162.025, step: 25, offset: 0 },
+      { id: "2m12", label: "2m FM 12.5 kHz (144–146)", grid: true,
+        start: 144, end: 146, step: 12.5, offset: 0 },
+      { id: "2m25", label: "2m FM 25 kHz (144–146)", grid: true,
+        start: 144, end: 146, step: 25, offset: 0 },
+      { id: "2m12-us", label: "2m FM 12.5 kHz (144–148)", grid: true,
+        start: 144, end: 148, step: 12.5, offset: 0 },
+      { id: "70cm12", label: "70cm FM 12.5 kHz (430–440)", grid: true,
+        start: 430, end: 440, step: 12.5, offset: 0 },
+      { id: "70cm25", label: "70cm FM 25 kHz (430–440)", grid: true,
+        start: 430, end: 440, step: 25, offset: 0 },
+      { id: "cb10", label: "CB 10 kHz (26.965–27.405)", grid: true,
+        start: 26.965, end: 27.405, step: 10, offset: 0 },
+      { id: "fm100", label: "FM broadcast 100 kHz (EU)", grid: true,
+        start: 87.5, end: 108, step: 100, offset: 0 },
+      { id: "fm200", label: "FM broadcast 200 kHz (US)", grid: true,
+        start: 88.1, end: 107.9, step: 200, offset: 0 },
+      { id: "mw9", label: "MW AM 9 kHz (EU)", grid: true,
+        start: 0.531, end: 1.602, step: 9, offset: 0 },
+      { id: "mw10", label: "MW AM 10 kHz (US)", grid: true,
+        start: 0.530, end: 1.700, step: 10, offset: 0 }
+    ];
+  }
+
+  function rangeGridPresetById(id) {
+    var list = rangeGridPresets();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return list[0];
+  }
+
+  function applyRangeGridPreset(id, fromUi) {
+    var p = rangeGridPresetById(id || "auto");
+    S.rangeGridPreset = p.id;
+    if (p.id === "auto") {
+      S.rangeChannelGrid = false;
+      if (fromUi) {
+        /* keep user's start/end/step; only leave channel mode */
+      }
+    } else if (p.id === "custom") {
+      S.rangeChannelGrid = true;
+      if (!(Number(S.rangeStepKhz) > 0)) S.rangeStepKhz = 12.5;
+    } else {
+      S.rangeChannelGrid = !!p.grid;
+      if (p.start != null) S.rangeStartMhz = p.start;
+      if (p.end != null) S.rangeEndMhz = p.end;
+      if (p.step != null) S.rangeStepKhz = p.step;
+      if (p.offset != null) S.rangeOffsetKhz = p.offset;
+      S.rangeMode = "full";
+    }
+    if (fromUi) {
+      if ($("bs-range-start")) $("bs-range-start").value = S.rangeStartMhz;
+      if ($("bs-range-end")) $("bs-range-end").value = S.rangeEndMhz;
+      if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz || 0;
+      if ($("bs-range-offset")) $("bs-range-offset").value = S.rangeOffsetKhz || 0;
+      if ($("bs-range-grid")) $("bs-range-grid").checked = !!S.rangeChannelGrid;
+      if ($("bs-range-grid-preset")) $("bs-range-grid-preset").value = S.rangeGridPreset || "auto";
+      if ($("bs-range-mode-full")) $("bs-range-mode-full").checked = true;
+      if ($("bs-range-mode-bands")) $("bs-range-mode-bands").checked = false;
+    }
+    updateRangeModeUi();
+    updateRangeEstimate();
+    saveSettings();
+  }
+
+  function syncRangeGridPresetSelect() {
+    var sel = $("bs-range-grid-preset");
+    if (!sel || sel.options.length) return;
+    rangeGridPresets().forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.label;
+      sel.appendChild(opt);
+    });
+  }
+
   function rangeLabel() {
     return Number(S.rangeStartMhz).toFixed(3) + "–" + Number(S.rangeEndMhz).toFixed(3) + " MHz";
   }
@@ -3012,6 +3883,9 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-end")) S.rangeEndMhz = Number($("bs-range-end").value) || S.rangeEndMhz;
     if ($("bs-range-step")) S.rangeStepKhz = Number($("bs-range-step").value);
     if (!isFinite(S.rangeStepKhz) || S.rangeStepKhz < 0) S.rangeStepKhz = 0;
+    if ($("bs-range-offset")) S.rangeOffsetKhz = Number($("bs-range-offset").value);
+    if (!isFinite(S.rangeOffsetKhz) || S.rangeOffsetKhz < 0) S.rangeOffsetKhz = 0;
+    if ($("bs-range-grid")) S.rangeChannelGrid = !!$("bs-range-grid").checked;
     if ($("bs-range-passes")) S.passes = syncPassesUi($("bs-range-passes").value);
     if ($("bs-range-dwell")) S.dwell = syncDwellUi($("bs-range-dwell").value);
     if ($("bs-range-thresh")) S.threshDb = syncThreshUi($("bs-range-thresh").value);
@@ -3023,6 +3897,20 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-hidespurs")) S.hideSpurs = syncHideSpursUi($("bs-range-hidespurs").checked);
     if ($("bs-range-mode-bands") && $("bs-range-mode-bands").checked) S.rangeMode = "bands";
     else S.rangeMode = "full";
+    if (S.rangeChannelGrid && S.rangeMode === "full") {
+      if (S.rangeGridPreset === "auto") S.rangeGridPreset = "custom";
+      if (!(Number(S.rangeStepKhz) > 0)) S.rangeStepKhz = 12.5;
+      if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz;
+      if ($("bs-range-grid-preset") && $("bs-range-grid-preset").value === "auto") {
+        $("bs-range-grid-preset").value = "custom";
+        S.rangeGridPreset = "custom";
+      }
+    } else if (!S.rangeChannelGrid && S.rangeGridPreset !== "auto" && S.rangeGridPreset !== "custom") {
+      /* keep named preset id for re-apply; grid off means coverage hops */
+    } else if (!S.rangeChannelGrid) {
+      S.rangeGridPreset = "auto";
+      if ($("bs-range-grid-preset")) $("bs-range-grid-preset").value = "auto";
+    }
     saveSettings();
     updateRangeEstimate();
     updateRangeModeUi();
@@ -3038,9 +3926,30 @@ Plugins.band_survey.init = function () {
   function updateRangeModeUi() {
     var stepEl = $("bs-range-step");
     var stepLab = $("bs-range-step-label");
+    var offEl = $("bs-range-offset");
+    var offLab = $("bs-range-offset-label");
+    var gridEl = $("bs-range-grid");
+    var gridLab = $("bs-range-grid-label");
+    var presetEl = $("bs-range-grid-preset");
+    var presetLab = $("bs-range-grid-preset-label");
     var bandsOnly = S.rangeMode === "bands";
-    if (stepEl) stepEl.disabled = bandsOnly;
-    if (stepLab) stepLab.style.opacity = bandsOnly ? "0.45" : "1";
+    var gridOn = rangeUsesChannelGrid();
+    if (stepEl) {
+      stepEl.disabled = bandsOnly;
+      if (gridOn && !(Number(stepEl.value) > 0)) stepEl.value = S.rangeStepKhz > 0 ? S.rangeStepKhz : 12.5;
+    }
+    if (stepLab) {
+      stepLab.style.opacity = bandsOnly ? "0.45" : "1";
+      stepLab.title = gridOn
+        ? "Channel spacing in kHz (required for channel grid). Example: 12.5 for PMR446."
+        : "Hop size in kHz. 0 = auto (~88% of waterfall span). Full range mode only.";
+    }
+    if (offEl) offEl.disabled = bandsOnly || !gridOn;
+    if (offLab) offLab.style.opacity = (bandsOnly || !gridOn) ? "0.45" : "1";
+    if (gridEl) gridEl.disabled = bandsOnly;
+    if (gridLab) gridLab.style.opacity = bandsOnly ? "0.45" : "1";
+    if (presetEl) presetEl.disabled = bandsOnly;
+    if (presetLab) presetLab.style.opacity = bandsOnly ? "0.45" : "1";
   }
 
   function updateRangeEstimate() {
@@ -3065,11 +3974,22 @@ Plugins.band_survey.init = function () {
         " in range · ×" + passes + " pass(es) · dwell " + dwellFromUi() + "s · dB " + threshFromUi();
       return;
     }
+    if (rangeUsesChannelGrid() && !(Number(S.rangeStepKhz) > 0)) {
+      el.textContent = "Channel grid needs Step kHz > 0 (or pick a grid preset).";
+      return;
+    }
     var stepHz = rangeStepHz();
     var n = buildRangeCenters(startHz, endHz, stepHz).length;
-    var stepTxt = S.rangeStepKhz > 0
-      ? (S.rangeStepKhz + " kHz steps")
-      : ("auto ~" + (stepHz / 1000).toFixed(1) + " kHz from waterfall span");
+    var stepTxt;
+    if (rangeUsesChannelGrid()) {
+      var first = startHz + rangeOffsetHz();
+      stepTxt = "channel grid · " + (S.rangeStepKhz) + " kHz · offset " +
+        (Number(S.rangeOffsetKhz) || 0) + " kHz · first " + fmtMhz(first);
+    } else {
+      stepTxt = S.rangeStepKhz > 0
+        ? (S.rangeStepKhz + " kHz coverage hops")
+        : ("auto ~" + (stepHz / 1000).toFixed(1) + " kHz from waterfall span");
+    }
     el.textContent = n + " tune point" + (n === 1 ? "" : "s") + " · " + stepTxt +
       " · ×" + passes + " pass(es) · dwell " + dwellFromUi() + "s · dB " + threshFromUi();
   }
@@ -3107,14 +4027,22 @@ Plugins.band_survey.init = function () {
 
   function saveRangeSpectrum() {
     if (!rangeSpectrum.startMhz || !rangeSpectrum.endMhz || rangeSpectrum.startMhz >= rangeSpectrum.endMhz) return;
+    var payload = {
+      startMhz: rangeSpectrum.startMhz,
+      endMhz: rangeSpectrum.endMhz,
+      savedAt: Date.now(),
+      peaks: rangeSpectrumPeakRows()
+    };
     try {
-      window.localStorage.setItem(LS_RANGE_SPECTRUM, JSON.stringify({
-        startMhz: rangeSpectrum.startMhz,
-        endMhz: rangeSpectrum.endMhz,
-        savedAt: Date.now(),
-        peaks: rangeSpectrumPeakRows()
-      }));
+      window.localStorage.setItem(LS_RANGE_SPECTRUM, JSON.stringify(payload));
     } catch (e) {}
+    pushSpectrumHist({ at: payload.savedAt, payload: payload });
+  }
+
+  function applyRangeSpectrumPayload(o) {
+    if (!o) return;
+    try { window.localStorage.setItem(LS_RANGE_SPECTRUM, JSON.stringify(o)); } catch (e) {}
+    restoreRangeSpectrumView();
   }
 
   function loadRangeSpectrumStore() {
@@ -4980,7 +5908,7 @@ Plugins.band_survey.init = function () {
     }
     if (courtesyBlocked("listening / retuning")) return 0;
     readListenSettings();
-    items = sortListenPriority(items.filter(function (row) {
+    items = sortListenItemsExtra(items.filter(function (row) {
       var f = (row.hit || row).freq || row.frequency;
       return !shouldSkipTune(f);
     }));
@@ -5120,11 +6048,25 @@ Plugins.band_survey.init = function () {
           if (!loopMode) setListenPaused(false);
           setStatus(passLab + "Listen " + (i + 1) + "/" + items.length + " · " + name + " · " + Math.round(lvl) + " dB · listening");
         }
+        if (extraOn("recCaps") && recOn && recStartedAt &&
+            (now - recStartedAt) >= Math.max(5000, (Number(S.maxClipSec) || 60) * 1000)) {
+          canLeave = true;
+        }
         if (canLeave) break;
         await sleep(LISTEN_SAMPLE_MS);
       }
       if (!loopMode) setListenPaused(false);
       if (busySeen) heard++;
+      if (extraOn("sessionLog")) {
+        pushSessionLog({
+          at: Date.now(),
+          freq: freq,
+          name: name,
+          busy: !!busySeen,
+          clip: !!recOn,
+          db: typeof lvl === "number" ? lvl : null
+        });
+      }
       if (recOn) {
         var recLeft = MIN_RECORD_MS - (Date.now() - recStartedAt);
         if (recLeft > 0) await sleep(recLeft);
@@ -5790,10 +6732,92 @@ Plugins.band_survey.init = function () {
     return clip.name || (clip.freq ? fmtMhz(clip.freq) : (clip.file || "clip"));
   }
 
+  function clipPreviewSec() {
+    var n = Number(S.clipPreviewSec);
+    if ($("bs-aud-preview-sec")) {
+      var fromUi = Number($("bs-aud-preview-sec").value);
+      if (isFinite(fromUi) && fromUi > 0) n = fromUi;
+    }
+    return Math.max(1, Math.min(15, isFinite(n) && n > 0 ? n : 3));
+  }
+
+  function clipVolumeLevel() {
+    var n = Number(S.clipVolume);
+    if ($("bs-aud-vol")) {
+      var fromUi = Number($("bs-aud-vol").value);
+      if (isFinite(fromUi)) n = fromUi;
+    }
+    return Math.max(0, Math.min(100, isFinite(n) ? n : 80));
+  }
+
+  function applyClipVolume() {
+    var pct = clipVolumeLevel();
+    var v = pct / 100;
+    var lbl = $("bs-aud-vol-lbl");
+    if (lbl) lbl.textContent = pct + "%";
+    if ($("bs-aud-vol") && document.activeElement !== $("bs-aud-vol")) {
+      $("bs-aud-vol").value = pct;
+    }
+    if (clipPlaying && clipPlaying.el) {
+      try { clipPlaying.el.volume = v; } catch (e) {}
+    }
+    return v;
+  }
+
+  function makeClipAudio(url) {
+    var el = new Audio(url);
+    try { el.volume = applyClipVolume(); } catch (e) {}
+    return el;
+  }
+
+  function updateClipPreviewUi() {
+    var btn = $("bs-aud-preview");
+    var secInp = $("bs-aud-preview-sec");
+    var row = $("bs-aud-preview-row");
+    if (row) row.hidden = audioClips.length < 2 && !clipPreview.running;
+    if (btn) {
+      if (clipPreview.running) {
+        btn.textContent = "Stop preview";
+        btn.classList.add("bs-on");
+        btn.title = "Stop walking through clip previews.";
+      } else {
+        btn.textContent = "Preview all";
+        btn.classList.remove("bs-on");
+        btn.title = "Play the first N seconds of each clip in order. Highlights the one playing, then advances.";
+      }
+      btn.disabled = !audioClips.length && !clipPreview.running;
+    }
+    if (secInp) {
+      secInp.disabled = !!clipPreview.running;
+      if (!clipPreview.running && document.activeElement !== secInp) {
+        secInp.value = clipPreviewSec();
+      }
+    }
+  }
+
+  function scrollClipRowIntoView(id) {
+    var host = $("bs-audiolist");
+    if (!host) return;
+    var row = host.querySelector('.bs-audio-row[data-clip-id="' + id + '"]');
+    if (!row || typeof row.scrollIntoView !== "function") return;
+    try {
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } catch (e) {
+      try { row.scrollIntoView(false); } catch (e2) {}
+    }
+  }
+
   function renderAudioClips() {
     var host = $("bs-audiolist");
     var head = $("bs-audiohead");
-    if (head) head.textContent = audioClips.length ? ("Audio clips (" + audioClips.length + ")") : "Audio clips";
+    if (head) {
+      var label = audioClips.length ? ("Audio clips (" + audioClips.length + ")") : "Audio clips";
+      if (clipPreview.running && audioClips.length) {
+        label += " · preview " + (clipPreview.index + 1) + "/" + audioClips.length;
+      }
+      head.textContent = label;
+    }
+    updateClipPreviewUi();
     if (!host) {
       updateTabLabels();
       return;
@@ -5803,28 +6827,126 @@ Plugins.band_survey.init = function () {
       updateTabLabels();
       return;
     }
-    host.innerHTML = audioClips.map(function (c) {
+    host.innerHTML = audioClips.map(function (c, idx) {
       var when = new Date(c.at || Date.now()).toLocaleTimeString();
       var playing = clipPlaying && clipPlaying.id === c.id;
-      return '<div class="bs-audio-row' + (playing ? " bs-audio-on" : "") + '">' +
+      var previewing = clipPreview.running && clipPreview.index === idx && playing;
+      return '<div class="bs-audio-row' + (playing ? " bs-audio-on" : "") +
+        (previewing ? " bs-audio-preview" : "") +
+        '" data-clip-id="' + c.id + '">' +
         '<button type="button" class="bs-tiny" data-clip-play="' + c.id + '" title="' +
         (playing ? "Stop this clip." : "Play this clip in the panel.") + '">' +
         (playing ? "Stop" : "Play") + "</button>" +
         '<span class="bs-bm-mhz">' + (c.freq ? fmtMhz(c.freq) : "—") + "</span>" +
         '<span class="bs-bm-name" title="' + escapeHtml(clipLabel(c)) + '">' + escapeHtml(clipLabel(c)) + "</span>" +
-        '<span class="bs-hint">' + when + (c.loaded ? " · loaded" : "") + "</span>" +
+        '<span class="bs-hint">' + when + (c.loaded ? " · loaded" : "") +
+        (previewing ? " · preview" : "") +
+        (extraOn("clipMeta") ? (
+          (c.durationMs ? (" · " + (c.durationMs / 1000).toFixed(1) + "s") : (c.blob && c.blob.size ? (" · " + Math.round(c.blob.size / 1024) + " KB") : "")) +
+          (c.activeMs && c.durationMs ? (" · voice " + Math.round(100 * c.activeMs / c.durationMs) + "%") : "") +
+          (c.transcript ? (" · “" + escapeHtml(String(c.transcript).slice(0, 40)) + "”") : "")
+        ) : "") + "</span>" +
         '<button type="button" class="bs-tiny" data-clip-save="' + c.id + '" title="Download this clip.">Save</button>' +
+        (extraOn("speechToText") ? '<button type="button" class="bs-tiny" data-clip-xscript="' + c.id + '" title="Try browser speech-to-text while playing (Chrome).">TXT</button>' : "") +
         '<button type="button" class="bs-tiny" data-clip-del="' + c.id + '" title="Remove this clip from the list (does not delete a file you already saved).">×</button>' +
         "</div>";
     }).join("");
+    if (clipPlaying && clipPlaying.id) scrollClipRowIntoView(clipPlaying.id);
     updateTabLabels();
   }
 
   function stopClipPlayback() {
     if (clipPlaying && clipPlaying.el) {
       try { clipPlaying.el.pause(); } catch (e) {}
+      try { clipPlaying.el.src = ""; } catch (e2) {}
     }
     clipPlaying = null;
+  }
+
+  function stopClipPreview(opts) {
+    opts = opts || {};
+    clipPreview.gen++;
+    if (clipPreview.timer) {
+      clearTimeout(clipPreview.timer);
+      clipPreview.timer = null;
+    }
+    var was = clipPreview.running;
+    clipPreview.running = false;
+    clipPreview.index = 0;
+    if (!opts.keepAudio) stopClipPlayback();
+    updateClipPreviewUi();
+    if (!opts.silent) renderAudioClips();
+    return was;
+  }
+
+  function playPreviewAt(idx, gen) {
+    if (gen !== clipPreview.gen || !clipPreview.running) return;
+    if (idx >= audioClips.length) {
+      stopClipPreview({ silent: true });
+      renderAudioClips();
+      setStatus("Preview done — heard first " + clipPreviewSec() + "s of " + audioClips.length + " clip(s).");
+      return;
+    }
+    var clip = audioClips[idx];
+    if (!clip || !clip.url) {
+      playPreviewAt(idx + 1, gen);
+      return;
+    }
+    clipPreview.index = idx;
+    stopClipPlayback();
+    var el = makeClipAudio(clip.url);
+    var advanced = false;
+    function advance() {
+      if (advanced || gen !== clipPreview.gen) return;
+      advanced = true;
+      if (clipPreview.timer) {
+        clearTimeout(clipPreview.timer);
+        clipPreview.timer = null;
+      }
+      try { el.pause(); } catch (e) {}
+      if (clipPlaying && clipPlaying.el === el) clipPlaying = null;
+      playPreviewAt(idx + 1, gen);
+    }
+    clipPlaying = { id: clip.id, el: el, preview: true };
+    el.onended = advance;
+    el.onerror = function () { advance(); };
+    var ms = Math.round(clipPreviewSec() * 1000);
+    clipPreview.timer = setTimeout(advance, ms);
+    renderAudioClips();
+    var go = el.play();
+    if (go && typeof go.catch === "function") {
+      go.catch(function () {
+        if (gen !== clipPreview.gen) return;
+        stopClipPreview({ silent: true });
+        renderAudioClips();
+        setStatus("Playback blocked — click Preview all again after interacting with the page.");
+      });
+    }
+    setStatus("Preview " + (idx + 1) + "/" + audioClips.length + " · first " + clipPreviewSec() + "s · " +
+      (clip.freq ? fmtMhz(clip.freq) : clipLabel(clip)));
+  }
+
+  function toggleClipPreview() {
+    if (clipPreview.running) {
+      stopClipPreview();
+      setStatus("Preview stopped.");
+      return;
+    }
+    if (audioClips.length < 2) {
+      setStatus("Need at least 2 clips for Preview all (or Play one clip).");
+      return;
+    }
+    if ($("bs-aud-preview-sec")) {
+      S.clipPreviewSec = clipPreviewSec();
+      try { saveSettings(); } catch (e) {}
+    }
+    clipPreview.running = true;
+    clipPreview.index = 0;
+    clipPreview.gen++;
+    var gen = clipPreview.gen;
+    updateClipPreviewUi();
+    setStatus("Previewing first " + clipPreviewSec() + "s of " + audioClips.length + " clips…");
+    playPreviewAt(0, gen);
   }
 
   function playAudioClip(id) {
@@ -5833,28 +6955,29 @@ Plugins.band_survey.init = function () {
       if (audioClips[i].id === id) clip = audioClips[i];
     }
     if (!clip || !clip.url) return;
-    if (clipPlaying && clipPlaying.id === id) {
+    if (clipPreview.running) stopClipPreview({ keepAudio: true, silent: true });
+    if (clipPlaying && clipPlaying.id === id && !clipPlaying.preview) {
       stopClipPlayback();
       renderAudioClips();
       return;
     }
     stopClipPlayback();
-    var el = new Audio(clip.url);
+    var el = makeClipAudio(clip.url);
     clipPlaying = { id: id, el: el };
     el.onended = function () {
-      clipPlaying = null;
+      if (clipPlaying && clipPlaying.el === el) clipPlaying = null;
       renderAudioClips();
     };
     el.onerror = function () {
       setStatus("Could not play that clip in this browser.");
-      clipPlaying = null;
+      if (clipPlaying && clipPlaying.el === el) clipPlaying = null;
       renderAudioClips();
     };
     var go = el.play();
     if (go && typeof go.catch === "function") {
       go.catch(function () {
         setStatus("Playback blocked — click Play again after interacting with the page.");
-        clipPlaying = null;
+        if (clipPlaying && clipPlaying.el === el) clipPlaying = null;
         renderAudioClips();
       });
     }
@@ -5967,6 +7090,28 @@ Plugins.band_survey.init = function () {
   }
 
   function removeAudioClip(id) {
+    if (clipPreview.running && clipPlaying && clipPlaying.id === id) {
+      // skip this clip and continue preview from next
+      var nextIdx = clipPreview.index;
+      audioClips = audioClips.filter(function (c) {
+        if (c.id !== id) return true;
+        if (c.url) {
+          try { URL.revokeObjectURL(c.url); } catch (e) {}
+        }
+        deletePersistedClip(id);
+        return false;
+      });
+      clipPreview.gen++;
+      if (clipPreview.timer) {
+        clearTimeout(clipPreview.timer);
+        clipPreview.timer = null;
+      }
+      stopClipPlayback();
+      var gen = clipPreview.gen;
+      renderAudioClips();
+      if (clipPreview.running) playPreviewAt(Math.min(nextIdx, audioClips.length), gen);
+      return;
+    }
     audioClips = audioClips.filter(function (c) {
       if (c.id !== id) return true;
       if (clipPlaying && clipPlaying.id === id) stopClipPlayback();
@@ -5986,6 +7131,7 @@ Plugins.band_survey.init = function () {
     }
     if (!window.confirm("Remove all " + audioClips.length + " audio clip(s) from this browser? Files you already saved to disk are not deleted.")) return;
     var n = audioClips.length;
+    stopClipPreview({ silent: true });
     stopClipPlayback();
     audioClips.forEach(function (c) {
       if (c.url) {
@@ -6051,6 +7197,12 @@ Plugins.band_survey.init = function () {
     if (del) {
       ev.preventDefault();
       removeAudioClip(Number(del));
+      return;
+    }
+    var xs = t.getAttribute("data-clip-xscript");
+    if (xs) {
+      ev.preventDefault();
+      tryTranscribeClip(Number(xs));
     }
   }
 
@@ -6086,6 +7238,11 @@ Plugins.band_survey.init = function () {
     var skipTune = t.getAttribute && t.getAttribute("data-skip-tune");
     if (skipTune) {
       tuneBookmark(Number(skipTune), "");
+      return;
+    }
+    var logTune = t.getAttribute && t.getAttribute("data-log-tune");
+    if (logTune) {
+      tuneBookmark(Number(logTune), "");
       return;
     }
     var row = t.closest && t.closest("[data-bm-tune]");
@@ -6161,6 +7318,7 @@ Plugins.band_survey.init = function () {
     if (!list.length) {
       box.innerHTML = '<p class="bs-empty">No band profiles yet. Wait a few seconds for the radio to connect, then click Check install. If this stays empty, add SDR profiles in OpenWebRX settings (admin) — Help has the steps.</p>';
       updateCount();
+      fillLoadUserBmBandSelect();
       return;
     }
     var chosen = S.selected && S.selected.length ? S.selected : defaultSelected();
@@ -6187,6 +7345,7 @@ Plugins.band_survey.init = function () {
       box.appendChild(lab);
     });
     updateCount();
+    fillLoadUserBmBandSelect();
   }
 
   function visibleHits() {
@@ -6233,6 +7392,12 @@ Plugins.band_survey.init = function () {
       return;
     }
     var shown = sortedHits();
+    if (extraOn("whatsNew") && S.showNewOnly) {
+      shown = shown.filter(function (h) { return h.isNew && !isSpur(h); });
+    }
+    if (extraOn("surveyDiff") && S.showDiffOnly && surveySnapPeaks) {
+      shown = shown.filter(function (h) { return !isSpur(h) && peakChangedVsSnap(h); });
+    }
     var totalShown = shown.length;
     if (shown.length > RENDER_HITS_CAP) shown = shown.slice(0, RENDER_HITS_CAP);
     if (!shown.length) {
@@ -6248,11 +7413,28 @@ Plugins.band_survey.init = function () {
         : (known
           ? '<span title="' + escapeHtml(known) + '">bm</span>'
           : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '" title="Save this peak as a blue bookmark in this browser.">+</button>');
+      if (!spur && extraOn("peakNativeBm")) {
+        bm += ' <button type="button" class="bs-tiny" data-named-bm="' + h.freq + '" title="Save as a named blue bookmark (not [auto]).">named</button>';
+      }
+      if (!spur && extraOn("copyTuneLink")) {
+        bm += ' <button type="button" class="bs-tiny" data-copy-tune="' + h.freq + '" data-copy-mode="' +
+          escapeHtml(h.mode || "") + '" title="Copy MHz (+ mode) to clipboard.">copy</button>';
+      }
+      if (!spur && extraOn("freqNotes")) {
+        var note = noteForFreq(h.freq);
+        bm += ' <button type="button" class="bs-tiny' + (note ? " bs-on" : "") + '" data-freq-note="' + h.freq +
+          '" title="' + (note ? escapeHtml(note) : "Add a note for this MHz.") + '">note</button>';
+      }
+      if (!spur && extraOn("waterfallSnap")) {
+        bm += ' <button type="button" class="bs-tiny" data-wf-snap="1" title="Download a PNG of the waterfall (best-effort).">snap</button>';
+      }
       var tag = spur ? '<span class="bs-spur-tag" title="' + escapeHtml(h.spurWhy || "birdie") + '">birdie</span>' : "";
       var icao = icao833(h.freq);
       var ch = icao && icao !== fmtMhzNum(h.freq) ? '<span class="bs-icao">' + icao + "</span> " : "";
       var newb = h.isNew && !spur ? '<span class="bs-new">new</span> ' : "";
+      if (!spur && extraOn("surveyDiff") && peakChangedVsSnap(h)) newb += '<span class="bs-new" title="Not in saved survey snapshot">Δ</span> ';
       var pri = isPriority(h.freq) && !spur ? '<span class="bs-pri">pri</span> ' : "";
+      var traffic = nearbyTrafficHint(h.freq);
       var nm = h.name || known || "";
       var alwaysOn = isIgnoredFreq(h.freq) || !!h.ignored;
       var ignBtn = alwaysOn
@@ -6260,7 +7442,7 @@ Plugins.band_survey.init = function () {
         : ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Skip this MHz forever and continue the scan.">ign</button>';
       return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
         '<td class="bs-n">' + h.seen + "</td>" +
-        '<td>' + pri + newb + ch +
+        '<td>' + pri + newb + traffic + ch +
         '<button type="button" class="bs-tune" data-tune="' + h.freq + '" data-pid="' + escapeHtml(h.pid) + '" title="Tune the receiver to this frequency.">' +
         fmtMhz(h.freq) + "</button> " + tag + "</td>" +
         '<td><button type="button" class="bs-tune" data-rename="' + h.freq + '" title="Rename bookmark">' +
@@ -6500,6 +7682,23 @@ Plugins.band_survey.init = function () {
       toast(bad);
       switchTab("range");
       return;
+    }
+    if (rangeUsesChannelGrid() && !(Number(S.rangeStepKhz) > 0)) {
+      var badGrid = "Channel grid needs Step kHz > 0 — pick a Grid preset or enter spacing.";
+      setStatus(badGrid);
+      toast(badGrid);
+      switchTab("range");
+      return;
+    }
+    if (rangeUsesChannelGrid()) {
+      var gridCenters = buildChannelGridCenters(startHz, endHz, rangeStepHz(), rangeOffsetHz());
+      if (!gridCenters.length) {
+        var badEmpty = "Channel grid produced no tune points — check Start, End, Step, and Offset.";
+        setStatus(badEmpty);
+        toast(badEmpty);
+        switchTab("range");
+        return;
+      }
     }
     if (!profiles().length) {
       setStatus("No band profiles yet — wait for the radio, then try again. See Help.");
@@ -7354,15 +8553,23 @@ Plugins.band_survey.init = function () {
       S.keepPeaks = keepPeaks;
     }
     if ($("bs-max-clips")) S.maxAudioClips = Math.max(5, Math.min(200, Number($("bs-max-clips").value) || 40));
+    if ($("bs-aud-preview-sec")) S.clipPreviewSec = clipPreviewSec();
+    if ($("bs-aud-vol")) S.clipVolume = clipVolumeLevel();
+    if ($("bs-bm-loaduser-bands") || $("bs-bm-lu-allbands")) S.loadUserBmBands = loadUserBmSelectedValues();
     if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
     if ($("bs-copy-done")) S.copyPeaksOnDone = $("bs-copy-done").checked;
     if ($("bs-alert-freqs")) S.alertFreqs = $("bs-alert-freqs").value || "";
     if ($("bs-alert-offset")) S.alertOffsetKhz = Math.max(1, Number($("bs-alert-offset").value) || 25);
     if ($("bs-text-size")) S.uiTextSize = $("bs-text-size").value || "default";
+    if ($("bs-hide-toolbar")) S.hideToolbar = $("bs-hide-toolbar").checked;
+    readExtrasFromForm();
+    if ($("bs-watchlist-freqs")) S.alertFreqs = $("bs-watchlist-freqs").value || S.alertFreqs;
     readHiddenTabsFromForm();
     saveSettings();
     applyUiTextSize();
     applyHiddenTabs();
+    applyToolbarVisibility();
+    applyExtrasUi();
     applySchedule();
     refreshBookmarks();
     renderHits();
@@ -7418,6 +8625,10 @@ Plugins.band_survey.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && !$("bs-extras")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing && !$("bs-minimize")) {
       existing.parentNode.removeChild(existing);
       existing = null;
@@ -7450,7 +8661,15 @@ Plugins.band_survey.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && !$("bs-hide-toolbar")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing && !$("bs-range-alone")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-range-grid")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -7536,11 +8755,16 @@ Plugins.band_survey.init = function () {
       '<div class="bs-bands" id="bs-bands"></div>' +
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-range" data-tab="range" role="tabpanel">' +
-      '<p class="bs-note">Set start–end MHz, pick scan mode and options, then <b>Scan range</b>. Scan options sync with the Bands tab (change on either tab).</p>' +
+      '<p class="bs-note">Set start–end MHz, pick scan mode and options, then <b>Scan range</b>. Scan options sync with the Bands tab (change on either tab). Use a <b>Grid preset</b> for channelised bands (PMR446, airband, …).</p>' +
       '<div class="bs-row">' +
-      '<label title="Start of the sweep in MHz (e.g. 109).">Start MHz <input type="number" id="bs-range-start" min="0.1" max="6000" step="0.001" style="width:6em"></label>' +
-      '<label title="End of the sweep in MHz (e.g. 200). Must be greater than start.">End MHz <input type="number" id="bs-range-end" min="0.1" max="6000" step="0.001" style="width:6em"></label>' +
-      '<label id="bs-range-step-label" title="Hop size in kHz. 0 = auto (~88% of waterfall span). Full range mode only.">Step kHz <input type="number" id="bs-range-step" min="0" max="100000" step="0.1" style="width:5em"></label>' +
+      '<label title="Start of the sweep in MHz (e.g. 109). For channel grid, band edge / nominal start (e.g. 446 for PMR446).">Start MHz <input type="number" id="bs-range-start" min="0.01" max="6000" step="0.001" style="width:6em"></label>' +
+      '<label title="End of the sweep in MHz (e.g. 200). Must be greater than start.">End MHz <input type="number" id="bs-range-end" min="0.01" max="6000" step="0.001" style="width:6em"></label>' +
+      '<label id="bs-range-step-label" title="Hop size in kHz. 0 = auto (~88% of waterfall span). Full range mode only.">Step kHz <input type="number" id="bs-range-step" min="0" max="100000" step="0.001" style="width:5em"></label>' +
+      '<label id="bs-range-offset-label" title="Channel grid only: first tune = Start MHz + this many kHz (e.g. PMR446 offset 6.25).">Offset kHz <input type="number" id="bs-range-offset" min="0" max="100000" step="0.001" style="width:5em"></label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label id="bs-range-grid-preset-label" title="Fill Start/End/Step/Offset for common channel plans, or Custom / Auto coverage.">Grid <select id="bs-range-grid-preset" style="max-width:16em"></select></label>' +
+      '<label class="bs-chk" id="bs-range-grid-label" title="Hop exact channel centres (Start+Offset, then +Step). Off = waterfall coverage tiles."><input type="checkbox" id="bs-range-grid"> Channel grid</label>' +
       "</div>" +
       '<div class="bs-range-opts-row">' +
       '<details class="bs-tab-opts bs-range-scan-opts" open>' +
@@ -7574,7 +8798,11 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<button type="button" id="bs-range-spec-png" title="Download the spectrum chart as a PNG image.">Save PNG</button>' +
       '<button type="button" id="bs-range-spec-csv" title="Download peak data for this range as CSV.">Save CSV</button>' +
-      "</div>" +
+      '<span data-extra="spectrumHistory" hidden>' +
+      '<button type="button" class="bs-tiny" id="bs-spec-hist-prev" title="Previous saved range spectrum.">◀</button>' +
+      '<span class="bs-count" id="bs-spec-hist-lab"></span>' +
+      '<button type="button" class="bs-tiny" id="bs-spec-hist-next" title="Next saved range spectrum.">▶</button>' +
+      "</span></div>" +
       '<canvas id="bs-range-spectrum" title="Range scan spectrum — click a peak marker to tune."></canvas>' +
       '<p class="bs-hint bs-range-spectrum-leg">Cyan fill = activity envelope · green = new · gold = seen · pink = priority · click marker to tune</p>' +
       "</div>" +
@@ -7634,6 +8862,9 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
       '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
       '<button type="button" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
+      '<label class="bs-chk" data-extra="whatsNew" hidden title="Show only peaks marked new since the last survey."><input type="checkbox" id="bs-show-new-only"> New only</label>' +
+      '<button type="button" data-extra="surveyDiff" hidden id="bs-survey-snap" title="Save current peaks as a snapshot for Δ compare.">Save snapshot</button>' +
+      '<label class="bs-chk" data-extra="surveyDiff" hidden title="Show only peaks not in the saved snapshot."><input type="checkbox" id="bs-show-diff-only"> Changed only</label>' +
       "</div>" +
       '<p class="bs-hint">Min seen and dB over noise are on the <b>Bands</b> tab — they control which peaks qualify for Bookmark qualified.</p>' +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo)</div>" +
@@ -7643,16 +8874,32 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<button type="button" id="bs-bm-save" title="Download local blue bookmarks and [load] imports as one JSON file. Load bookmarks can re-import it.">Save bookmarks</button>' +
       '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks unless the file is a Save bookmarks export.">Load bookmarks</button>' +
-      '<button type="button" id="bs-bm-clearload" title="Remove all [load] bookmarks from this browser. Local blue bookmarks stay.">Clear loaded</button>' +
+      '<button type="button" id="bs-bm-loaduser" title="Pull OpenWebRX user bookmarks into the [load] list for the bands ticked below.">Load user bookmarks</button>' +
+      '<span data-extra="userBmShortcuts" hidden>' +
+      '<button type="button" class="bs-tiny" id="bs-bm-lu-cur" title="Tick only the current OpenWebRX profile.">Current</button>' +
+      '<button type="button" class="bs-tiny" id="bs-bm-lu-ticked" title="Tick the same bands as on the Bands tab.">Ticked</button>' +
+      "</span>" +
+      '<button type="button" id="bs-bm-clearload" title="Remove all user/[load] bookmarks from this browser (imports and Load user bookmarks). Local blue bookmarks stay.">Clear user bookmarks</button>' +
       '<button type="button" id="bs-bm-clearlocal" title="Remove all local blue bookmarks from this browser. [load] imports and always-skip are not touched.">Clear bookmarks</button>' +
       '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
       '<span class="bs-count" id="bs-bmcount"></span>' +
       "</div>" +
+      '<details class="bs-tab-opts bs-bm-lu-wrap" open>' +
+      '<summary title="Which bands to include when loading OpenWebRX user bookmarks.">User bookmark bands</summary>' +
+      '<div class="bs-row">' +
+      '<label class="bs-chk" title="Load bookmarks from every band (ignores the list below)."><input type="checkbox" id="bs-bm-lu-allbands" checked> All bands</label>' +
+      '<span class="bs-hint">Or untick All and tick any mix of bands</span>' +
+      "</div>" +
+      '<div class="bs-bm-lu-bands bs-chk-grid" id="bs-bm-loaduser-bands"></div>' +
+      "</details>" +
       '<details class="bs-tab-opts" open>' +
       '<summary title="How bookmark scan listens, records, and auto-saves peaks.">Bookmark scan options</summary>' +
       '<div class="bs-row">' +
       "<label title=\"Minimum seconds on each bookmark after tune settle; with Hold while busy, stays longer until quiet.\">Listen s <input type=\"number\" id=\"bs-listensec\" min=\"1\" max=\"20\" step=\"0.5\" style=\"width:3.6em\"></label>" +
       '<label title="MHz or Hz, comma-separated. Guard / tower / ATIS bookmarks are added automatically.">Priority <input type="text" id="bs-priority" placeholder="121.5" style="width:8em"></label>' +
+      '<label data-extra="scanOrder" hidden title="Order for Scan bookmarks (Extras).">Order <select id="bs-listen-order">' +
+      '<option value="priority">Priority first</option><option value="freq">Frequency</option>' +
+      '<option value="name">Name</option><option value="random">Random</option></select></label>' +
       "</div>" +
       '<div class="bs-row bs-chk-grid">' +
       '<label class="bs-chk" title="Save busy peaks as blue [auto] bookmarks in this browser."><input type="checkbox" id="bs-autobm"> Auto-bookmark actives</label>' +
@@ -7663,6 +8910,19 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk" title="Record demod while a bookmark is busy or voice-gated (see Record mode on Audio tab)."><input type="checkbox" id="bs-record"> Record busy</label>' +
       "</div></details>" +
       '<p class="bs-note">Local = blue [auto] · Loaded = [load] import · click to tune · ren to rename</p>' +
+      '<details class="bs-tab-opts" data-extra="watchlist" hidden>' +
+      '<summary title="Alert / watch MHz list (same as Settings → Homelab).">Watchlist</summary>' +
+      '<div class="bs-row">' +
+      '<label title="Comma-separated MHz to watch." style="flex:1">Alert MHz <textarea id="bs-watchlist-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px"></textarea></label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts" data-extra="sessionLog" hidden open>' +
+      '<summary title="Bookmark-scan hop log (Extras).">Session log</summary>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny" id="bs-session-export" title="Download session log as CSV.">Export log CSV</button>' +
+      '<button type="button" class="bs-tiny" id="bs-session-clear" title="Clear session log.">Clear log</button>' +
+      "</div>" +
+      '<div class="bs-tab-scroll" id="bs-session-log" style="max-height:9em"></div>' +
+      "</details>" +
       '<div class="bs-tab-scroll bs-bm-scroll" id="bs-bmlist"></div>' +
       '<div class="bs-tab-scroll bs-loaded-scroll" id="bs-loadedlist"></div>' +
       "</div>" +
@@ -7672,6 +8932,16 @@ Plugins.band_survey.init = function () {
       '<button type="button" id="bs-aud-save-zip" title="Download all Audio clips as one ZIP file. Loads JSZip from jsDelivr on first use.">Save all · ZIP</button>' +
       '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
       '<button type="button" id="bs-aud-clear" title="Remove every audio clip from this browser (IndexedDB). Files you already saved to disk are not deleted.">Clear all</button>' +
+      '<label class="bs-aud-vol" title="Volume for Play and Preview all in this panel. Does not change OpenWebRX receiver volume.">Vol <input type="range" id="bs-aud-vol" min="0" max="100" step="1"> <span id="bs-aud-vol-lbl">80%</span></label>' +
+      "</div>" +
+      '<div class="bs-row" id="bs-aud-preview-row" hidden>' +
+      '<button type="button" id="bs-aud-preview" title="Play the first N seconds of each clip in order. Highlights the one playing, then advances.">Preview all</button>' +
+      '<label title="Seconds of each clip to play during Preview all (1–15).">First s <input type="number" id="bs-aud-preview-sec" min="1" max="15" step="0.5" style="width:3.6em"></label>' +
+      '<span class="bs-hint">Skims many clips — lights up the row that is playing</span>' +
+      "</div>" +
+      '<div class="bs-row" data-extra="recCaps" hidden>' +
+      '<label title="Stop Record busy after this many seconds on one channel (Extras).">Max clip s <input type="number" id="bs-max-clip-sec" min="5" max="600" step="5" style="width:4em"></label>' +
+      '<span class="bs-hint">Caps how long a busy channel can keep recording</span>' +
       "</div>" +
       '<details class="bs-tab-opts" open>' +
       '<summary title="Recording quality and voice-gating fine-tune.">Recording options</summary>' +
@@ -7723,6 +8993,9 @@ Plugins.band_survey.init = function () {
       '<option value="skip">Always Skip</option><option value="settings">Always Settings</option><option value="help">Always Help</option></select></label>' +
       '<label title="Scale panel text: Small ~90%, Default 100%, Large ~110%.">UI text size <select id="bs-text-size">' +
       '<option value="small">Small</option><option value="default">Default</option><option value="large">Large</option></select></label>' +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Hide the top strip (Scan bands, Fresh scan, Stop, Scan bookmarks, Jump loudest, Check install, Hold/Skip…). Scan buttons on Bands/Range tabs still work."><input type="checkbox" id="bs-hide-toolbar"> Hide top toolbar (Scan / Stop / …)</label>' +
       "</div>" +
       '<div class="bs-visible-tabs-box" title="Untick tabs for a minimal tab bar. Settings always stays on so you can restore tabs.">' +
       '<div class="bs-range-mode-title">Visible tabs</div>' +
@@ -7799,7 +9072,9 @@ Plugins.band_survey.init = function () {
       '<div class="bs-row">' +
       '<label title="Comma-separated MHz. Extra notify and sound when a new peak is within ± offset.">Alert MHz list <textarea id="bs-alert-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px"></textarea></label>' +
       '<label title="Match alert list within ± this many kHz.">± kHz <input type="number" id="bs-alert-offset" min="1" max="500" step="1" style="width:3.5em"></label>' +
-      "</div></details></div></div>" +
+      "</div></details>" +
+      extrasSettingsHtml() +
+      "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-help" data-tab="help" role="tabpanel">' +
       '<div class="bs-tab-scroll bs-help-pane">' + helpContentHtml() + "</div></div></div>" +
       '<input type="file" id="bs-csv-file" accept=".csv,.txt,text/csv,text/plain" hidden>' +
@@ -7851,6 +9126,10 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-start")) $("bs-range-start").value = S.rangeStartMhz;
     if ($("bs-range-end")) $("bs-range-end").value = S.rangeEndMhz;
     if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz || 0;
+    if ($("bs-range-offset")) $("bs-range-offset").value = S.rangeOffsetKhz || 0;
+    if ($("bs-range-grid")) $("bs-range-grid").checked = !!S.rangeChannelGrid;
+    syncRangeGridPresetSelect();
+    if ($("bs-range-grid-preset")) $("bs-range-grid-preset").value = S.rangeGridPreset || "auto";
     if ($("bs-range-passes")) $("bs-range-passes").value = S.passes;
     if ($("bs-range-dwell")) $("bs-range-dwell").value = S.dwell;
     if ($("bs-range-minhits")) $("bs-range-minhits").value = S.minHits;
@@ -7887,9 +9166,65 @@ Plugins.band_survey.init = function () {
     }
     switchTab(resolveOpenTab());
     applyHiddenTabs();
+    applyToolbarVisibility();
+    fillExtrasForm();
+    applyExtrasUi();
+    bindExtrasKeyboard();
     updateTabLabels();
 
     bindHelpTabActions();
+    Array.prototype.forEach.call(document.querySelectorAll("#bs-extras .bs-extra-tog"), function (inp) {
+      inp.onchange = function () {
+        readExtrasFromForm();
+        saveSettings();
+        applyExtrasUi();
+        renderHits();
+        renderAudioClips();
+        setStatus(inp.checked
+          ? ("Extra on: " + (inp.parentNode && inp.parentNode.textContent || inp.id).replace(/\s+/g, " ").trim().slice(0, 60))
+          : "Extra off.");
+      };
+    });
+    if ($("bs-show-new-only")) $("bs-show-new-only").onchange = function () {
+      S.showNewOnly = !!this.checked; saveSettings(); renderHits();
+    };
+    if ($("bs-show-diff-only")) $("bs-show-diff-only").onchange = function () {
+      S.showDiffOnly = !!this.checked; saveSettings(); renderHits();
+    };
+    if ($("bs-survey-snap")) $("bs-survey-snap").onclick = saveSurveySnapNow;
+    if ($("bs-session-export")) $("bs-session-export").onclick = exportSessionLogCsv;
+    if ($("bs-session-clear")) $("bs-session-clear").onclick = clearSessionLog;
+    if ($("bs-watchlist-freqs")) $("bs-watchlist-freqs").onchange = function () {
+      S.alertFreqs = this.value || "";
+      if ($("bs-alert-freqs")) $("bs-alert-freqs").value = S.alertFreqs;
+      saveSettings();
+    };
+    if ($("bs-listen-order")) $("bs-listen-order").onchange = function () {
+      S.listenScanOrder = this.value || "priority"; saveSettings();
+    };
+    if ($("bs-max-clip-sec")) $("bs-max-clip-sec").onchange = function () {
+      S.maxClipSec = Math.max(5, Math.min(600, Number(this.value) || 60)); saveSettings();
+    };
+    if ($("bs-spec-hist-prev")) $("bs-spec-hist-prev").onclick = function () { showSpectrumHist(-1); };
+    if ($("bs-spec-hist-next")) $("bs-spec-hist-next").onclick = function () { showSpectrumHist(1); };
+    if ($("bs-quiet-night")) $("bs-quiet-night").onclick = function () {
+      S.quietStart = "22:00"; S.quietEnd = "06:00";
+      if ($("bs-quiet-start")) $("bs-quiet-start").value = S.quietStart;
+      if ($("bs-quiet-end")) $("bs-quiet-end").value = S.quietEnd;
+      saveSettings(); applySchedule(); setStatus("Quiet hours set to 22:00–06:00.");
+    };
+    if ($("bs-quiet-eve")) $("bs-quiet-eve").onclick = function () {
+      S.quietStart = "18:00"; S.quietEnd = "08:00";
+      if ($("bs-quiet-start")) $("bs-quiet-start").value = S.quietStart;
+      if ($("bs-quiet-end")) $("bs-quiet-end").value = S.quietEnd;
+      saveSettings(); applySchedule(); setStatus("Quiet hours set to 18:00–08:00.");
+    };
+    if ($("bs-quiet-clear")) $("bs-quiet-clear").onclick = function () {
+      S.quietStart = ""; S.quietEnd = "";
+      if ($("bs-quiet-start")) $("bs-quiet-start").value = "";
+      if ($("bs-quiet-end")) $("bs-quiet-end").value = "";
+      saveSettings(); applySchedule(); setStatus("Quiet hours cleared.");
+    };
 
     fillBands();
     applyCaps();
@@ -7922,6 +9257,15 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-start")) $("bs-range-start").onchange = readRangeForm;
     if ($("bs-range-end")) $("bs-range-end").onchange = readRangeForm;
     if ($("bs-range-step")) $("bs-range-step").onchange = readRangeForm;
+    if ($("bs-range-offset")) $("bs-range-offset").onchange = readRangeForm;
+    if ($("bs-range-grid")) $("bs-range-grid").onchange = readRangeForm;
+    if ($("bs-range-grid-preset")) {
+      syncRangeGridPresetSelect();
+      $("bs-range-grid-preset").value = S.rangeGridPreset || "auto";
+      $("bs-range-grid-preset").onchange = function () {
+        applyRangeGridPreset($("bs-range-grid-preset").value, true);
+      };
+    }
     if ($("bs-range-passes")) $("bs-range-passes").onchange = readRangeForm;
     if ($("bs-range-dwell")) $("bs-range-dwell").onchange = readRangeForm;
     if ($("bs-range-thresh")) $("bs-range-thresh").onchange = readRangeForm;
@@ -7986,7 +9330,7 @@ Plugins.band_survey.init = function () {
     if ($("bs-autoopen")) $("bs-autoopen").onchange = readForm;
     [
       "bs-remember-tab", "bs-switch-peaks", "bs-notify-done", "bs-sound-peak", "bs-copy-done",
-      "bs-sched-idle", "bs-pause-tune"
+      "bs-sched-idle", "bs-pause-tune", "bs-hide-toolbar"
     ].forEach(function (id) {
       if ($(id)) $(id).onchange = readForm;
     });
@@ -8090,6 +9434,27 @@ Plugins.band_survey.init = function () {
     $("bs-json-in").onclick = function (ev) { startImport("json", ev); };
     if ($("bs-aud-save")) $("bs-aud-save").onclick = saveAllAudioClips;
     if ($("bs-aud-save-zip")) $("bs-aud-save-zip").onclick = saveAllAudioClipsZip;
+    if ($("bs-aud-preview")) $("bs-aud-preview").onclick = toggleClipPreview;
+    if ($("bs-aud-preview-sec")) {
+      $("bs-aud-preview-sec").value = S.clipPreviewSec || 3;
+      $("bs-aud-preview-sec").onchange = function () {
+        S.clipPreviewSec = clipPreviewSec();
+        saveSettings();
+      };
+    }
+    if ($("bs-aud-vol")) {
+      $("bs-aud-vol").value = clipVolumeLevel();
+      applyClipVolume();
+      $("bs-aud-vol").oninput = function () {
+        S.clipVolume = clipVolumeLevel();
+        applyClipVolume();
+      };
+      $("bs-aud-vol").onchange = function () {
+        S.clipVolume = clipVolumeLevel();
+        applyClipVolume();
+        saveSettings();
+      };
+    }
     if ($("bs-aud-load")) $("bs-aud-load").onclick = function () {
       var inp = $("bs-aud-file");
       if (inp) inp.click();
@@ -8102,6 +9467,12 @@ Plugins.band_survey.init = function () {
     if ($("bs-audiolist")) $("bs-audiolist").onclick = onAudioPaneClick;
     if ($("bs-bm-save")) $("bs-bm-save").onclick = saveBookmarks;
     if ($("bs-bm-load")) $("bs-bm-load").onclick = startLoadBookmarks;
+    if ($("bs-bm-loaduser")) $("bs-bm-loaduser").onclick = loadUserBookmarksFromStore;
+    if ($("bs-bm-lu-cur")) $("bs-bm-lu-cur").onclick = function () { applyLoadUserBmPreset("current"); };
+    if ($("bs-bm-lu-ticked")) $("bs-bm-lu-ticked").onclick = function () { applyLoadUserBmPreset("ticked"); };
+    fillLoadUserBmBandSelect();
+    if ($("bs-bm-lu-allbands")) $("bs-bm-lu-allbands").onchange = onLoadUserBmBandsClick;
+    if ($("bs-bm-loaduser-bands")) $("bs-bm-loaduser-bands").onchange = onLoadUserBmBandsClick;
     if ($("bs-bm-clearload")) $("bs-bm-clearload").onclick = clearLoadedBookmarks;
     if ($("bs-bm-clearlocal")) $("bs-bm-clearlocal").onclick = clearLocalBookmarks;
     if ($("bs-bm-file")) $("bs-bm-file").onchange = onLoadBookmarkFile;
@@ -8147,6 +9518,28 @@ Plugins.band_survey.init = function () {
             setStatus("Always skip " + fmtMhz(ignF) + " (saved in this browser).");
           }
         }
+        return;
+      }
+      if (t.getAttribute("data-named-bm")) {
+        addNamedBookmarkFromPeak(Number(t.getAttribute("data-named-bm")));
+        return;
+      }
+      if (t.getAttribute("data-copy-tune")) {
+        copyTuneText(Number(t.getAttribute("data-copy-tune")), t.getAttribute("data-copy-mode") || "");
+        return;
+      }
+      if (t.getAttribute("data-freq-note")) {
+        var nf = Number(t.getAttribute("data-freq-note"));
+        var cur = noteForFreq(nf);
+        var nn = window.prompt("Note for " + fmtMhz(nf) + ":", cur);
+        if (nn == null) return;
+        setNoteForFreq(nf, nn);
+        renderHits();
+        setStatus(nn.trim() ? ("Note saved for " + fmtMhz(nf)) : ("Note cleared for " + fmtMhz(nf)));
+        return;
+      }
+      if (t.getAttribute("data-wf-snap")) {
+        captureWaterfallPng();
         return;
       }
       if (t.getAttribute("data-bm")) {
@@ -8203,13 +9596,15 @@ Plugins.band_survey.init = function () {
   }
 
   function ensureSvAccessChip() {
+    var old = $("bs-sv-chip");
+    var btn = $("bs-toggle-btn");
     var panel = $("bs-panel");
-    if (!panel || !panel.hidden) {
-      var old = $("bs-sv-chip");
+    /* Top-bar Survey (or freq-bar SV) already toggles the panel — never add a second orange SV. */
+    if (btn || !panel || !panel.hidden) {
       if (old) old.remove();
       return;
     }
-    if ($("bs-sv-chip")) return;
+    if (old) return;
     var chip = document.createElement("div");
     chip.id = "bs-sv-chip";
     chip.textContent = "SV";
@@ -8307,7 +9702,13 @@ Plugins.band_survey.init = function () {
   }
 
   function placeToggle(btn) {
-    if (placeTopBarToggle(btn)) return;
+    if (placeTopBarToggle(btn)) {
+      /* Ensure leftover freq-bar styling cannot leave a second visible control. */
+      btn.classList.remove("bs-freqbar-fallback");
+      var chip = $("bs-sv-chip");
+      if (chip) chip.remove();
+      return;
+    }
     placeFreqbarToggle(btn, $("openwebrx-panel-receiver"));
   }
 
