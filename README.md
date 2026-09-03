@@ -1,4 +1,4 @@
-# Band survey — OpenWebRX+ plugin (v97)
+# Band survey — OpenWebRX+ plugin (v110)
 
 > **Broken after updating to v91–v96?** No Survey button but `./install.sh --check` says OK?  
 > Pull **v97+**, re-run `./install.sh`, then hard-refresh the receiver page (Ctrl+Shift+R).  
@@ -11,10 +11,11 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 talks to the OpenWebRX+ UI, not to USB hardware directly. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
-**Recent (v97):** Fix init crash in v91–v96 (`TAB_IDS` used before defined → no Survey button even when `install.sh --check` passed). **v96:** Top-bar **Survey** button; **Explore**; **Visible tabs** (minimal panel);
-**Only if alone** on Range / Bands / Settings; range spectrum ≥12 frequency labels; single
-hover tip; experimental **Analyzer** tab (live spectrum, off by default); `install.sh`
-`chmod 644` on plugin/`init.js` after copy.
+**Recent (v110):** No floating orange **SV** when top-bar **Survey** is present (was a
+duplicate reopen chip covering the status bar). **v109:** Range **Channel grid** with **Step kHz**, **Offset kHz**, and presets
+(PMR446, Airband 25/8.33, LPD433, Marine, 2m/70cm FM, CB, FM broadcast, MW). Exact channel
+centres instead of waterfall-coverage hops. **v97:** Fix init crash in v91–v96 (`TAB_IDS`).
+**v96:** Top-bar **Survey** button; **Explore**; **Visible tabs**; experimental **Analyzer**.
 
 ## Where to start
 
@@ -406,13 +407,19 @@ wraps.
 
 Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profiles.
 
-- **Start MHz** / **End MHz** — sweep span (e.g. 109–200).
-- **Step kHz** — hop size. **0** = auto (~88% of waterfall span, min 12.5 kHz). Use
-  500–2000 kHz for wide surveys.
+- **Start MHz** / **End MHz** — sweep span (e.g. 109–200). For channel grids, use the
+  band edge / nominal start (e.g. **446** for PMR446).
+- **Step kHz** — hop size. In auto coverage, **0** = ~88% of waterfall span (min 12.5 kHz).
+  In **Channel grid**, this is channel spacing (e.g. **12.5** for PMR446).
+- **Offset kHz** — channel grid only: first tune = Start + offset (PMR446: offset **6.25**
+  → 446.00625 MHz).
+- **Channel grid** + **Grid preset** — hop exact channel centres. Presets: Airband 25 /
+  8.33 kHz, PMR446 12.5 / 6.25, LPD433, Marine VHF ~25 kHz, 2m / 70cm FM, CB, FM broadcast
+  100/200 kHz, MW AM 9/10 kHz, or **Custom**. Off = previous waterfall-coverage behaviour.
 - **Scan range** — add peaks to Seen.
 - **Fresh range scan** — clear peak list first.
 - **Full range (Explorer)** vs **Ticked bands only** — full span hops every step; bands
-  mode only covers overlapping ticked profiles.
+  mode only covers overlapping ticked profiles (channel grid N/A).
 - **Range scan options** (on Range tab, synced with Bands): Passes, Dwell, Min seen,
   dB, Hide birdies, Wideband peaks, Mute, **Only if alone**, Own radio.
 - **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
@@ -600,7 +607,8 @@ hops**). **Scan bands** adds to Seen; **Fresh scan** clears first.
 
 ### Range survey
 
-Hops MHz steps across profiles. Shares peak list and scan options with band survey.
+Hops MHz steps across profiles (waterfall coverage, or exact **channel grid** centres when
+that mode is on). Shares peak list and scan options with band survey.
 Spectrum map shown after finish or Stop.
 
 ### Bookmark scan
