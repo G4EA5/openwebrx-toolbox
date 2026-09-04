@@ -1,4 +1,4 @@
-# Band survey — OpenWebRX+ plugin (v110)
+# Band survey — OpenWebRX+ plugin (v127)
 
 > **Broken after updating to v91–v96?** No Survey button but `./install.sh --check` says OK?  
 > Pull **v97+**, re-run `./install.sh`, then hard-refresh the receiver page (Ctrl+Shift+R).  
@@ -11,11 +11,10 @@ real waterfall peaks, ranks the busiest, and can bookmark them in **this browser
 talks to the OpenWebRX+ UI, not to USB hardware directly. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
-**Recent (v110):** No floating orange **SV** when top-bar **Survey** is present (was a
-duplicate reopen chip covering the status bar). **v109:** Range **Channel grid** with **Step kHz**, **Offset kHz**, and presets
-(PMR446, Airband 25/8.33, LPD433, Marine, 2m/70cm FM, CB, FM broadcast, MW). Exact channel
-centres instead of waterfall-coverage hops. **v97:** Fix init crash in v91–v96 (`TAB_IDS`).
-**v96:** Top-bar **Survey** button; **Explore**; **Visible tabs**; experimental **Analyzer**.
+**Recent (v127):** Settings → Extras — Digi/FT8 survey, HF day/night band sets, band×hour
+heatmap, share report PNG, send-to-scanner, ←/→ in bookmark scan (with Keyboard). **v111:**
+Settings panel-only; after-scan/schedule on Bands. **v110:** No duplicate SV chip. **v97:**
+Init crash fix (`TAB_IDS`).
 
 ## Where to start
 
@@ -28,7 +27,7 @@ orange **SV** on the frequency bar (fallback).
   <img src="screenshots/topbar-survey-button.png" alt="OpenWebRX+ top bar — Help, Survey (between Help and Status), Status, Chat, Receiver, Map, Files, Settings" width="720">
 </p>
 
-<p><em>Click <strong>Survey</strong> (highlighted above) to open the panel, then use <strong>Check install</strong> on the toolbar.</em></p>
+<p><em>Click <strong>Survey</strong> (highlighted above) to open the panel, then Settings → <strong>Check install</strong>.</em></p>
 
 **Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
 optional extras if you already load them.
@@ -98,7 +97,7 @@ chmod +x install.sh
 ```
 
 Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click **Survey**
-→ **Check install**.
+→ **Settings** → **Check install**.
 
 Verify without writing files (writes a full diagnostic log):
 
@@ -338,7 +337,7 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 
 1. Hard-refresh: **Ctrl+Shift+R** / **Cmd+Shift+R**.
 2. Click **Survey** in the top bar (between **Help** and **Status**) — see [Where to start](#where-to-start).
-3. Click **Check install**. Green = ready.
+3. Open **Settings** and click **Check install**. Green = ready.
 4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
 5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time — no double browser+custom tips).
 
@@ -359,9 +358,12 @@ Tabs: **Bands**, **Range**, **Explore**, **Analyzer** (experimental, off by defa
 Hide any tab under Settings → **Visible tabs**. **Show all tabs** restores everything
 except Analyzer (still off until you tick it). Settings always stays on.
 
-Scan controls stay pinned in the **toolbar** below the tabs. Drag panel edges or the
-corner to resize; drag the title bar to move. Default position: 12 vw from left, 28 vh
-from top, 28 vw wide, 58 vh tall — remembered in this browser.
+Scan controls appear below the tabs **when that tab needs them**: Scan bands on
+**Bands**, Scan bookmarks / Hold / Skip on **Bookmarks**, Scan range / Stop on **Range**.
+On Explore / Settings / Help the strip stays hidden unless a scan is running (then
+**Stop** and status show). Drag panel edges or the corner to resize; drag the title bar
+to move. Default position: 12 vw from left, 28 vh from top, 28 vw wide, 58 vh tall —
+remembered in this browser.
 
 ---
 
@@ -374,7 +376,6 @@ from top, 28 vw wide, 58 vh tall — remembered in this browser.
 | **Stop** | Halt band survey, range survey, or bookmark scan. Auto-bookmarks qualified peaks when **Auto-bookmark actives** is on. |
 | **Scan bookmarks** / **Scanning bookmarks** | Loop local and loaded bookmarks until Stop. Becomes **Continue scan bookmarks** when paused (continuous mode off + busy channel). |
 | **Jump loudest** | Retune to strongest peak on **this waterfall tile only**. |
-| **Check install** | Verify plugin and receiver. Dismiss with **×** or after success; restore via Settings → **Re-show Check install**. |
 | **Hold** / **Skip** / **Always skip** / **Lockout** | During bookmark scan: stay, move on, skip forever, or skip for Lockout minutes. |
 
 Status line below the toolbar reserves two lines so the panel does not bounce when text
@@ -398,10 +399,14 @@ wraps.
   - **dB over noise** — peak must be this far above the noise floor.
 - **Hide birdies** — hide always-skipped rows from the peak list.
 - **Mute while running** — silence audio during band/range survey walks.
-- **Only if alone** — do not retune when other listeners are online (also on Range and
-  Settings → Courtesy).
+- **Only if alone** — do not retune when other listeners are online (also on Range).
 - **Own radio — fast hops** — ~1 s between profile changes instead of ~11 s. Only on a
   receiver you run yourself. Locked on public installs (`./install.sh --public`).
+- **After scan** (also on Range): Switch to Peaks, notify/copy when done, sound on new
+  peak, notify new peak.
+- **Scheduled scan** — every N hours while this browser tab stays open (band, bookmark,
+  or both). Quiet hours and idle skip.
+- **Courtesy** (also on Range): pause when you tune manually, profile settle ms.
 
 ### Range
 
@@ -421,7 +426,7 @@ Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profile
 - **Full range (Explorer)** vs **Ticked bands only** — full span hops every step; bands
   mode only covers overlapping ticked profiles (channel grid N/A).
 - **Range scan options** (on Range tab, synced with Bands): Passes, Dwell, Min seen,
-  dB, Hide birdies, Wideband peaks, Mute, **Only if alone**, Own radio.
+  dB, Hide birdies, Wideband peaks, Mute, **Only if alone**, Own radio, after-scan, courtesy.
 - **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
   bar height = dB; ≥12 frequency labels on the X-axis; click a bar to tune.
 
@@ -431,9 +436,17 @@ Browse the **whole** spectrum — every SDR profile in frequency order (not the 
 Bands list). Tile width follows the active profile bandwidth (often ~2.4 MHz on RTL
 setups; wider on many HackRF profiles).
 
+- Frequency counter shows the demodulator tune, waterfall center, profile, and span.
+- **Step kHz** / **Offset kHz** set the VFO grid (same idea as Range channel grid).
+  **− / +** nudge one step; **Snap** lands on the grid; **Go** jumps to a typed MHz.
+- Step presets: 1 / 5 / 6.25 / 8.33 / 12.5 / 25 / 100 kHz.
 - Turn **Explore on**, then drag the waterfall sideways (≥⅓ width) to hop tiles,
-  short-click to tune, Alt+wheel to hop.
-- **◀ ▶** hop one tile at a time.
+  short-click to tune. Wheel steps the VFO (Shift = ×10, Alt = next/previous profile).
+- **◀ ▶** and the **Profile** dropdown switch SDR profiles (same list as the receiver).
+- **Receiver** on this tab: analog modes (NFM, WFM, AM, LSB, USB, CW, and any others
+  the receiver offers), digital mode list, **Mute**, **Volume**, **Squelch** (with Auto),
+  and **NR**. These drive the same OpenWebRX controls as the receiver panel.
+- **Copy**, **Bookmark here**, and **Jump loudest** live on this tab.
 - For automated sweeps use **Range → Full range (Explorer)**.
 
 ### Analyzer (experimental)
@@ -463,6 +476,8 @@ Ranked survey results — sort by Seen, MHz, or dB.
 | **Import CSV** / **Import JSON** | Restore Peaks/Seen (file picker; Shift-click to paste) |
 | **Clear list** | Wipe peak table (bookmarks stay) |
 
+**Max peaks** and **Keep peaks between sessions** are on this tab.
+
 ### Bookmarks
 
 - **Blue** local bookmarks — **[auto]** from surveys vs named.
@@ -482,6 +497,7 @@ Ranked survey results — sort by Seen, MHz, or dB.
 | **Continuous bookmark scan** | Loop without pausing on busy (default on) |
 | **Hold while busy** | When continuous off: stay until ~1.5 s quiet; button becomes **Continue scan bookmarks** |
 | **Record busy** | Capture demod audio while parked (see Audio tab) |
+| **Alert MHz list** / **± kHz** | Extra notify and sound when a new peak is within tolerance |
 
 **Scan bookmarks** loops new auto bookmarks first, then all local and loaded. Same-band
 hops ~1 s; other-band ~11 s (or ~1 s with **Own radio — fast hops**).
@@ -511,7 +527,7 @@ Fine-tune (Balanced/Strict; Original ignores): **Squelch open only**, **Debounce
 **Quiet pause ms**, **Min SNR dB**, **Squelch headroom dB**, **Min clip voice %**
 (0 = mode default).
 
-Default cap: 40 clips or ~48 MB (set **Max audio clips** on Settings). Scanner waits
+Default cap: 40 clips or ~48 MB (set **Max audio clips** on this tab). Scanner waits
 ≥2 s before hopping so clips are not cut off.
 
 ### Skip
@@ -530,7 +546,14 @@ bookmark backup buttons: **Restore first-run bookmarks**, **Restore last backup*
 
 ## Settings reference
 
-Global panel preferences. Scan and bookmark options live on their respective tabs.
+Panel-wide preferences only. Scan options are on Bands / Range, bookmark alerts on
+Bookmarks, peak limits on Peaks, clip cap on Audio.
+
+### Extras
+
+Optional add-ons, all off by default. **Add all extras** turns them on except
+**Public / shared receiver mode** (that extra greys out Factory reset). **Clear extras**
+turns them all off. Ticked extras add controls on the tab named in parentheses.
 
 ### Panel & UI
 
@@ -542,38 +565,8 @@ Global panel preferences. Scan and bookmark options live on their respective tab
 | **UI text size** | Default | Small (~90%), Default, Large (~110%) |
 | **Visible tabs** | all on except Analyzer | Untick tabs for a minimal bar. **Analyzer** is experimental and off by default; **Show all tabs** still leaves Analyzer off. Settings always stays on |
 | **Reset panel layout** | — | Restore default / waterfall / saved position |
-| **Re-show Check install** | — | Put Check install back on toolbar |
-
-### After scan
-
-Applies on normal scan finish (not Stop).
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Switch to Peaks when done** | off | Jump to Peaks tab |
-| **Notify when scan completes** | off | Desktop notification + status |
-| **Copy peaks after scan** | off | Copy peak table to clipboard |
-| **Sound on new peak** | on | Beep when a new peak is counted during scan |
-
-### Scheduled scan
-
-Runs while **this browser tab** stays open.
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Every N hours** | 0 (off) | Repeat interval |
-| **Action** | Band scan | Band scan, Bookmark scan, or Both |
-| **Only when receiver idle** | off | Skip if you tuned manually in last 10 min |
-| **Quiet hours** | blank | No auto-scan between start and end (24 h, local) |
-
-### Courtesy
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Pause scan when I tune manually** | off | Stop survey if you click the waterfall |
-| **Notify new peak** | on | Browser notification for unseen peaks |
-| **Only if alone** | on | Do not retune when other listeners online (also on Range / Bands) |
-| **Profile settle ms** | 0 | Wait after profile change before sampling (0 = ~700 ms) |
+| **Always hide scan strip** | off | Never show the Bands/Bookmarks scan strip (even while a scan is running, use Range Stop or keyboard S) |
+| **Check install** | — | Verify plugin and receiver. Result box appears on Settings. Help also has **Check install now** |
 
 ### Data & housekeeping
 
@@ -582,18 +575,18 @@ Runs while **this browser tab** stays open.
 | **Export settings** | — | Download settings JSON (not peaks or audio) |
 | **Import settings** | — | Merge settings from JSON file |
 | **Reset settings** | — | Defaults (keeps peak list and bookmarks) |
-| **Max peaks** | 0 (unlimited) | Trim oldest when exceeded. Try 1000–2000 if the panel feels slow. |
-| **Keep peaks between sessions** | on | Off = fresh peak list each browser session (faster). Export CSV first if you need the old list. |
-| **Max audio clips** | 40 | IndexedDB cap (5–200) |
-| **Clear all plugin data** | — | Wipe everything in this browser |
+| **Factory reset** | — | Red box at the **top of Settings**, and again under Data & housekeeping. Wipe everything in this browser. Greyed out if the Public / shared extra is on |
 
 ### Homelab
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | **Webhook URL** | blank | POST `{freq, name, db, band}` on each new peak |
-| **Alert MHz list** | blank | Extra notify/sound when new peak within ± offset |
-| **± kHz** | 25 | Alert frequency tolerance |
+
+After-scan, scheduled scan, and courtesy (pause / settle / notify) are on the **Bands**
+tab. Range shares after-scan and courtesy. **Max peaks** / **Keep peaks** are on
+**Peaks**. **Max audio clips** is on **Audio**. **Alert MHz** / **± kHz** are on
+**Bookmarks**.
 
 ---
 
@@ -694,20 +687,20 @@ array on the radio host.
 | **No Survey / SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
 | **PermissionError on init.js** | Files left mode `600`. Re-run `./install.sh` (v91+ sets `chmod 644` on plugin + `init.js`). |
 | **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
-| **Slow panel / many stored peaks** | Settings → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open Survey, not on page load. |
+| **Slow panel / many stored peaks** | Peaks tab → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open Survey, not on page load. |
 | **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
 | **No waterfall data** | Wait after connect; check SDR is started in OpenWebRX. Plugin needs the receiver waterfall, not a standalone HackRF app. |
 | **Range/Analyzer skip large spans** | No profile covers that MHz — add OpenWebRX profiles, or narrow Start/End. |
 | **Presets tick nothing** | Profile ids do not match Air/FM patterns — tick bands manually or use **All**. |
 | **Analyzer missing** | Experimental and off by default. Settings → **Visible tabs** → enable **Analyzer · experimental**. |
 | **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
-| **Other listeners online** | Untick **Only if alone** on Range, Bands, or Settings → Courtesy. |
+| **Other listeners online** | Untick **Only if alone** on Range or Bands. |
 | **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. Wideband peaks for FM/HF broadcast. |
 | **Banned / kicked** | Leave **Own radio — fast hops** off on shared receivers. |
 
 **Diagnostic logs:** `./install.sh --report` on the radio host (SSH). **Browser side:** Survey → Help → **Copy diagnostic report**. Send both if asking for help.
 
-Toolbar **Check install** hides after use; Help tab **Check install now** always works.
+Settings → **Check install** and Help tab **Check install now** run the same checks.
 
 See **[Docker](#docker-openwebrx-in-a-container)** under Install for container install steps.
 

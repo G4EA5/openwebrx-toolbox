@@ -13,7 +13,7 @@
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
 Plugins.band_survey = {};
-Plugins.band_survey._version = 110;
+Plugins.band_survey._version = 127;
 /* Homelab magic_key for continuous center retune (setfrequency). Override if needed. */
 Plugins.band_survey.magic_key = Plugins.band_survey.magic_key || "memagic";
 
@@ -73,15 +73,34 @@ Plugins.band_survey.init = function () {
 
   function syncAloneUi(checked) {
     var on = !!checked;
-    if ($("bs-alone")) $("bs-alone").checked = on;
     if ($("bs-band-alone")) $("bs-band-alone").checked = on;
     if ($("bs-range-alone")) $("bs-range-alone").checked = on;
     return on;
   }
 
   function aloneFromUi() {
-    var el = $("bs-range-alone") || $("bs-band-alone") || $("bs-alone");
+    /* Prefer the control on the active surface: Bands form first, then Range. */
+    var el = $("bs-band-alone") || $("bs-range-alone");
     return syncAloneUi(el ? el.checked : S.aloneOnly);
+  }
+
+  function syncPairChk(idA, idB, on) {
+    on = !!on;
+    if ($(idA)) $(idA).checked = on;
+    if ($(idB)) $(idB).checked = on;
+    return on;
+  }
+
+  function pairChkFromUi(idA, idB, fallback) {
+    var el = $(idA) || $(idB);
+    if (!el) return fallback;
+    return syncPairChk(idA, idB, el.checked);
+  }
+
+  function syncPairNum(idA, idB, val) {
+    if ($(idA)) $(idA).value = val;
+    if ($(idB)) $(idB).value = val;
+    return val;
   }
 
   function dwellFromUi() {
@@ -164,7 +183,7 @@ Plugins.band_survey.init = function () {
     { id: "peakNativeBm", label: "Peak → named bookmark", where: "Peaks", tip: "Extra button to save a peak as a named blue bookmark (not [auto])." },
     { id: "watchlist", label: "Watchlist panel", where: "Bookmarks", tip: "Show alert MHz list on Bookmarks for quick edit while scanning." },
     { id: "clipMeta", label: "Clip duration / voice %", where: "Audio", tip: "Show length and voice activity on each audio clip row." },
-    { id: "keyboard", label: "Keyboard shortcuts", where: "Global", tip: "S=Stop, B=Scan bookmarks, H=Hold, K=Skip when the panel is open." },
+    { id: "keyboard", label: "Keyboard shortcuts", where: "Global", tip: "S=Stop, B=Scan bookmarks, H=Hold, K/→=Skip, ←=Previous bookmark when scanning." },
     { id: "surveyDiff", label: "Survey snapshot / diff", where: "Peaks", tip: "Save a peak snapshot and highlight changes vs that snapshot." },
     { id: "freqNotes", label: "Frequency notes", where: "Peaks / Bookmarks", tip: "Per-MHz notes stored in this browser." },
     { id: "spectrumHistory", label: "Range spectrum history", where: "Range", tip: "Keep the last few range charts and flip between them." },
@@ -176,12 +195,19 @@ Plugins.band_survey.init = function () {
     { id: "waterfallSnap", label: "Waterfall snapshot", where: "Peaks", tip: "Save a PNG of the waterfall when bookmarking a peak (best-effort)." },
     { id: "speechToText", label: "Clip transcribe (browser)", where: "Audio", tip: "Try Web Speech API while a clip plays (Chrome; quality varies)." },
     { id: "nearbyTraffic", label: "Nearby traffic hint", where: "Peaks", tip: "If aircraft/AIS data is on the page, show a short nearby hint on peak rows." },
-    { id: "userBmShortcuts", label: "Load user bookmarks · Current / Ticked", where: "Bookmarks", tip: "Show Current and Ticked shortcut buttons next to Load user bookmarks." }
+    { id: "userBmShortcuts", label: "Load user bookmarks · Current / Ticked", where: "Bookmarks", tip: "Show Current and Ticked shortcut buttons next to Load user bookmarks." },
+    { id: "digiSurvey", label: "Digi / FT8 survey", where: "Bands", tip: "Digi preset, longer dwell on digi profiles, optional FT8 mode, occupancy scoring for heatmap." },
+    { id: "dayNightBands", label: "HF day / night band sets", where: "Bands", tip: "HF day/night tick chips; optional auto-apply before scheduled scans." },
+    { id: "occHeatmap", label: "Band × hour heatmap", where: "Peaks", tip: "Occupancy grid from surveys (band vs local hour). Needs surveys with this extra on." },
+    { id: "sendToScanner", label: "Send to OWRX scanner", where: "Bookmarks / Peaks", tip: "Mark qualified/auto bookmarks scannable and start built-in or freq_scanner." },
+    { id: "shareReport", label: "Share survey report", where: "Peaks", tip: "Download a PNG summary (top peaks + optional heatmap) for posts or notes." }
   ];
   var LS_FREQ_NOTES = "owrx_band_survey_freq_notes_v1";
   var LS_SESSION_LOG = "owrx_band_survey_session_log_v1";
   var LS_SURVEY_SNAP = "owrx_band_survey_survey_snap_v1";
   var LS_SPEC_HIST = "owrx_band_survey_spec_hist_v1";
+  var LS_OCC_HEAT = "owrx_band_survey_occ_heat_v1";
+  var occHeatLog = [];
 
   var S = loadSettings();
   if (!S.extras) S.extras = extrasDefaults();
@@ -189,6 +215,7 @@ Plugins.band_survey.init = function () {
   loadSessionLog();
   loadSurveySnap();
   loadSpectrumHist();
+  loadOccHeat();
   var panelLayoutUserSet = Number(S.panelW) > 0;
   var hits = [];
   var tileLooks = {};
@@ -307,6 +334,8 @@ Plugins.band_survey.init = function () {
       rangeChannelGrid: false,
       rangeGridPreset: "auto",
       rangeMode: "full",
+      exploreStepKhz: 12.5,
+      exploreOffsetKhz: 0,
       rememberTab: true,
       defaultTab: "last",
       switchPeaksOnDone: false,
@@ -333,6 +362,13 @@ Plugins.band_survey.init = function () {
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
+      digiLongDwell: true,
+      digiDwellSec: 90,
+      digiForceMode: "ft8",
+      digiForceOn: false,
+      dayNightBeforeSched: false,
+      peaksView: "list",
+      occDays: 7,
       uiTextSize: "default",
       hideToolbar: false,
       saStartMhz: 88,
@@ -347,7 +383,8 @@ Plugins.band_survey.init = function () {
       saHopMs: 450,
       saLiveOnOpen: false,
       hiddenTabs: ["analyzer"],
-      analyzerTabMigrated: true
+      analyzerTabMigrated: true,
+      btnShades: {}
     };
     try {
       var raw = window.localStorage.getItem(LS);
@@ -392,6 +429,27 @@ Plugins.band_survey.init = function () {
     return !!(S.extras && S.extras[id]);
   }
 
+  function setExtrasAll(on, includePublic) {
+    if (!S.extras) S.extras = extrasDefaults();
+    on = !!on;
+    EXTRAS_DEFS.forEach(function (e) {
+      if (!includePublic && e.id === "publicMode") {
+        if (!on) S.extras[e.id] = false;
+      } else {
+        S.extras[e.id] = on;
+      }
+      var el = $("bs-extra-" + e.id);
+      if (el) el.checked = !!S.extras[e.id];
+    });
+    saveSettings();
+    applyExtrasUi();
+    if (typeof renderHits === "function") renderHits();
+    if (typeof renderAudioClips === "function") renderAudioClips();
+    setStatus(on
+      ? "All extras on (Public / shared mode left off so Factory reset stays available)."
+      : "All extras off.");
+  }
+
   function readExtrasFromForm() {
     if (!S.extras) S.extras = extrasDefaults();
     EXTRAS_DEFS.forEach(function (e) {
@@ -423,14 +481,18 @@ Plugins.band_survey.init = function () {
         '"> ' + escapeHtml(e.label) +
         ' <span class="bs-hint">(' + escapeHtml(e.where) + ')</span></label>';
     }).join("");
-    return '<details class="bs-tab-opts" id="bs-extras-wrap">' +
+    return '<details class="bs-tab-opts" id="bs-extras-wrap" open>' +
       '<summary title="Optional features — all off by default. Tick to add controls on existing tabs.">Extras</summary>' +
       '<p class="bs-hint">Optional add-ons. Off by default. Tick one and its controls appear on the tab in parentheses — no new tabs.</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-primary" id="bs-extras-all" title="Turn on every extra except Public / shared receiver mode (that extra greys out Factory reset).">Add all extras</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-extras-none" title="Turn every extra off.">Clear extras</button>' +
+      "</div>" +
       '<div class="bs-row bs-chk-grid" id="bs-extras">' + rows + "</div>" +
       '<div class="bs-row" data-extra="idlePresets">' +
-      '<button type="button" class="bs-tiny" id="bs-quiet-night" title="Set quiet hours 22:00–06:00.">Quiet · night</button>' +
-      '<button type="button" class="bs-tiny" id="bs-quiet-eve" title="Set quiet hours 18:00–08:00.">Quiet · evening</button>' +
-      '<button type="button" class="bs-tiny" id="bs-quiet-clear" title="Clear quiet hours.">Clear quiet hours</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-quiet-night" title="Set quiet hours 22:00–06:00.">Quiet · night</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-quiet-eve" title="Set quiet hours 18:00–08:00.">Quiet · evening</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-quiet-clear" title="Clear quiet hours.">Clear quiet hours</button>' +
       "</div>" +
       '<div class="bs-row" data-extra="publicMode">' +
       '<span class="bs-hint">Public mode: alone-only on, Own radio off, Factory reset hidden.</span>' +
@@ -447,6 +509,13 @@ Plugins.band_survey.init = function () {
     if (typeof renderSessionLogPane === "function") renderSessionLogPane();
     if (typeof renderWatchlistPane === "function") renderWatchlistPane();
     if (typeof updateSpectrumHistoryUi === "function") updateSpectrumHistoryUi();
+    if (extraOn("occHeatmap")) {
+      if (S.peaksView === "heatmap") setPeaksView("heatmap");
+      else setPeaksView("list");
+    } else if ($("bs-hitwrap")) {
+      $("bs-hitwrap").hidden = false;
+      if ($("bs-occ-heat")) $("bs-occ-heat").hidden = true;
+    }
   }
 
   function applyPublicModeExtra() {
@@ -458,10 +527,42 @@ Plugins.band_survey.init = function () {
       syncOwnRadioUi(false);
       applyOwnerLock();
     }
-    var fr = $("bs-factory-reset");
-    if (fr) fr.hidden = on;
-    var hint = document.querySelector(".bs-factory-hint");
-    if (hint) hint.hidden = on;
+    var clientsOk = true;
+    try { clientsOk = !!(caps() && caps().clients); } catch (e) { clientsOk = true; }
+    ["bs-band-alone", "bs-range-alone"].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      var lab = el.parentElement;
+      if (on) {
+        el.disabled = true;
+        el.checked = true;
+        if (lab) {
+          if (!lab.getAttribute("data-tip-alone") && lab.getAttribute("title")) {
+            lab.setAttribute("data-tip-alone", lab.getAttribute("title"));
+          }
+          lab.title = "Locked on while Public / shared receiver mode extra is enabled (Settings → Extras).";
+          if (lab.classList) lab.classList.add("bs-off");
+        }
+      } else {
+        if (lab && lab.getAttribute("data-tip-alone")) {
+          lab.title = lab.getAttribute("data-tip-alone");
+          lab.removeAttribute("data-tip-alone");
+        }
+        /* Restore clickability when client-count bar exists; applyCaps owns the missing-bar case. */
+        if (clientsOk) {
+          el.disabled = false;
+          if (lab && lab.classList) lab.classList.remove("bs-off");
+        }
+      }
+    });
+    var frs = [$("bs-factory-reset"), $("bs-factory-reset-2")];
+    frs.forEach(function (fr) {
+      if (!fr) return;
+      fr.hidden = false;
+      fr.disabled = on;
+    });
+    var pubNote = $("bs-factory-public");
+    if (pubNote) pubNote.hidden = !on;
   }
 
   var freqNotesMap = {};
@@ -624,6 +725,259 @@ Plugins.band_survey.init = function () {
     setStatus("Range spectrum history " + (spectrumHistIdx + 1) + "/" + spectrumHist.length);
   }
 
+
+  function loadOccHeat() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_OCC_HEAT) || "[]");
+      occHeatLog = Array.isArray(o) ? o.slice(-4000) : [];
+    } catch (e) { occHeatLog = []; }
+  }
+  function saveOccHeat() {
+    try { window.localStorage.setItem(LS_OCC_HEAT, JSON.stringify(occHeatLog.slice(-4000))); } catch (e) {}
+  }
+  function bandKeyFromProfile(pid, label) {
+    var s = String(pid || label || "").toLowerCase();
+    var m = s.match(/(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m|70c|air|fm|marine|pmr|cb|mw|lf|hf)/);
+    if (m) return m[1];
+    var dig = s.match(/(ft8|ft4|wspr|jt65|jt9|fst4|q65|msk144)/);
+    if (dig) return dig[1];
+    var head = (String(pid || "other").split("_")[0] || "other").replace(/[^a-z0-9]/gi, "");
+    return (head || "other").slice(0, 10);
+  }
+  function isDigiProfile(pid, label) {
+    var s = String(pid || "") + " " + String(label || "");
+    return /(ft8|ft4|wspr|jt65|jt9|fst4|q65|msk144|digi|js8|psk|rtty|olivia)/i.test(s);
+  }
+  function countDigiSpotsOnPage() {
+    var n = 0;
+    try {
+      var roots = document.querySelectorAll(
+        ".openwebrx-digi-message, .openwebrx-message-content, #openwebrx-panel-digi-modes, " +
+        ".openwebrx-panel-digimodes, .message-panel, .wsjt-panel, [class*='digi']"
+      );
+      for (var i = 0; i < roots.length; i++) {
+        var t = roots[i].innerText || "";
+        var lines = t.split(/\n+/);
+        for (var j = 0; j < lines.length; j++) {
+          if (/[A-Z0-9]{1,2}[0-9][A-Z0-9]{1,3}/.test(lines[j]) && lines[j].length < 120) n++;
+        }
+      }
+    } catch (e) {}
+    return n;
+  }
+  function recordOccupancy(pid, label, peakN, digiN) {
+    if (!extraOn("occHeatmap") && !extraOn("digiSurvey")) return;
+    var now = new Date();
+    var score = Math.max(0, Number(peakN) || 0) + Math.max(0, Number(digiN) || 0) * 3;
+    if (score <= 0 && !(Number(peakN) > 0)) return;
+    occHeatLog.push({
+      t: now.getTime(),
+      day: now.toISOString().slice(0, 10),
+      hour: now.getHours(),
+      band: bandKeyFromProfile(pid, label),
+      peaks: Math.max(0, Number(peakN) || 0),
+      digi: Math.max(0, Number(digiN) || 0),
+      score: score
+    });
+    if (occHeatLog.length > 4000) occHeatLog = occHeatLog.slice(-4000);
+    saveOccHeat();
+  }
+  function clearOccHeat() {
+    occHeatLog = [];
+    saveOccHeat();
+    renderOccHeatmap();
+    setStatus("Occupancy heatmap cleared.");
+  }
+  function occHeatMatrix(daysBack) {
+    daysBack = Math.max(1, Math.min(30, Number(daysBack) || 7));
+    var cut = Date.now() - daysBack * 86400000;
+    var bands = {};
+    var cells = {};
+    occHeatLog.forEach(function (r) {
+      if (!r || (r.t && r.t < cut)) return;
+      var b = r.band || "other";
+      var h = Number(r.hour);
+      if (!(h >= 0 && h <= 23)) return;
+      bands[b] = true;
+      var k = b + "|" + h;
+      cells[k] = (cells[k] || 0) + (Number(r.score) || Number(r.peaks) || 0);
+    });
+    var bandList = Object.keys(bands).sort();
+    return { bands: bandList, cells: cells };
+  }
+  function renderOccHeatmap() {
+    var host = $("bs-occ-heat");
+    if (!host) return;
+    if (!extraOn("occHeatmap") || S.peaksView !== "heatmap") {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    var days = Number(($("bs-occ-days") && $("bs-occ-days").value) || S.occDays || 7);
+    S.occDays = days;
+    var mat = occHeatMatrix(days);
+    if (!mat.bands.length) {
+      host.innerHTML = '<p class="bs-empty">No occupancy yet. Run Scan bands with <b>Band × hour heatmap</b> (and/or Digi survey) enabled under Settings → Extras.</p>';
+      return;
+    }
+    var max = 1;
+    Object.keys(mat.cells).forEach(function (k) { if (mat.cells[k] > max) max = mat.cells[k]; });
+    var html = '<table class="bs-heat-table"><thead><tr><th>Band</th>';
+    for (var h = 0; h < 24; h++) html += "<th>" + h + "</th>";
+    html += "</tr></thead><tbody>";
+    mat.bands.forEach(function (b) {
+      html += "<tr><th>" + escapeHtml(b) + "</th>";
+      for (var hr = 0; hr < 24; hr++) {
+        var v = mat.cells[b + "|" + hr] || 0;
+        var a = v ? Math.min(0.92, 0.12 + 0.8 * (v / max)) : 0;
+        html += '<td title="' + escapeHtml(b) + " @ " + hr + ":00 · score " + v +
+          '" style="background:rgba(249,115,22,' + a + ')">' + (v ? "" : "") + "</td>";
+      }
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    host.innerHTML = html;
+  }
+  function setPeaksView(mode) {
+    S.peaksView = mode === "heatmap" ? "heatmap" : "list";
+    saveSettings();
+    var listOn = S.peaksView === "list";
+    if ($("bs-hitwrap")) $("bs-hitwrap").hidden = !listOn;
+    if ($("bs-peaks-view-list")) $("bs-peaks-view-list").classList.toggle("bs-on", listOn);
+    if ($("bs-peaks-view-heat")) $("bs-peaks-view-heat").classList.toggle("bs-on", !listOn);
+    if (listOn) renderHits();
+    else renderOccHeatmap();
+  }
+  function applyDigiModeIfNeeded(pid, label) {
+    if (!extraOn("digiSurvey") || !S.digiForceOn) return;
+    var mod = String(S.digiForceMode || "ft8").trim();
+    if (!mod) return;
+    if (!isDigiProfile(pid, label) && !/ft8|ft4|wspr|jt/i.test(mod)) {
+      /* still allow force when user asked */
+    }
+    try {
+      if (window.UI && typeof UI.setModulation === "function") UI.setModulation(mod, "");
+    } catch (e) {}
+  }
+  function digiDwellForProfile(pid, label, baseDwell) {
+    var d = Number(baseDwell) || 2.5;
+    if (!extraOn("digiSurvey") || !S.digiLongDwell) return d;
+    if (!isDigiProfile(pid, label)) return d;
+    return Math.max(d, Math.min(180, Number(S.digiDwellSec) || 90));
+  }
+  function markBookmarksScannable(onlyAuto) {
+    if (typeof BookmarkLocalStorage !== "function" && !(window.bookmarks && bookmarks.localBookmarks)) {
+      setStatus("Local bookmarks API missing — cannot mark scannable.");
+      return 0;
+    }
+    var store = (window.bookmarks && bookmarks.localBookmarks) || new BookmarkLocalStorage();
+    var list = store.getBookmarks() || [];
+    var n = 0;
+    list.forEach(function (b) {
+      if (onlyAuto && !b.auto && !/^\[auto\]/i.test(b.name || "")) return;
+      if (!b.scannable) { b.scannable = true; n++; }
+      else b.scannable = true;
+    });
+    store.setBookmarks(list);
+    if (window.bookmarks && typeof bookmarks.loadLocalBookmarks === "function") {
+      try { bookmarks.loadLocalBookmarks(); } catch (e) {}
+    }
+    return n;
+  }
+  function startExternalScanner() {
+    var started = false;
+    try {
+      if (window.fs_scanner_state && !fs_scanner_state.running && typeof fs_start_scanner === "function") {
+        fs_start_scanner();
+        started = true;
+      }
+    } catch (e) {}
+    if (!started) {
+      try {
+        if (window.UI && typeof UI.toggleScanner === "function") {
+          UI.toggleScanner(true);
+          started = true;
+        }
+      } catch (e2) {}
+    }
+    return started;
+  }
+  function sendToScannerAction() {
+    if (!extraOn("sendToScanner")) return;
+    var n = markBookmarksScannable(false);
+    var ok = startExternalScanner();
+    setStatus((ok ? "Scanner started" : "Could not start scanner (is freq_scanner / OWRX+ scanner available?)") +
+      " · scannable bookmarks updated (" + n + " newly marked).");
+    toast(ok ? "Sent to scanner" : "Marked scannable — start scanner from SQ / freq_scanner");
+  }
+  function shareSurveyReport() {
+    if (!extraOn("shareReport")) return;
+    var top = sortedHits().filter(function (h) { return !isSpur(h); }).slice(0, 18);
+    var w = 720;
+    var h = 420 + (extraOn("occHeatmap") ? 160 : 0);
+    var c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    var ctx = c.getContext("2d");
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText("OpenWebRX Band survey", 24, 36);
+    ctx.font = "13px sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(new Date().toLocaleString() + " · " + hits.length + " peaks stored · top " + top.length, 24, 58);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "12px monospace";
+    var y = 84;
+    top.forEach(function (hit, i) {
+      var line = (i + 1) + ". " + fmtMhz(hit.freq) + "  seen " + hit.seen + "×  " +
+        Math.round(hit.maxDb || 0) + " dB  " + (hit.name || hit.label || hit.pid || "");
+      ctx.fillText(line.slice(0, 88), 24, y);
+      y += 16;
+    });
+    if (extraOn("occHeatmap") && occHeatLog.length) {
+      y += 10;
+      ctx.fillStyle = "#fb923c";
+      ctx.font = "bold 13px sans-serif";
+      ctx.fillText("Occupancy (last surveys) — darker = busier hour", 24, y);
+      y += 12;
+      var mat = occHeatMatrix(Number(S.occDays) || 7);
+      var cellW = Math.floor((w - 100) / 24);
+      var cellH = 12;
+      mat.bands.slice(0, 8).forEach(function (b, bi) {
+        var max = 1;
+        for (var hr = 0; hr < 24; hr++) max = Math.max(max, mat.cells[b + "|" + hr] || 0);
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "10px sans-serif";
+        ctx.fillText(b, 24, y + bi * (cellH + 4) + 10);
+        for (var hr2 = 0; hr2 < 24; hr2++) {
+          var v = mat.cells[b + "|" + hr2] || 0;
+          var a = v ? Math.min(0.95, 0.15 + 0.8 * (v / max)) : 0.06;
+          ctx.fillStyle = "rgba(249,115,22," + a + ")";
+          ctx.fillRect(90 + hr2 * cellW, y + bi * (cellH + 4), cellW - 1, cellH);
+        }
+      });
+    }
+    try {
+      c.toBlob(function (blob) {
+        if (!blob) {
+          setStatus("Share report failed (canvas).");
+          return;
+        }
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "band-survey-report-" + Date.now() + ".png";
+        a.click();
+        setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} }, 2000);
+        setStatus("Survey report PNG downloaded.");
+      }, "image/png");
+    } catch (err) {
+      setStatus(friendlyError(err, "Share report"));
+    }
+  }
+
+
   function copyTuneText(freq, mode) {
     var mhz = fmtMhzNum(freq);
     var text = mhz + " MHz" + (mode ? (" " + mode) : "");
@@ -742,10 +1096,23 @@ Plugins.band_survey.init = function () {
       var tag = (ev.target && ev.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ev.target && ev.target.isContentEditable)) return;
       var k = (ev.key || "").toLowerCase();
-      if (k === "s") { ev.preventDefault(); if ($("bs-stop")) $("bs-stop").click(); }
+      if (k === "s") {
+        ev.preventDefault();
+        if ($("bs-stop") && !$("bs-stop").hidden) $("bs-stop").click();
+        else if ($("bs-stop-bm") && !$("bs-stop-bm").hidden) $("bs-stop-bm").click();
+      }
       else if (k === "b") { ev.preventDefault(); if ($("bs-listen-top")) $("bs-listen-top").click(); }
       else if (k === "h") { ev.preventDefault(); if ($("bs-hold")) $("bs-hold").click(); }
-      else if (k === "k") { ev.preventDefault(); if ($("bs-skip")) $("bs-skip").click(); }
+      else if (k === "k" || ev.key === "ArrowRight") {
+        ev.preventDefault();
+        if ($("bs-skip")) $("bs-skip").click();
+      } else if (ev.key === "ArrowLeft") {
+        ev.preventDefault();
+        if (listenScanRunning) {
+          listenCmd = "prev";
+          setStatus("Previous bookmark…");
+        }
+      }
     });
   }
 
@@ -812,6 +1179,13 @@ Plugins.band_survey.init = function () {
     d.extras = sanitizeExtras(d.extras);
     d.maxClipSec = Math.max(5, Math.min(600, Number(d.maxClipSec) || 60));
     if (!d.listenScanOrder) d.listenScanOrder = "priority";
+    if (typeof d.digiLongDwell !== "boolean") d.digiLongDwell = true;
+    d.digiDwellSec = Math.max(15, Math.min(180, Number(d.digiDwellSec) || 90));
+    if (!d.digiForceMode) d.digiForceMode = "ft8";
+    if (typeof d.digiForceOn !== "boolean") d.digiForceOn = false;
+    if (typeof d.dayNightBeforeSched !== "boolean") d.dayNightBeforeSched = false;
+    if (d.peaksView !== "heatmap") d.peaksView = "list";
+    d.occDays = Math.max(1, Math.min(30, Number(d.occDays) || 7));
     if (typeof d.showNewOnly !== "boolean") d.showNewOnly = false;
     if (typeof d.showDiffOnly !== "boolean") d.showDiffOnly = false;
     if (typeof saDefaultsPatch === "function") saDefaultsPatch(d);
@@ -824,6 +1198,218 @@ Plugins.band_survey.init = function () {
     try {
       window.localStorage.setItem(LS, JSON.stringify(S));
     } catch (e) {}
+  }
+
+  /* Button colour roles — right-click a button to pick a shade (applies to every button of that role). */
+  var BTN_ROLE_META = [
+    { id: "primary", cls: "bs-primary", label: "Start scan" },
+    { id: "stop", cls: "bs-stop", label: "Stop" },
+    { id: "fresh", cls: "bs-btn-fresh", label: "Fresh scan" },
+    { id: "jump", cls: "bs-btn-jump", label: "Jump / nudge" },
+    { id: "hold", cls: "bs-btn-hold", label: "Hold" },
+    { id: "skip", cls: "bs-btn-skip", label: "Skip" },
+    { id: "lock", cls: "bs-btn-lock", label: "Always skip / Lockout" },
+    { id: "go", cls: "bs-btn-go", label: "Go" },
+    { id: "play", cls: "bs-btn-play", label: "Play" },
+    { id: "bm", cls: "bs-btn-bm", label: "Bookmark" },
+    { id: "export", cls: "bs-btn-export", label: "Export / Save" },
+    { id: "import", cls: "bs-btn-import", label: "Import / Load" },
+    { id: "clear", cls: "bs-btn-clear", label: "Clear" },
+    { id: "info", cls: "bs-btn-info", label: "Check / Info" },
+    { id: "util", cls: "bs-btn-util", label: "Utility" },
+    { id: "preset", cls: "bs-btn-preset", label: "Presets" },
+    { id: "tune", cls: "bs-tune", label: "Tune MHz" }
+  ];
+
+  var BTN_SHADES = {
+    blue: { bg: "#1d4ed8", hover: "#2563eb", border: "#93c5fd", fg: "#ffffff" },
+    indigo: { bg: "#4338ca", hover: "#4f46e5", border: "#a5b4fc", fg: "#eef2ff" },
+    violet: { bg: "#6d28d9", hover: "#7c3aed", border: "#c4b5fd", fg: "#f5f3ff" },
+    purple: { bg: "#5b21b6", hover: "#7c3aed", border: "#c4b5fd", fg: "#ede9fe" },
+    teal: { bg: "#0f766e", hover: "#0d9488", border: "#5eead4", fg: "#ecfdf5" },
+    green: { bg: "#15803d", hover: "#16a34a", border: "#86efac", fg: "#f0fdf4" },
+    emerald: { bg: "#047857", hover: "#059669", border: "#6ee7b7", fg: "#ecfdf5" },
+    cyan: { bg: "#0e7490", hover: "#0891b2", border: "#67e8f9", fg: "#ecfeff" },
+    amber: { bg: "#b45309", hover: "#d97706", border: "#fcd34d", fg: "#fffbeb" },
+    orange: { bg: "#c2410c", hover: "#ea580c", border: "#fdba74", fg: "#fff7ed" },
+    rose: { bg: "#9f1239", hover: "#e11d48", border: "#fda4af", fg: "#ffe4e6" },
+    red: { bg: "#991b1b", hover: "#dc2626", border: "#fca5a5", fg: "#ffffff" },
+    slate: { bg: "#334155", hover: "#475569", border: "#94a3b8", fg: "#f8fafc" },
+    zinc: { bg: "#1e293b", hover: "#334155", border: "#64748b", fg: "#e2e8f0" }
+  };
+
+  var BTN_DEFAULT_SHADE = {
+    primary: "blue",
+    stop: "red",
+    fresh: "teal",
+    jump: "violet",
+    hold: "amber",
+    skip: "slate",
+    lock: "orange",
+    go: "green",
+    play: "green",
+    bm: "emerald",
+    export: "blue",
+    import: "purple",
+    clear: "rose",
+    info: "cyan",
+    util: "zinc",
+    preset: "indigo",
+    tune: "violet"
+  };
+
+  function btnRoleFromEl(el) {
+    if (!el || !el.classList) return null;
+    if (el.classList.contains("bs-tab") || el.classList.contains("bs-x") || el.classList.contains("bs-check-dismiss")) return null;
+    if (el.classList.contains("bs-ex-mode")) return null;
+    var i, meta;
+    for (i = 0; i < BTN_ROLE_META.length; i++) {
+      meta = BTN_ROLE_META[i];
+      if (el.classList.contains(meta.cls)) return meta;
+      if (meta.id === "jump" && el.classList.contains("bs-ex-nudge")) return meta;
+      if (meta.id === "jump" && el.classList.contains("bs-ex-arrow")) return meta;
+    }
+    return null;
+  }
+
+  function ensureBtnShadesObj() {
+    if (!S.btnShades || typeof S.btnShades !== "object") S.btnShades = {};
+    return S.btnShades;
+  }
+
+  function applyBtnShades() {
+    var style = $("bs-btn-shade-style");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "bs-btn-shade-style";
+      document.head.appendChild(style);
+    }
+    var map = ensureBtnShadesObj();
+    var css = "";
+    var i, meta, key, shade, sel;
+    for (i = 0; i < BTN_ROLE_META.length; i++) {
+      meta = BTN_ROLE_META[i];
+      key = map[meta.id];
+      if (!key || !BTN_SHADES[key]) continue;
+      if (BTN_DEFAULT_SHADE[meta.id] === key) continue;
+      shade = BTN_SHADES[key];
+      sel = "#bs-panel button." + meta.cls + ":not(.bs-on)";
+      if (meta.id === "jump") {
+        sel = "#bs-panel button.bs-btn-jump:not(.bs-on), #bs-panel button.bs-ex-nudge:not(.bs-on), #bs-panel button.bs-ex-arrow:not(.bs-on)";
+      }
+      css += sel + "{background:" + shade.bg + " !important;color:" + shade.fg +
+        " !important;border-color:" + shade.border + " !important;}" +
+        sel + ":hover{background:" + shade.hover + " !important;}";
+    }
+    style.textContent = css;
+  }
+
+  function closeBtnShadeMenu() {
+    var menu = $("bs-shade-menu");
+    if (menu) menu.hidden = true;
+  }
+
+  function openBtnShadeMenu(ev, meta) {
+    var menu = $("bs-shade-menu");
+    if (!menu) return;
+    var map = ensureBtnShadesObj();
+    var cur = map[meta.id] || BTN_DEFAULT_SHADE[meta.id] || "";
+    var title = menu.querySelector(".bs-shade-title");
+    if (title) title.textContent = meta.label + " — choose shade";
+    var grid = menu.querySelector(".bs-shade-swatches");
+    if (grid) {
+      grid.innerHTML = Object.keys(BTN_SHADES).map(function (key) {
+        var sh = BTN_SHADES[key];
+        var on = key === cur ? " bs-shade-on" : "";
+        return '<button type="button" class="bs-shade-swatch' + on + '" data-shade="' + key +
+          '" title="' + key + '" style="background:' + sh.bg + ';border-color:' + sh.border +
+          ';color:' + sh.fg + '">' + key.charAt(0).toUpperCase() + "</button>";
+      }).join("");
+    }
+    menu.setAttribute("data-role", meta.id);
+    menu.hidden = false;
+    var x = ev.clientX;
+    var y = ev.clientY;
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    var w = menu.offsetWidth || 220;
+    var h = menu.offsetHeight || 160;
+    var left = Math.min(x, window.innerWidth - w - 8);
+    var top = Math.min(y, window.innerHeight - h - 8);
+    menu.style.left = Math.max(8, left) + "px";
+    menu.style.top = Math.max(8, top) + "px";
+  }
+
+  function bindBtnShadePicker(panel) {
+    if (!panel || panel.getAttribute("data-bs-shade-bound")) return;
+    panel.setAttribute("data-bs-shade-bound", "1");
+    panel.addEventListener("contextmenu", function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest("#bs-panel button");
+      if (!btn) return;
+      var meta = btnRoleFromEl(btn);
+      if (!meta) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openBtnShadeMenu(ev, meta);
+    });
+    if (!$("bs-shade-menu")) {
+      var menu = document.createElement("div");
+      menu.id = "bs-shade-menu";
+      menu.hidden = true;
+      menu.innerHTML =
+        '<div class="bs-shade-title">Choose shade</div>' +
+        '<div class="bs-shade-swatches"></div>' +
+        '<div class="bs-shade-actions">' +
+        '<button type="button" class="bs-tiny bs-btn-util" data-shade-default="1" title="Restore the default colour for this button type.">Default</button>' +
+        '<button type="button" class="bs-tiny bs-btn-clear" data-shade-reset-all="1" title="Restore default colours for every button type.">Reset all</button>' +
+        "</div>" +
+        '<p class="bs-shade-hint">Applies to every button of this type</p>';
+      document.body.appendChild(menu);
+      menu.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var t = ev.target && ev.target.closest && ev.target.closest("[data-shade], [data-shade-default], [data-shade-reset-all]");
+        if (!t) return;
+        var role = menu.getAttribute("data-role");
+        var map = ensureBtnShadesObj();
+        if (t.getAttribute("data-shade-reset-all")) {
+          S.btnShades = {};
+          saveSettings();
+          applyBtnShades();
+          closeBtnShadeMenu();
+          setStatus("Button colours reset to defaults.");
+          return;
+        }
+        if (!role) return;
+        if (t.getAttribute("data-shade-default")) {
+          delete map[role];
+        } else {
+          var key = t.getAttribute("data-shade");
+          if (!BTN_SHADES[key]) return;
+          if (BTN_DEFAULT_SHADE[role] === key) delete map[role];
+          else map[role] = key;
+        }
+        S.btnShades = map;
+        saveSettings();
+        applyBtnShades();
+        closeBtnShadeMenu();
+        var lab = "";
+        for (var i = 0; i < BTN_ROLE_META.length; i++) {
+          if (BTN_ROLE_META[i].id === role) { lab = BTN_ROLE_META[i].label; break; }
+        }
+        setStatus((lab || "Buttons") + " colour updated.");
+      });
+      document.addEventListener("click", function () { closeBtnShadeMenu(); });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") closeBtnShadeMenu();
+      });
+    }
+  }
+
+  function resetBtnShades() {
+    S.btnShades = {};
+    saveSettings();
+    applyBtnShades();
+    setStatus("Button colours reset to defaults.");
   }
 
   function loadHits() {
@@ -1086,6 +1672,7 @@ Plugins.band_survey.init = function () {
     listenScanRunning = !!on;
     if (on && listenPaused && !continuousBmScanOn()) {
       setListenPaused(true);
+      applyToolbarVisibility();
       return;
     }
     var label = listenScanRunning
@@ -1097,12 +1684,14 @@ Plugins.band_survey.init = function () {
         : "Bookmark scan is running — click Stop to end.")
       : listenScanIdleTitle();
     var btn = $("bs-listen-top");
-    if (!btn) return;
-    btn.textContent = label;
-    btn.title = title;
-    btn.disabled = listenScanRunning && (continuousBmScanOn() || !listenPaused);
-    btn.classList.toggle("bs-on", listenScanRunning || listenPaused);
-    btn.classList.toggle("bs-running", listenScanRunning && (continuousBmScanOn() || !listenPaused));
+    if (btn) {
+      btn.textContent = label;
+      btn.title = title;
+      btn.disabled = listenScanRunning && (continuousBmScanOn() || !listenPaused);
+      btn.classList.toggle("bs-on", listenScanRunning || listenPaused);
+      btn.classList.toggle("bs-running", listenScanRunning && (continuousBmScanOn() || !listenPaused));
+    }
+    applyToolbarVisibility();
   }
 
   function setSurveyRunning(on) {
@@ -1112,12 +1701,14 @@ Plugins.band_survey.init = function () {
       ? "Band survey is running — click Stop to end."
       : "Walk ticked bands and add to Seen counts.";
     var btn = $("bs-start");
-    if (!btn) return;
-    btn.textContent = label;
-    btn.title = title;
-    btn.disabled = surveyRunning;
-    btn.classList.toggle("bs-on", surveyRunning);
-    btn.classList.toggle("bs-running", surveyRunning);
+    if (btn) {
+      btn.textContent = label;
+      btn.title = title;
+      btn.disabled = surveyRunning;
+      btn.classList.toggle("bs-on", surveyRunning);
+      btn.classList.toggle("bs-running", surveyRunning);
+    }
+    applyToolbarVisibility();
   }
 
   function setListenPaused(on) {
@@ -1136,6 +1727,7 @@ Plugins.band_survey.init = function () {
     btn.disabled = listenScanRunning && !listenPaused;
     btn.classList.toggle("bs-on", listenPaused || listenScanRunning);
     btn.classList.toggle("bs-running", listenScanRunning && !listenPaused);
+    applyToolbarVisibility();
   }
 
   function resumeListenScan() {
@@ -1484,13 +2076,44 @@ Plugins.band_survey.init = function () {
     if (!cur || isTabHidden(cur)) switchTab(firstVisibleTab(), true);
   }
 
+  function currentPanelTab() {
+    var on = document.querySelector("#bs-tabs .bs-tab.bs-tab-on");
+    return (on && on.getAttribute("data-tab")) || "";
+  }
+
+  function setElHidden(el, hide) {
+    if (!el) return;
+    el.hidden = !!hide;
+  }
+
   function applyToolbarVisibility() {
     var tb = $("bs-toolbar");
     var p = $("bs-panel");
-    var hide = !!S.hideToolbar;
-    if (tb) tb.hidden = hide;
-    if (p) p.classList.toggle("bs-hide-toolbar", hide);
-    if ($("bs-hide-toolbar")) $("bs-hide-toolbar").checked = hide;
+    var hidePref = !!S.hideToolbar;
+    var tab = currentPanelTab();
+    var survey = !!(running || surveyRunning);
+    var listen = !!listenScanRunning;
+    var busy = survey || listen;
+    if (p) p.classList.toggle("bs-hide-toolbar", hidePref);
+
+    var showBand = !hidePref && tab === "bands";
+    var showBm = !hidePref && (tab === "bookmarks" || listen);
+    var showBusyStop = !hidePref && busy && !showBand && !showBm;
+    var showStatus = !hidePref && (showBand || showBm || showBusyStop || busy);
+    var showAny = showBand || showBm || showBusyStop || showStatus;
+
+    setElHidden($("bs-tb-bands-note"), !showBand);
+    setElHidden($("bs-tb-band-row"), !(showBand || showBusyStop));
+    setElHidden($("bs-start"), !showBand);
+    setElHidden($("bs-fresh"), !showBand);
+    setElHidden($("bs-jump"), !showBand);
+    setElHidden($("bs-selcount"), !showBand);
+    setElHidden($("bs-stop"), !(showBand || showBusyStop));
+    setElHidden($("bs-tb-bm-row"), !showBm);
+    setElHidden($("bs-status"), !showStatus);
+    setElHidden($("bs-tb-progress"), !showStatus);
+    if (tb) tb.hidden = hidePref || !showAny;
+    if ($("bs-hide-toolbar")) $("bs-hide-toolbar").checked = hidePref;
   }
 
   function applyUiTextSize() {
@@ -1620,6 +2243,8 @@ Plugins.band_survey.init = function () {
       rangeChannelGrid: false,
       rangeGridPreset: "auto",
       rangeMode: "full",
+      exploreStepKhz: 12.5,
+      exploreOffsetKhz: 0,
       rememberTab: true,
       defaultTab: "last",
       switchPeaksOnDone: false,
@@ -1646,6 +2271,13 @@ Plugins.band_survey.init = function () {
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
+      digiLongDwell: true,
+      digiDwellSec: 90,
+      digiForceMode: "ft8",
+      digiForceOn: false,
+      dayNightBeforeSched: false,
+      peaksView: "list",
+      occDays: 7,
       uiTextSize: "default",
       hideToolbar: false,
       saStartMhz: 88,
@@ -1680,33 +2312,40 @@ Plugins.band_survey.init = function () {
   function fillSettingsForm() {
     if ($("bs-remember-tab")) $("bs-remember-tab").checked = S.rememberTab !== false;
     if ($("bs-default-tab")) $("bs-default-tab").value = S.defaultTab || "last";
-    if ($("bs-switch-peaks")) $("bs-switch-peaks").checked = !!S.switchPeaksOnDone;
-    if ($("bs-notify-done")) $("bs-notify-done").checked = !!S.notifyScanDone;
-    if ($("bs-sound-peak")) $("bs-sound-peak").checked = S.soundNewPeak !== false;
+    syncPairChk("bs-switch-peaks", "bs-range-switch-peaks", !!S.switchPeaksOnDone);
+    syncPairChk("bs-notify-done", "bs-range-notify-done", !!S.notifyScanDone);
+    syncPairChk("bs-sound-peak", "bs-range-sound-peak", S.soundNewPeak !== false);
+    syncPairChk("bs-copy-done", "bs-range-copy-done", !!S.copyPeaksOnDone);
+    syncPairChk("bs-notify", "bs-range-notify", S.notifyNew !== false);
+    syncPairChk("bs-pause-tune", "bs-range-pause-tune", !!S.pauseOnManualTune);
+    syncPairNum("bs-settle-ms", "bs-range-settle-ms", S.profileSettleMs || 0);
     if ($("bs-sched-action")) $("bs-sched-action").value = S.schedAction || "band";
     if ($("bs-sched-idle")) $("bs-sched-idle").checked = !!S.schedIdleOnly;
     if ($("bs-quiet-start")) $("bs-quiet-start").value = S.quietStart || "";
     if ($("bs-quiet-end")) $("bs-quiet-end").value = S.quietEnd || "";
-    if ($("bs-pause-tune")) $("bs-pause-tune").checked = !!S.pauseOnManualTune;
-    if ($("bs-settle-ms")) $("bs-settle-ms").value = S.profileSettleMs || 0;
     if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks || 0;
     if ($("bs-keep-peaks")) $("bs-keep-peaks").checked = S.keepPeaks !== false;
     if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || 40;
     if ($("bs-webhook")) $("bs-webhook").value = S.webhookUrl || "";
-    if ($("bs-copy-done")) $("bs-copy-done").checked = !!S.copyPeaksOnDone;
     if ($("bs-alert-freqs")) $("bs-alert-freqs").value = S.alertFreqs || "";
     if ($("bs-alert-offset")) $("bs-alert-offset").value = S.alertOffsetKhz || 25;
+    if ($("bs-digi-long")) $("bs-digi-long").checked = S.digiLongDwell !== false;
+    if ($("bs-digi-force")) $("bs-digi-force").checked = !!S.digiForceOn;
+    if ($("bs-digi-dwell")) $("bs-digi-dwell").value = S.digiDwellSec || 90;
+    if ($("bs-digi-mode")) $("bs-digi-mode").value = S.digiForceMode || "ft8";
+    if ($("bs-daynight-sched")) $("bs-daynight-sched").checked = !!S.dayNightBeforeSched;
+    if ($("bs-occ-days")) $("bs-occ-days").value = S.occDays || 7;
     if ($("bs-text-size")) $("bs-text-size").value = S.uiTextSize || "default";
     if ($("bs-autoopen")) $("bs-autoopen").checked = !!S.autoOpenPanel;
     if ($("bs-hide-toolbar")) $("bs-hide-toolbar").checked = !!S.hideToolbar;
+    if ($("bs-ex-step")) $("bs-ex-step").value = S.exploreStepKhz > 0 ? S.exploreStepKhz : 12.5;
+    if ($("bs-ex-offset")) $("bs-ex-offset").value = S.exploreOffsetKhz || 0;
     fillExtrasForm();
     fillVisibleTabsForm();
     applyToolbarVisibility();
     applyExtrasUi();
     syncAloneUi(S.aloneOnly !== false);
-    $("bs-notify").checked = S.notifyNew !== false;
-    $("bs-alone").checked = S.aloneOnly !== false;
-    $("bs-sched").value = S.scheduleHrs || 0;
+    if ($("bs-sched")) $("bs-sched").value = S.scheduleHrs || 0;
     applyUiTextSize();
   }
 
@@ -1758,6 +2397,7 @@ Plugins.band_survey.init = function () {
     applyPanelLayout();
     applyHiddenTabs();
     applyToolbarVisibility();
+    applyBtnShades();
     setStatus("Settings reset to defaults.");
   }
 
@@ -1821,13 +2461,13 @@ Plugins.band_survey.init = function () {
       renderHits();
       renderBookmarkPane();
       renderAudioClips();
-      applyCheckInstallDismiss();
       updateTabLabels();
       if (!restorePanelLayoutSnapshot()) applyPanelLayout();
       restoreRangeSpectrumView();
       applySchedule();
       if (typeof setExploreMode === "function") setExploreMode(false);
       if (typeof setExploreMinimap === "function") setExploreMinimap(false);
+      applyBtnShades();
       switchTab("bands");
       setStatus("Factory reset complete — SV restored to defaults (panel layout from last save).");
     });
@@ -1842,12 +2482,19 @@ Plugins.band_survey.init = function () {
     if (S.notifyScanDone) notifyScanComplete(fin.doneStatus);
     if (S.switchPeaksOnDone) switchTab("peaks");
     if (S.copyPeaksOnDone) copyResults();
+    if (extraOn("occHeatmap") && S.peaksView === "heatmap") renderOccHeatmap();
   }
 
   function runScheduledScan() {
     if (running || listenScanRunning) return;
     if (inQuietHours()) return;
     if (receiverRecentlyActive()) return;
+    if (extraOn("dayNightBands") && S.dayNightBeforeSched) {
+      var hour = new Date().getHours();
+      var day = hour >= 8 && hour < 20;
+      applyPreset(day ? "hfday" : "hfnight");
+      setStatus("Scheduled: applied HF " + (day ? "day" : "night") + " band set.");
+    }
     var action = S.schedAction || "band";
     if (action === "bookmark" || action === "both") {
       if (action === "both") {
@@ -2923,7 +3570,7 @@ Plugins.band_survey.init = function () {
         "Open the receiver page (not the map hub only), wait for OpenWebRX+ to finish loading, hard-refresh.");
     } else if (!sel.options || !sel.options.length) {
       add("warn", "Profile list is empty.",
-        "Wait ~10 seconds for the radio to connect, then click Check install. If it stays empty, add SDR profiles in OpenWebRX settings (admin).");
+        "Wait ~10 seconds for the radio to connect, then click Settings → Check install. If it stays empty, add SDR profiles in OpenWebRX settings (admin).");
     }
     if (sel && !c.profileHop) {
       add("warn", "Cannot hop profiles from the plugin.",
@@ -2931,7 +3578,7 @@ Plugins.band_survey.init = function () {
     }
     if (!c.waterfall) {
       add(c.receiver ? "warn" : "error", "No waterfall data yet.",
-        "Wait a few seconds after the radio connects, then click Check install again. A black waterfall usually means the SDR is not started. Stay on the receiver page (not the map hub).");
+        "Wait a few seconds after the radio connects, then click Settings → Check install again. A black waterfall usually means the SDR is not started. Stay on the receiver page (not the map hub).");
     }
     if (!c.center || !c.bandwidth) {
       add("warn", "Center frequency / bandwidth not ready yet.",
@@ -3047,22 +3694,7 @@ Plugins.band_survey.init = function () {
     return "<p><b>" + tag + escapeHtml(x.title) + "</b><br>" + escapeHtml(x.fix) + "</p>";
   }
 
-  function isCheckInstallDismissed() {
-    try { return window.localStorage.getItem(LS_CHECK_DISMISS) === "1"; } catch (e) { return false; }
-  }
-
-  function applyCheckInstallDismiss() {
-    var wrap = $("bs-check-wrap");
-    if (wrap) wrap.hidden = isCheckInstallDismissed();
-  }
-
-  function dismissCheckInstall() {
-    try { window.localStorage.setItem(LS_CHECK_DISMISS, "1"); } catch (e) {}
-    applyCheckInstallDismiss();
-  }
-
-  function runCheckInstall(opts) {
-    opts = opts || {};
+  function runCheckInstall() {
     var issues = renderHealth({ all: true, toast: true, ok: true });
     var hard = issues.filter(function (x) { return x.level === "error"; }).length;
     var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
@@ -3073,9 +3705,8 @@ Plugins.band_survey.init = function () {
       setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
         (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
         (extras ? extras + " optional extra" + (extras === 1 ? "" : "s") + ". " : "") +
-        "Read the box above, or open Help.");
+        "Read the box on Settings, or open Help.");
     }
-    if (opts.dismissToolbar !== false) dismissCheckInstall();
     return issues;
   }
 
@@ -3103,7 +3734,7 @@ Plugins.band_survey.init = function () {
     if (showExtra && extras.length) {
       html += "<p class=\"bs-health-opt-h\">Optional extras (not required)</p>" + extras.map(renderIssueP).join("");
     }
-    html += '<p><button type="button" class="bs-tiny" id="bs-health-help" title="Open the Help tab.">Open Help</button></p>';
+    html += '<p><button type="button" class="bs-tiny bs-btn-info" id="bs-health-help" title="Open the Help tab.">Open Help</button></p>';
     box.hidden = false;
     box.className = "bs-health" + (hard.length ? " bs-health-err" : warns.length ? " bs-health-warn" : " bs-health-ok");
     box.innerHTML = html;
@@ -3141,7 +3772,7 @@ Plugins.band_survey.init = function () {
   function friendlyError(err, action) {
     var msg = (err && err.message) ? err.message : String(err || "unknown error");
     msg = msg.replace(/\s+/g, " ").slice(0, 160);
-    return (action || "That") + " failed: " + msg + ". Click Help or Check install.";
+    return (action || "That") + " failed: " + msg + ". Open Settings → Check install, or the Help tab.";
   }
 
   function applyCaps() {
@@ -3174,7 +3805,6 @@ Plugins.band_survey.init = function () {
       if ($("bs-record")) $("bs-record").checked = false;
     }
     setOpt("bs-mute", c.mute, "Mute-while-running unavailable — no volume API on this page.");
-    setOpt("bs-alone", c.clients, "Courtesy / alone check unavailable — client count bar not found.");
     setOpt("bs-band-alone", c.clients, "Courtesy / alone check unavailable — client count bar not found.");
     setOpt("bs-range-alone", c.clients, "Courtesy / alone check unavailable — client count bar not found.");
     applyOwnerLock();
@@ -3218,28 +3848,22 @@ Plugins.band_survey.init = function () {
     }
   }
 
-  function restoreCheckInstall() {
-    try { window.localStorage.removeItem(LS_CHECK_DISMISS); } catch (e) {}
-    applyCheckInstallDismiss();
-    setStatus("Check install restored to toolbar.");
-  }
-
   function helpContentHtml() {
     var fastHops = ownerOverrideAllowed()
       ? "<li><b>Own radio — fast hops</b> (Bands / Range) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>Band survey — help (v110)</h2>" +
+      "<h2>Band survey — help (v126)</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
       "<li>Click <b>Survey</b> in the top bar (between <b>Help</b> and <b>Status</b>). An orange <b>SV</b> chip appears only if that top-bar button is missing (legacy / no toolbar).</li>" +
-      "<li>Click <b>Check install</b>. Green = ready. Red or yellow shows the fix on screen.</li>" +
+      "<li>Open <b>Settings</b> and click <b>Check install</b>. Green = ready. Red or yellow shows the fix on that tab.</li>" +
       "<li>Tick bands (or a preset) and press <b>Scan bands</b> — or use <b>Range</b> / <b>Explore</b>.</li>" +
       "<li>Hover any control for a tip (one tip at a time). Drag panel edges or the corner to resize — position and size are remembered in this browser.</li>" +
       "</ol>" +
-      '<p><button type="button" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
-      '<button type="button" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
+      '<p><button type="button" class="bs-btn-info" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
+      '<button type="button" class="bs-btn-util" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
       "<h3>What this is</h3>" +
       "<p>Standalone <b>OpenWebRX+ receiver plugin</b>. Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Does <b>not</b> need freq_scanner, scan_hunt, uikit, or notify — those are optional if already loaded.</p>" +
       "<h3>SDR hardware (HackRF, RTL-SDR, Airspy, Lime, …)</h3>" +
@@ -3257,22 +3881,27 @@ Plugins.band_survey.init = function () {
       "<p><b>Bands</b> · <b>Range</b> · <b>Explore</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b>. Enable Analyzer under Settings → <b>Visible tabs</b>. Settings always stays on. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
       "<ul>" +
+      "<li><b>Scan bands</b> / <b>Fresh scan</b> / <b>Stop</b> / <b>Jump loudest</b> — one row on the Bands tab.</li>" +
+      "<li><b>Scan bookmarks</b> / <b>Stop</b> / <b>Hold</b> / <b>Skip</b> / <b>Always skip</b> / <b>Lockout</b> — one row on the Bookmarks tab.</li>" +
       "<li><b>Scan bands</b> / <b>Scanning bands</b> — walk ticked bands; adds to Seen counts. Label changes while a band or range scan runs.</li>" +
       "<li><b>Fresh scan</b> — clear the peak list, then scan ticked bands from scratch.</li>" +
       "<li><b>Stop</b> — halt band survey, range survey, or bookmark scan. Qualified peaks found so far are auto-bookmarked when <b>Auto-bookmark actives</b> is on (same as normal scan end).</li>" +
       "<li><b>Scan bookmarks</b> / <b>Scanning bookmarks</b> — loop local and loaded bookmarks until Stop. With <b>Continuous bookmark scan</b> off and a busy channel, becomes <b>Continue scan bookmarks</b>.</li>" +
       "<li><b>Jump loudest</b> — retune to the strongest peak on <em>this waterfall tile only</em>.</li>" +
-      "<li><b>Check install</b> — verify the plugin and receiver. Dismiss with <b>×</b> or after a successful check; restore via Settings → <b>Re-show Check install</b>. Help tab always has <b>Check install now</b>.</li>" +
       "<li><b>Hold</b> · <b>Skip</b> · <b>Always skip</b> · <b>Lockout</b> — during bookmark scan: stay, move on, skip forever, or skip for Lockout minutes (Skip tab).</li>" +
       "</ul>" +
       "<h3>Bands tab</h3>" +
       "<ul>" +
       "<li><b>Presets</b> — <b>Air</b>, <b>VHF voice</b>, <b>All VHF</b> (30–300&nbsp;MHz), <b>All UHF</b> (300–1000&nbsp;MHz), <b>Ham</b>, <b>All</b>, <b>None</b>. Presets are <b>additive</b> (combine VHF+UHF; <b>None</b> clears all).</li>" +
-      "<li><b>Band checkboxes</b> — include each SDR profile when scanning. Filter box hides non-matching names.</li>" +
+      "<li><b>Band table</b> — tick each SDR profile to include when scanning. Columns: Id, Name, <b>Freq</b> (from the profile label), <b>Mode</b> (demod guess from the profile id). Filter box hides non-matching rows.</li>" +
       "<li><b>Band scan options</b> — <b>Passes</b> (walks per run), <b>Dwell s</b> (seconds per band), <b>Min seen</b> (qualify for auto-bookmark / Bookmark qualified), <b>dB over noise</b> (peak threshold).</li>" +
       "<li><b>Hide birdies</b> — hide always-skipped rows from the peak list.</li>" +
       "<li><b>Mute while running</b> — silence audio during band/range survey walks.</li>" +
-      "<li><b>Only if alone</b> — do not retune when other listeners are online (also on Range and Settings → Courtesy).</li>" +
+      "<li><b>Only if alone</b> — do not retune when other listeners are online (also on Range; same setting).</li>" +
+      "<li><b>After scan</b> (also on Range): Switch to Peaks, notify/copy when done, sound on new peak, notify new peak.</li>" +
+      "<li><b>Scheduled scan</b> — every N hours while this browser tab stays open (band scan, bookmark scan, or both). Quiet hours and idle skip live here.</li>" +
+      "<li><b>Extras (Settings)</b> — Digi/FT8 survey, HF day/night sets, band×hour heatmap, share report PNG, send-to-scanner, ←/→ during bookmark scan (with Keyboard).</li>" +
+      "<li><b>Pause when I tune</b> / <b>Profile settle ms</b> — also on Range (synced).</li>" +
       fastHops +
       "</ul>" +
       "<h3>Range tab</h3>" +
@@ -3284,13 +3913,15 @@ Plugins.band_survey.init = function () {
       "<li><b>Full range (Explorer)</b> vs <b>Ticked bands only</b> — full span hops every step; bands mode only covers overlapping ticked profiles (grid N/A).</li>" +
       "<li><b>Scan range</b> — add peaks to Seen. <b>Fresh range scan</b> — clear peak list first.</li>" +
       "<li><b>Range spectrum</b> bar chart appears after a scan — kept across page reload and factory reset. Axis shows ≥12 frequency labels. <b>Save PNG</b> / <b>Save CSV</b> on the Range tab.</li>" +
-      "<li><b>Passes</b>, <b>Dwell s</b>, <b>Min seen</b>, <b>dB over noise</b>, <b>Hide birdies</b>, <b>Mute while running</b>, <b>Only if alone</b>, and <b>Own radio — fast hops</b> on this tab (synced with Bands / Settings). <b>Stop</b> auto-bookmarks like band scan.</li>" +
+      "<li><b>Passes</b>, <b>Dwell s</b>, <b>Min seen</b>, <b>dB over noise</b>, <b>Hide birdies</b>, <b>Mute while running</b>, <b>Only if alone</b>, <b>Own radio — fast hops</b>, and after-scan / pause-on-tune options on this tab (synced with Bands). <b>Stop</b> auto-bookmarks like band scan.</li>" +
       "<li><b>Spectrum map</b> — after finish or Stop: green = new, amber = seen, pink = priority; bar height = dB; click a bar to tune.</li>" +
       "</ul>" +
       "<h3>Explore tab</h3>" +
       "<ul>" +
-      "<li>Browse the <b>whole</b> spectrum — every SDR profile in frequency order (not the ticked Bands list).</li>" +
-      "<li><b>Explore on</b> then drag the waterfall sideways (≥⅓ width) to hop tiles, short-click to tune, Alt+wheel to hop. <b>◀ ▶</b> hop ~2.4&nbsp;MHz tiles.</li>" +
+      "<li>Grouped boxes: <b>Tune</b> (counter), <b>Profile</b> (Explore on + ◀ ▶ list — all SDR profiles, not Bands ticks), <b>VFO</b> (−/+ · step · Go MHz), <b>Receiver</b> (mode / vol / SQL / NR), <b>Actions</b>.</li>" +
+      "<li>Large <b>frequency counter</b> shows the demodulator tune (and waterfall center). <b>Step</b> / <b>Off</b> set the VFO grid. <b>− / +</b> nudge one step; <b>Snap</b> lands on the grid; <b>Go</b> jumps to a MHz (switches profile if needed).</li>" +
+      "<li><b>Explore on</b> then drag the waterfall sideways (≥⅓ width) to hop tiles, short-click to tune. Wheel steps the VFO (Shift = ×10, Alt = next/previous profile).</li>" +
+      "<li><b>Copy</b>, <b>Bookmark</b>, <b>Jump loudest</b> on the Actions box.</li>" +
       "<li>For automated sweeps use <b>Range → Full range (Explorer)</b>.</li>" +
       "</ul>" +
       "<h3>Analyzer tab (experimental)</h3>" +
@@ -3308,7 +3939,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Import CSV</b> · <b>Import JSON</b> — restore Peaks/Seen in this browser (file picker; Shift-click to paste). Does not change bookmarks.</li>" +
       "<li><b>Clear list</b> — wipe peak table. Bookmarks stay.</li>" +
       "<li>Large lists (1000+ peaks) can make the Peaks tab slow. The table shows the top " + RENDER_HITS_CAP +
-      " rows; Export CSV has all. Set <b>Max peaks</b> on Settings or untick <b>Keep peaks between sessions</b> for faster opens.</li>" +
+      " rows; Export CSV has all. Set <b>Max peaks</b> or untick <b>Keep peaks between sessions</b> on this tab for faster opens.</li>" +
       "</ul>" +
       "<h3>Bookmarks tab</h3>" +
       "<ul>" +
@@ -3321,7 +3952,7 @@ Plugins.band_survey.init = function () {
       "<li><b>Hide auto bookmarks</b> — hide <b>[auto]</b> from OpenWebRX bookmark bar (still on Bookmarks tab).</li>" +
       "<li><b>Continuous bookmark scan</b> (default on) — loop without pausing on busy; auto-hop after Listen s unless you press <b>Hold</b>.</li>" +
       "<li><b>Hold while busy</b> — when continuous is off: stay until ~1.5s quiet after activity; orange button becomes <b>Continue scan bookmarks</b>.</li>" +
-      "<li><b>Record busy</b> — capture demod audio while parked on a busy/held channel (see Audio tab). Tick before <b>Scan bookmarks</b>.</li>" +
+      "<li><b>Alert MHz list</b> + <b>± kHz</b> — extra notify and sound when a new peak is within tolerance.</li>" +
       "</ul>" +
       "<h3>Audio tab</h3>" +
       "<ul>" +
@@ -3330,7 +3961,7 @@ Plugins.band_survey.init = function () {
       "<li><b>First s</b> (next to Preview all) — how many seconds of each clip to hear (1–15, default 3). Click <b>Stop preview</b> or Play on a row to interrupt.</li>" +
       "<li><b>Record mode</b> — <b>Original</b> (default): record on first waterfall-busy sample; no squelch/voice gating. <b>Balanced</b>: squelch open + light debounce. <b>Strict voice</b>: squelch + S-meter + SNR, pause on quiet, discard hiss.</li>" +
       "<li>Fine-tune (Balanced/Strict; Original ignores): <b>Squelch open only</b>, <b>Debounce ms</b>, <b>Quiet pause ms</b>, <b>Min SNR dB</b>, <b>Squelch headroom dB</b>, <b>Min clip voice %</b> (0 = mode default).</li>" +
-      "<li>Clips persist across refresh/restart (default cap 40 clips or ~48&nbsp;MB; set <b>Max audio clips</b> on Settings). Scanner waits ≥2s before hopping so clips are not cut off.</li>" +
+      "<li>Clips persist across refresh/restart (default cap 40 clips or ~48&nbsp;MB; set <b>Max audio clips</b> on this tab). Scanner waits ≥2s before hopping so clips are not cut off.</li>" +
       "</ul>" +
       "<h3>Skip tab</h3>" +
       "<ul>" +
@@ -3338,40 +3969,23 @@ Plugins.band_survey.init = function () {
       "<li><b>Lockout min</b> — how long a toolbar <b>Lockout</b> skip lasts (default 30&nbsp;min).</li>" +
       "</ul>" +
       "<h3>Settings tab</h3>" +
-      "<p><b>Extras</b> — optional features, all off by default. Tick one and its controls appear on the tab named in parentheses (Peaks, Bookmarks, Audio, Range, Settings). No new tabs.</p>" +
+      "<p>Panel-wide preferences only. Scan options live on Bands / Range; bookmark scan on Bookmarks; peak limits on Peaks; clip cap on Audio.</p>" +
+      "<p><b>Extras</b> — optional features, all off by default. <b>Add all extras</b> turns them on (Public / shared mode is left off so Factory reset stays available). Tick one and its controls appear on the tab named in parentheses.</p>" +
       "<p><b>Panel &amp; UI</b></p><ul>" +
       "<li><b>Open panel on startup</b> — open Survey when OpenWebRX loads (waits for band profiles).</li>" +
       "<li><b>Remember last tab</b> — restore the tab you last used.</li>" +
       "<li><b>Default tab</b> — which tab on open (Last used, Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, Help).</li>" +
       "<li><b>UI text size</b> — Small / Default / Large.</li>" +
+      "<li><b>Button colours</b> — right-click any coloured button and pick a shade; every button of that type updates. Settings → <b>Reset button colours</b>.</li>" +
       "<li><b>Visible tabs</b> — untick tabs for a minimal bar. <b>Analyzer</b> is experimental and off by default; <b>Show all tabs</b> still leaves Analyzer off. Settings cannot be hidden.</li>" +
-      "<li><b>Hide top toolbar</b> — hide the always-visible strip (Scan bands, Fresh scan, Stop, Scan bookmarks, Jump loudest, Check install, Hold/Skip…). Band/Range tab buttons still work.</li>" +
+      "<li><b>Check install</b> — verify the plugin and receiver. Result box appears on this tab. Help also has <b>Check install now</b>.</li>" +
+      "<li><b>Hide top toolbar</b> — never show the scan strip. Normally it only appears on <b>Bands</b> (Scan bands) and <b>Bookmarks</b> (Scan bookmarks / Hold / Skip), plus <b>Stop</b> and status on any tab while a scan is running. Range has Scan range / Stop on that tab.</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
-      "<li><b>Re-show Check install</b> — put Check install back on the toolbar.</li>" +
-      "</ul><p><b>After scan</b> (normal finish, not Stop)</p><ul>" +
-      "<li><b>Switch to Peaks when done</b></li>" +
-      "<li><b>Notify when scan completes</b> — desktop notification + status line.</li>" +
-      "<li><b>Copy peaks after scan</b> — copy peak table to clipboard.</li>" +
-      "<li><b>Sound on new peak</b> — short beep when a new peak is counted during scan.</li>" +
-      "</ul><p><b>Scheduled scan</b> (while this browser tab stays open)</p><ul>" +
-      "<li><b>Every N hours</b> — 0 = off.</li>" +
-      "<li><b>Action</b> — Band scan, Bookmark scan, or Both (band then bookmarks).</li>" +
-      "<li><b>Only when receiver idle</b> — skip if you tuned manually in the last 10&nbsp;min.</li>" +
-      "<li><b>Quiet hours</b> — no auto-scan between start and end times (24h, local).</li>" +
-      "</ul><p><b>Courtesy</b></p><ul>" +
-      "<li><b>Pause scan when I tune manually</b> — stop survey if you click the waterfall.</li>" +
-      "<li><b>Notify new peak</b> — browser notification for unseen peaks.</li>" +
-      "<li><b>Only if alone</b> — do not retune when other listeners are online (also on Range / Bands; untick to override).</li>" +
-      "<li><b>Profile settle ms</b> — wait after profile/frequency change before sampling (0 = default ~700&nbsp;ms).</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
-      "<li><b>Factory reset</b> (top of Settings) — wipe peaks, bookmarks, audio, skip list, Explore, and settings in this browser.</li>" +
+      "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, turn off the <b>Public / shared receiver mode</b> extra.</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
-      "<li><b>Max peaks</b> — trim oldest when exceeded (0 = unlimited). Try 1000–2000 if the panel feels slow with a big list.</li>" +
-      "<li><b>Keep peaks between sessions</b> — off = fresh peak list each browser session (faster). Export CSV first if you need the old list.</li>" +
-      "<li><b>Max audio clips</b> — IndexedDB cap (5–200).</li>" +
       "</ul><p><b>Homelab</b></p><ul>" +
       "<li><b>Webhook URL</b> — POST JSON <code>{freq, name, db, band}</code> on each new peak.</li>" +
-      "<li><b>Alert MHz list</b> + <b>± kHz</b> — extra notify and sound when a new peak is within tolerance.</li>" +
       "</ul>" +
       "<h3>Scan behaviour</h3>" +
       "<ul>" +
@@ -3383,15 +3997,15 @@ Plugins.band_survey.init = function () {
       "</ul>" +
       "<h3>What is saved where</h3>" +
       "<ul>" +
-      "<li><b>localStorage</b> — settings, peak list (Seen), bookmark backups, skip list, panel position/size, dismissed Check install.</li>" +
+      "<li><b>localStorage</b> — settings, peak list (Seen), bookmark backups, skip list, panel position/size.</li>" +
       "<li><b>IndexedDB</b> — audio clips (survives refresh and browser restart).</li>" +
       "<li><b>Blue bookmarks</b> — OpenWebRX local bookmark store in this browser.</li>" +
       "<li>Nothing is uploaded except optional webhook POSTs you configure. Clearing site data removes everything.</li>" +
       "</ul>" +
       "<h3>Bookmark backups</h3>" +
-      '<p><button type="button" id="bs-restore-first" title="Replace this browser\u2019s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
-      '<button type="button" id="bs-restore-last" title="Replace this browser\u2019s blue bookmarks with the copy taken on the most recent backup.">Restore last backup</button> ' +
-      '<button type="button" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
+      '<p><button type="button" class="bs-btn-import" id="bs-restore-first" title="Replace this browser\u2019s blue bookmarks with the copy taken on first run.">Restore first-run bookmarks</button> ' +
+      '<button type="button" class="bs-btn-import" id="bs-restore-last" title="Replace this browser\u2019s blue bookmarks with the copy taken on the most recent backup.">Restore last backup</button> ' +
+      '<button type="button" class="bs-btn-export" id="bs-dl-backup" title="Download the last bookmark backup as JSON.">Download bookmark backup</button></p>' +
       "<p>Yellow <b>server</b> bookmarks are admin-only. Export JSON and merge on the radio host.</p>" +
       "<h3>Troubleshooting</h3>" +
       "<ul>" +
@@ -3399,14 +4013,14 @@ Plugins.band_survey.init = function () {
       "<li><b>No profile list</b> — open the receiver page (not map/settings only); wait for OpenWebRX+ to load.</li>" +
       "<li><b>No waterfall data</b> — wait after connect; check SDR is started.</li>" +
       "<li><b>Local bookmarks API missing</b> — auto-bookmark disabled; Export JSON still works.</li>" +
-      "<li><b>Other listeners online</b> — untick <b>Only if alone</b> on Range, Bands, or Settings → Courtesy.</li>" +
+      "<li><b>Other listeners online</b> — untick <b>Only if alone</b> on Range or Bands.</li>" +
       "<li><b>Nothing counted</b> — lower dB over noise, pick a busier band, wait for waterfall activity.</li>" +
-      "<li><b>Slow panel / sluggish open</b> — hundreds or thousands of stored peaks. Peaks load when you open Survey, not on page load. Set <b>Max peaks</b> (1000–2000), untick <b>Keep peaks between sessions</b>, or Peaks → Export CSV then Clear list.</li>" +
+      "<li><b>Slow panel / sluggish open</b> — hundreds or thousands of stored peaks. Peaks load when you open Survey, not on page load. Set <b>Max peaks</b> (1000–2000) or untick <b>Keep peaks between sessions</b> on the Peaks tab, or Peaks → Export CSV then Clear list.</li>" +
       (ownerOverrideAllowed()
         ? "<li><b>Banned / kicked</b> — leave <b>Own radio — fast hops</b> off on shared receivers.</li>"
         : "<li><b>Banned / kicked</b> — fast hops locked here (~11s gap). Server bot-ban may still apply.</li>") +
       "</ul>" +
-      "<p>Toolbar <b>Check install</b> hides after use; <b>Check install now</b> above always works.</p>"
+      "<p>Settings → <b>Check install</b> and Help → <b>Check install now</b> run the same checks.</p>"
     );
   }
 
@@ -3430,8 +4044,8 @@ Plugins.band_survey.init = function () {
     }
     if ($("bs-help-check")) {
       $("bs-help-check").onclick = function () {
-        switchTab("bands");
-        runCheckInstall({ dismissToolbar: false });
+        switchTab("settings");
+        runCheckInstall();
       };
     }
     if ($("bs-copy-diag")) {
@@ -3484,7 +4098,7 @@ Plugins.band_survey.init = function () {
       deferPanelHeavyWork(true);
     });
     if (!profiles().length) {
-      setStatus("Waiting for band profiles… if this stays empty, click Check install or open the Help tab.");
+      setStatus("Waiting for band profiles… if this stays empty, click Settings → Check install or open the Help tab.");
     }
   }
 
@@ -3625,6 +4239,30 @@ Plugins.band_survey.init = function () {
       return { lo: v, hi: v };
     }
     return null;
+  }
+
+  function fmtProfileMhz(v) {
+    v = Number(v);
+    if (!isFinite(v)) return "—";
+    if (v >= 1000) {
+      var g = v / 1000;
+      return (Math.abs(g - Math.round(g)) < 1e-6 ? String(Math.round(g)) : g.toFixed(3).replace(/\.?0+$/, "")) + " GHz";
+    }
+    if (Math.abs(v - Math.round(v)) < 1e-6) return String(Math.round(v));
+    if (v >= 30) return (Math.round(v * 1000) / 1000).toString();
+    return (Math.round(v * 10000) / 10000).toString();
+  }
+
+  function profileFreqLabel(p) {
+    var r = parseMhzRange(p && p.label);
+    if (!r) return "—";
+    if (Math.abs(r.lo - r.hi) < 1e-9) return fmtProfileMhz(r.lo);
+    return fmtProfileMhz(r.lo) + "–" + fmtProfileMhz(r.hi);
+  }
+
+  function profileModeLabel(p) {
+    var m = guessMode(p && p.id);
+    return m ? String(m).toUpperCase() : "—";
   }
 
   function mhzOverlapsVhf(lo, hi) {
@@ -5865,6 +6503,10 @@ Plugins.band_survey.init = function () {
       listenCmd = "";
       return true;
     }
+    if (listenCmd === "prev") {
+      /* leave channel; for-loop handles stepping back */
+      return true;
+    }
     return shouldSkipTune(freq);
   }
 
@@ -5927,6 +6569,11 @@ Plugins.band_survey.init = function () {
     setListenPaused(false);
     var heard = 0;
     for (var i = 0; i < items.length && !stopFlag; i++) {
+      if (listenCmd === "prev") {
+        listenCmd = "";
+        if (i > 0) i = Math.max(-1, i - 2);
+        continue;
+      }
       var it = items[i].hit || items[i];
       var freq = it.freq || it.frequency;
       var pid = it.pid;
@@ -6075,6 +6722,10 @@ Plugins.band_survey.init = function () {
           recCap.meta.durationMs = Date.now() - recStartedAt;
         }
         setRecording(false);
+      }
+      if (listenCmd === "prev") {
+        listenCmd = "";
+        if (i > 0) i = Math.max(-1, i - 2);
       }
     }
       listenCmd = "";
@@ -6230,6 +6881,7 @@ Plugins.band_survey.init = function () {
       });
     }
     if (typeof saOnTab === "function") saOnTab(name);
+    applyToolbarVisibility();
   }
 
   function visibleBookmarkRows() {
@@ -6665,12 +7317,16 @@ Plugins.band_survey.init = function () {
       if (skipN) parts.push(skipN + " skipped");
       count.textContent = parts.length ? parts.join(" · ") : "";
     }
+    var html = "";
     if (!visibleLocal.length) {
-      host.innerHTML = list.length && skipN
-        ? '<p class="bs-empty">All local bookmarks are always-skipped — see Skip tab.</p>'
-        : '<p class="bs-empty">No blue bookmarks in this browser yet. Auto-bookmark or + on a peak adds them here.</p>';
+      html += '<div class="bs-bm-section"><b class="bs-bm-section-head">Local</b>' +
+        (list.length && skipN
+          ? '<p class="bs-empty">All local bookmarks are always-skipped — see Skip tab.</p>'
+          : '<p class="bs-empty">No blue bookmarks yet. Auto-bookmark or + on a peak adds them here.</p>') +
+        "</div>";
     } else {
-      host.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Local</b><ul class="bs-bm-ul">' + visibleLocal.map(function (b) {
+      html += '<div class="bs-bm-section"><b class="bs-bm-section-head">Local (' + visibleLocal.length +
+        ')</b><ul class="bs-bm-ul">' + visibleLocal.map(function (b) {
         var freq = b.frequency;
         var auto = isAuto(b);
         return '<li class="bs-bm-row' +
@@ -6679,33 +7335,34 @@ Plugins.band_survey.init = function () {
           '<span class="bs-bm-name">' + escapeHtml(bookmarkDisplayName(b)) + "</span>" +
           (auto ? '<span class="bs-bm-auto">[auto]</span>' : "") +
           '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
-          '<button type="button" class="bs-tiny" data-bm-ren="' + freq + '" data-bm-kind="local" title="Rename this bookmark.">ren</button>' +
-          '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
+          '<button type="button" class="bs-tiny bs-btn-util" data-bm-ren="' + freq + '" data-bm-kind="local" title="Rename this bookmark.">ren</button>' +
+          '<button type="button" class="bs-tiny bs-btn-lock" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
           "</li>";
       }).join("") + "</ul></div>";
     }
-    var loadedHost = $("bs-loadedlist");
-    if (loadedHost) {
-      if (!visibleLoaded.length) {
-        loadedHost.innerHTML = loadedBookmarks.length && skipN
+    if (!visibleLoaded.length) {
+      html += '<div class="bs-bm-section"><b class="bs-bm-section-head">Loaded</b>' +
+        (loadedBookmarks.length && skipN
           ? '<p class="bs-empty">All loaded bookmarks are always-skipped — see Skip tab.</p>'
-          : '<p class="bs-empty">Load bookmarks from JSON/CSV — tagged [load], scanned separately from [auto].</p>';
-      } else {
-        loadedHost.innerHTML = '<div class="bs-bm-section"><b class="bs-bm-section-head">Loaded</b><ul class="bs-bm-ul">' +
-          visibleLoaded.map(function (b) {
-            var freq = b.frequency;
-            return '<li class="bs-bm-row bs-bm-loaded' +
-              '" data-loaded-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
-              '" title="Tune to this loaded bookmark.">' +
-              '<span class="bs-bm-name">' + escapeHtml(b.name || fmtMhz(freq)) + "</span>" +
-              '<span class="bs-bm-load">[load]</span>' +
-              '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
-              '<button type="button" class="bs-tiny" data-bm-ren="' + freq + '" data-bm-kind="loaded" title="Rename this loaded bookmark.">ren</button>' +
-              '<button type="button" class="bs-tiny" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
-              "</li>";
-          }).join("") + "</ul></div>";
-      }
+          : '<p class="bs-empty">Load bookmarks from JSON/CSV — tagged [load], scanned with Scan bookmarks.</p>') +
+        "</div>";
+    } else {
+      html += '<div class="bs-bm-section"><b class="bs-bm-section-head">Loaded (' + visibleLoaded.length +
+        ')</b><ul class="bs-bm-ul">' +
+        visibleLoaded.map(function (b) {
+          var freq = b.frequency;
+          return '<li class="bs-bm-row bs-bm-loaded' +
+            '" data-loaded-tune="' + freq + '" data-bm-mode="' + escapeHtml(b.modulation || "") +
+            '" title="Tune to this loaded bookmark.">' +
+            '<span class="bs-bm-name">' + escapeHtml(b.name || fmtMhz(freq)) + "</span>" +
+            '<span class="bs-bm-load">[load]</span>' +
+            '<span class="bs-bm-mhz">' + fmtMhz(freq) + "</span>" +
+            '<button type="button" class="bs-tiny bs-btn-util" data-bm-ren="' + freq + '" data-bm-kind="loaded" title="Rename this loaded bookmark.">ren</button>' +
+            '<button type="button" class="bs-tiny bs-btn-lock" data-bm-ign="' + freq + '" title="Skip this MHz forever and continue the scan.">ign</button>' +
+            "</li>";
+        }).join("") + "</ul></div>";
     }
+    host.innerHTML = html;
     var skipHead = $("bs-skiphead");
     var skipHost = $("bs-skiplist");
     var ign = (S.ignoredFreqs || []).slice().sort(function (a, b) { return a - b; });
@@ -6834,7 +7491,7 @@ Plugins.band_survey.init = function () {
       return '<div class="bs-audio-row' + (playing ? " bs-audio-on" : "") +
         (previewing ? " bs-audio-preview" : "") +
         '" data-clip-id="' + c.id + '">' +
-        '<button type="button" class="bs-tiny" data-clip-play="' + c.id + '" title="' +
+        '<button type="button" class="bs-tiny ' + (playing ? "bs-stop" : "bs-btn-play") + '" data-clip-play="' + c.id + '" title="' +
         (playing ? "Stop this clip." : "Play this clip in the panel.") + '">' +
         (playing ? "Stop" : "Play") + "</button>" +
         '<span class="bs-bm-mhz">' + (c.freq ? fmtMhz(c.freq) : "—") + "</span>" +
@@ -6846,9 +7503,9 @@ Plugins.band_survey.init = function () {
           (c.activeMs && c.durationMs ? (" · voice " + Math.round(100 * c.activeMs / c.durationMs) + "%") : "") +
           (c.transcript ? (" · “" + escapeHtml(String(c.transcript).slice(0, 40)) + "”") : "")
         ) : "") + "</span>" +
-        '<button type="button" class="bs-tiny" data-clip-save="' + c.id + '" title="Download this clip.">Save</button>' +
-        (extraOn("speechToText") ? '<button type="button" class="bs-tiny" data-clip-xscript="' + c.id + '" title="Try browser speech-to-text while playing (Chrome).">TXT</button>' : "") +
-        '<button type="button" class="bs-tiny" data-clip-del="' + c.id + '" title="Remove this clip from the list (does not delete a file you already saved).">×</button>' +
+        '<button type="button" class="bs-tiny bs-btn-export" data-clip-save="' + c.id + '" title="Download this clip.">Save</button>' +
+        (extraOn("speechToText") ? '<button type="button" class="bs-tiny bs-btn-info" data-clip-xscript="' + c.id + '" title="Try browser speech-to-text while playing (Chrome).">TXT</button>' : "") +
+        '<button type="button" class="bs-tiny bs-btn-clear" data-clip-del="' + c.id + '" title="Remove this clip from the list (does not delete a file you already saved).">×</button>' +
         "</div>";
     }).join("");
     if (clipPlaying && clipPlaying.id) scrollClipRowIntoView(clipPlaying.id);
@@ -7284,6 +7941,11 @@ Plugins.band_survey.init = function () {
         else if (kind === "allvhf") match = profileInAllVhf(findProfileForEl(el));
         else if (kind === "alluhf") match = profileInAllUhf(findProfileForEl(el));
         else if (kind === "ham") match = /^(80m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m_|70c_)/.test(id);
+        else if (kind === "digi") {
+          var lab = el.dataset.label || "";
+          match = isDigiProfile(id, lab) || /(ft8|ft4|wspr|jt65|jt9|fst4|q65|js8)/i.test(id + " " + lab);
+        } else if (kind === "hfday") match = /^(20m|17m|15m|12m|10m|6m)/.test(id);
+        else if (kind === "hfnight") match = /^(160m|80m|60m|40m|30m)/.test(id);
         if (match) el.checked = true;
       });
     }
@@ -7305,9 +7967,9 @@ Plugins.band_survey.init = function () {
     var q = (($("bs-filter") && $("bs-filter").value) || "").toLowerCase();
     var box = $("bs-bands");
     if (!box) return;
-    Array.prototype.forEach.call(box.querySelectorAll("label"), function (lab) {
-      var t = (lab.textContent || "").toLowerCase();
-      lab.style.display = !q || t.indexOf(q) >= 0 ? "" : "none";
+    Array.prototype.forEach.call(box.querySelectorAll("tbody tr"), function (row) {
+      var t = (row.textContent || "").toLowerCase();
+      row.style.display = !q || t.indexOf(q) >= 0 ? "" : "none";
     });
   }
 
@@ -7316,7 +7978,7 @@ Plugins.band_survey.init = function () {
     if (!box) return;
     var list = profiles();
     if (!list.length) {
-      box.innerHTML = '<p class="bs-empty">No band profiles yet. Wait a few seconds for the radio to connect, then click Check install. If this stays empty, add SDR profiles in OpenWebRX settings (admin) — Help has the steps.</p>';
+      box.innerHTML = '<p class="bs-empty">No band profiles yet. Wait a few seconds for the radio to connect, then click Settings → Check install. If this stays empty, add SDR profiles in OpenWebRX settings (admin) — Help has the steps.</p>';
       updateCount();
       fillLoadUserBmBandSelect();
       return;
@@ -7324,28 +7986,60 @@ Plugins.band_survey.init = function () {
     var chosen = S.selected && S.selected.length ? S.selected : defaultSelected();
     var chosenSet = {};
     chosen.forEach(function (v) { chosenSet[v] = true; });
-    box.innerHTML = "";
+    var table = document.createElement("table");
+    table.className = "bs-bands-table";
+    table.innerHTML =
+      "<thead><tr>" +
+      '<th class="bs-bands-check" title="Include in Scan bands / Fresh scan"></th>' +
+      '<th title="SDR profile id">Id</th>' +
+      '<th title="Profile name from OpenWebRX">Name</th>' +
+      '<th title="Frequency range parsed from the profile label">Freq</th>' +
+      '<th title="Demodulation mode guessed from the profile id">Mode</th>' +
+      "</tr></thead>";
+    var tbody = document.createElement("tbody");
     list.forEach(function (p) {
-      var lab = document.createElement("label");
+      var tr = document.createElement("tr");
+      tr.title = "Include this band when Scan bands or Fresh scan runs.";
+      var tdCheck = document.createElement("td");
+      tdCheck.className = "bs-bands-check";
       var cb = document.createElement("input");
       cb.type = "checkbox";
       cb.value = p.value;
       cb.dataset.id = p.id;
       cb.dataset.label = p.label;
       cb.checked = !!chosenSet[p.value];
-      var id = document.createElement("span");
-      id.className = "bs-id";
-      id.textContent = p.id;
-      var name = document.createElement("span");
-      name.textContent = p.label;
-      lab.title = "Include this band when Scan bands or Fresh scan runs.";
-      lab.appendChild(cb);
-      lab.appendChild(id);
-      lab.appendChild(name);
-      box.appendChild(lab);
+      cb.setAttribute("aria-label", "Include " + (p.label || p.id));
+      tdCheck.appendChild(cb);
+      var tdId = document.createElement("td");
+      tdId.className = "bs-id";
+      tdId.textContent = p.id;
+      var tdName = document.createElement("td");
+      tdName.className = "bs-bands-name";
+      tdName.textContent = p.label;
+      var tdFreq = document.createElement("td");
+      tdFreq.className = "bs-bands-freq";
+      tdFreq.textContent = profileFreqLabel(p);
+      var tdMode = document.createElement("td");
+      tdMode.className = "bs-bands-mode";
+      tdMode.textContent = profileModeLabel(p);
+      tr.appendChild(tdCheck);
+      tr.appendChild(tdId);
+      tr.appendChild(tdName);
+      tr.appendChild(tdFreq);
+      tr.appendChild(tdMode);
+      tr.addEventListener("click", function (ev) {
+        if (ev.target === cb || (ev.target.closest && ev.target.closest("input"))) return;
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      tbody.appendChild(tr);
     });
+    table.appendChild(tbody);
+    box.innerHTML = "";
+    box.appendChild(table);
     updateCount();
     fillLoadUserBmBandSelect();
+    filterBands();
   }
 
   function visibleHits() {
@@ -7386,6 +8080,12 @@ Plugins.band_survey.init = function () {
       updateTabLabels();
       return;
     }
+    if (extraOn("occHeatmap") && S.peaksView === "heatmap") {
+      renderOccHeatmap();
+      renderBookmarkPane();
+      updateTabLabels();
+      return;
+    }
     if (!hits.length) {
       host.innerHTML = '<p class="bs-empty">No peaks yet. Pick bands and press Scan bands or Fresh scan.</p>';
       renderBookmarkPane();
@@ -7412,21 +8112,21 @@ Plugins.band_survey.init = function () {
         ? ""
         : (known
           ? '<span title="' + escapeHtml(known) + '">bm</span>'
-          : '<button type="button" class="bs-tiny" data-bm="' + h.freq + '" title="Save this peak as a blue bookmark in this browser.">+</button>');
+          : '<button type="button" class="bs-tiny bs-btn-bm" data-bm="' + h.freq + '" title="Save this peak as a blue bookmark in this browser.">+</button>');
       if (!spur && extraOn("peakNativeBm")) {
-        bm += ' <button type="button" class="bs-tiny" data-named-bm="' + h.freq + '" title="Save as a named blue bookmark (not [auto]).">named</button>';
+        bm += ' <button type="button" class="bs-tiny bs-btn-bm" data-named-bm="' + h.freq + '" title="Save as a named blue bookmark (not [auto]).">named</button>';
       }
       if (!spur && extraOn("copyTuneLink")) {
-        bm += ' <button type="button" class="bs-tiny" data-copy-tune="' + h.freq + '" data-copy-mode="' +
+        bm += ' <button type="button" class="bs-tiny bs-btn-util" data-copy-tune="' + h.freq + '" data-copy-mode="' +
           escapeHtml(h.mode || "") + '" title="Copy MHz (+ mode) to clipboard.">copy</button>';
       }
       if (!spur && extraOn("freqNotes")) {
         var note = noteForFreq(h.freq);
-        bm += ' <button type="button" class="bs-tiny' + (note ? " bs-on" : "") + '" data-freq-note="' + h.freq +
+        bm += ' <button type="button" class="bs-tiny bs-btn-util' + (note ? " bs-on" : "") + '" data-freq-note="' + h.freq +
           '" title="' + (note ? escapeHtml(note) : "Add a note for this MHz.") + '">note</button>';
       }
       if (!spur && extraOn("waterfallSnap")) {
-        bm += ' <button type="button" class="bs-tiny" data-wf-snap="1" title="Download a PNG of the waterfall (best-effort).">snap</button>';
+        bm += ' <button type="button" class="bs-tiny bs-btn-export" data-wf-snap="1" title="Download a PNG of the waterfall (best-effort).">snap</button>';
       }
       var tag = spur ? '<span class="bs-spur-tag" title="' + escapeHtml(h.spurWhy || "birdie") + '">birdie</span>' : "";
       var icao = icao833(h.freq);
@@ -7439,7 +8139,7 @@ Plugins.band_survey.init = function () {
       var alwaysOn = isIgnoredFreq(h.freq) || !!h.ignored;
       var ignBtn = alwaysOn
         ? ' <button type="button" class="bs-tiny bs-on" data-ignore="' + h.freq + '" title="Stop always-skipping this MHz">un-ign</button>'
-        : ' <button type="button" class="bs-tiny" data-ignore="' + h.freq + '" title="Skip this MHz forever and continue the scan.">ign</button>';
+        : ' <button type="button" class="bs-tiny bs-btn-lock" data-ignore="' + h.freq + '" title="Skip this MHz forever and continue the scan.">ign</button>';
       return '<tr class="' + (spur ? "bs-spur" : "") + '">' +
         '<td class="bs-n">' + h.seen + "</td>" +
         '<td>' + pri + newb + traffic + ch +
@@ -7879,7 +8579,7 @@ Plugins.band_survey.init = function () {
     if (!S.selected.length) {
       var noProfiles = !profiles().length;
       var msg = noProfiles
-        ? "No bands to pick yet. Wait for the radio to finish loading, then click Check install. See Help if this stays empty."
+        ? "No bands to pick yet. Wait for the radio to finish loading, then click Settings → Check install. See Help if this stays empty."
         : "Pick at least one band (or tap Air / VHF voice / All VHF / All UHF / Ham).";
       setStatus(msg);
       toast(msg);
@@ -7931,7 +8631,11 @@ Plugins.band_survey.init = function () {
           } else {
             await switchProfile(value);
           }
-          var until = Date.now() + S.dwell * 1000;
+          applyDigiModeIfNeeded(p.id, p.label);
+          var peaksBefore = hits.length;
+          var digiBefore = countDigiSpotsOnPage();
+          var dwellSec = digiDwellForProfile(p.id, p.label, S.dwell);
+          var until = Date.now() + dwellSec * 1000;
           var lastNoise = "";
           while (Date.now() < until && !stopFlag) {
             recordLook(p.id, p.label);
@@ -7939,11 +8643,17 @@ Plugins.band_survey.init = function () {
             var data = wf();
             if (data && data.length) {
               lastNoise = " · noise " + Math.round(noiseFloor(data)) + " dB · " + hits.length + " peaks";
+              if (extraOn("digiSurvey") && isDigiProfile(p.id, p.label)) {
+                lastNoise += " · dwell " + Math.round(dwellSec) + "s";
+              }
             }
             setStatus("Pass " + pass + "/" + S.passes + " · " + p.label + lastNoise);
             renderHits();
             await sleep(SAMPLE_MS);
           }
+          var digiDelta = Math.max(0, countDigiSpotsOnPage() - digiBefore);
+          var peakDelta = Math.max(0, hits.length - peaksBefore);
+          recordOccupancy(p.id, p.label, peakDelta, digiDelta);
           step++;
           setProgress(step / total);
         }
@@ -8507,8 +9217,14 @@ Plugins.band_survey.init = function () {
     S.continuousBmScan = $("bs-continuousbm") ? $("bs-continuousbm").checked : S.continuousBmScan;
     S.recordBusy = $("bs-record") ? $("bs-record").checked : S.recordBusy;
     readRecSettings();
-    S.notifyNew = $("bs-notify") ? $("bs-notify").checked : S.notifyNew;
-    S.aloneOnly = aloneFromUi();
+    S.notifyNew = pairChkFromUi("bs-notify", "bs-range-notify", S.notifyNew !== false);
+    /* Read the Bands checkbox here — aloneFromUi used to prefer Range and snap this tick back on. */
+    if ($("bs-band-alone")) S.aloneOnly = syncAloneUi($("bs-band-alone").checked);
+    else if ($("bs-range-alone")) S.aloneOnly = syncAloneUi($("bs-range-alone").checked);
+    if (extraOn("publicMode")) {
+      S.aloneOnly = true;
+      syncAloneUi(true);
+    }
     if ($("bs-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-ownradio").checked);
     else if ($("bs-range-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-range-ownradio").checked);
     S.autoOpenPanel = $("bs-autoopen") ? $("bs-autoopen").checked : S.autoOpenPanel;
@@ -8516,17 +9232,31 @@ Plugins.band_survey.init = function () {
     if ($("bs-priority")) S.priority = $("bs-priority").value || "";
     if ($("bs-lockmin")) S.lockoutMin = Math.max(1, Math.min(240, Number($("bs-lockmin").value) || 30));
     if ($("bs-sched")) S.scheduleHrs = Math.max(0, Math.min(24, Number($("bs-sched").value) || 0));
-    if ($("bs-remember-tab")) S.rememberTab = $("bs-remember-tab").checked;
-    if ($("bs-default-tab")) S.defaultTab = $("bs-default-tab").value || "last";
-    if ($("bs-switch-peaks")) S.switchPeaksOnDone = $("bs-switch-peaks").checked;
-    if ($("bs-notify-done")) S.notifyScanDone = $("bs-notify-done").checked;
-    if ($("bs-sound-peak")) S.soundNewPeak = $("bs-sound-peak").checked;
     if ($("bs-sched-action")) S.schedAction = $("bs-sched-action").value || "band";
     if ($("bs-sched-idle")) S.schedIdleOnly = $("bs-sched-idle").checked;
     if ($("bs-quiet-start")) S.quietStart = $("bs-quiet-start").value || "";
     if ($("bs-quiet-end")) S.quietEnd = $("bs-quiet-end").value || "";
-    if ($("bs-pause-tune")) S.pauseOnManualTune = $("bs-pause-tune").checked;
-    if ($("bs-settle-ms")) S.profileSettleMs = Math.max(0, Number($("bs-settle-ms").value) || 0);
+    if ($("bs-remember-tab")) S.rememberTab = $("bs-remember-tab").checked;
+    if ($("bs-default-tab")) S.defaultTab = $("bs-default-tab").value || "last";
+    if ($("bs-switch-peaks") || $("bs-range-switch-peaks")) {
+      S.switchPeaksOnDone = pairChkFromUi("bs-switch-peaks", "bs-range-switch-peaks", !!S.switchPeaksOnDone);
+    }
+    if ($("bs-notify-done") || $("bs-range-notify-done")) {
+      S.notifyScanDone = pairChkFromUi("bs-notify-done", "bs-range-notify-done", !!S.notifyScanDone);
+    }
+    if ($("bs-sound-peak") || $("bs-range-sound-peak")) {
+      S.soundNewPeak = pairChkFromUi("bs-sound-peak", "bs-range-sound-peak", S.soundNewPeak !== false);
+    }
+    if ($("bs-copy-done") || $("bs-range-copy-done")) {
+      S.copyPeaksOnDone = pairChkFromUi("bs-copy-done", "bs-range-copy-done", !!S.copyPeaksOnDone);
+    }
+    if ($("bs-pause-tune") || $("bs-range-pause-tune")) {
+      S.pauseOnManualTune = pairChkFromUi("bs-pause-tune", "bs-range-pause-tune", !!S.pauseOnManualTune);
+    }
+    if ($("bs-settle-ms") || $("bs-range-settle-ms")) {
+      var settleEl = $("bs-settle-ms") || $("bs-range-settle-ms");
+      S.profileSettleMs = syncPairNum("bs-settle-ms", "bs-range-settle-ms", Math.max(0, Number(settleEl.value) || 0));
+    }
     if ($("bs-max-peaks")) {
       S.maxPeaks = Math.max(0, Number($("bs-max-peaks").value) || 0);
       if (_hitsLoaded) {
@@ -8557,11 +9287,24 @@ Plugins.band_survey.init = function () {
     if ($("bs-aud-vol")) S.clipVolume = clipVolumeLevel();
     if ($("bs-bm-loaduser-bands") || $("bs-bm-lu-allbands")) S.loadUserBmBands = loadUserBmSelectedValues();
     if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
-    if ($("bs-copy-done")) S.copyPeaksOnDone = $("bs-copy-done").checked;
     if ($("bs-alert-freqs")) S.alertFreqs = $("bs-alert-freqs").value || "";
     if ($("bs-alert-offset")) S.alertOffsetKhz = Math.max(1, Number($("bs-alert-offset").value) || 25);
+    if ($("bs-digi-long")) S.digiLongDwell = !!$("bs-digi-long").checked;
+    if ($("bs-digi-force")) S.digiForceOn = !!$("bs-digi-force").checked;
+    if ($("bs-digi-dwell")) S.digiDwellSec = Math.max(15, Math.min(180, Number($("bs-digi-dwell").value) || 90));
+    if ($("bs-digi-mode")) S.digiForceMode = String($("bs-digi-mode").value || "ft8").trim() || "ft8";
+    if ($("bs-daynight-sched")) S.dayNightBeforeSched = !!$("bs-daynight-sched").checked;
+    if ($("bs-occ-days")) S.occDays = Math.max(1, Math.min(30, Number($("bs-occ-days").value) || 7));
     if ($("bs-text-size")) S.uiTextSize = $("bs-text-size").value || "default";
     if ($("bs-hide-toolbar")) S.hideToolbar = $("bs-hide-toolbar").checked;
+    if ($("bs-ex-step")) {
+      var exStep = Number($("bs-ex-step").value);
+      S.exploreStepKhz = isFinite(exStep) && exStep > 0 ? exStep : 12.5;
+    }
+    if ($("bs-ex-offset")) {
+      var exOff = Number($("bs-ex-offset").value);
+      S.exploreOffsetKhz = isFinite(exOff) && exOff >= 0 ? exOff : 0;
+    }
     readExtrasFromForm();
     if ($("bs-watchlist-freqs")) S.alertFreqs = $("bs-watchlist-freqs").value || S.alertFreqs;
     readHiddenTabsFromForm();
@@ -8617,7 +9360,35 @@ Plugins.band_survey.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    if (existing && $("bs-ex-minimap-btn")) {
+    if (existing && !$("bs-ex-freq")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-ex-vol")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && ($("bs-ex-minimap-btn") || !$("bs-ex-profile-sel"))) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-ex-deck")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-ex-goto-hero")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-jump") && !$("bs-jump").classList.contains("bs-btn-jump")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-loadedlist")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-bmqual") && !$("bs-bmqual").classList.contains("bs-btn-bm")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -8626,6 +9397,22 @@ Plugins.band_survey.init = function () {
       existing = null;
     }
     if (existing && !$("bs-extras")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-extras-all")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-tb-bm-row")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-tb-band-row")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-settings-check")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -8669,7 +9456,7 @@ Plugins.band_survey.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    if (existing && !$("bs-range-grid")) {
+    if (existing && !$("bs-range-notify")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -8700,40 +9487,43 @@ Plugins.band_survey.init = function () {
       '<button type="button" class="bs-x" id="bs-close" title="Close the survey panel. Settings and bookmarks stay in this browser.">×</button>' +
       "</div></div>" +
       '<div class="bs-toolbar" id="bs-toolbar">' +
-      '<div id="bs-health" class="bs-health" hidden></div>' +
-      '<p class="bs-note">Tick bands below, then Scan bands (add to Seen) or Fresh scan. Use <b>Range</b> for a custom MHz sweep. Options for each feature are on its tab.</p>' +
-      '<div class="bs-row">' +
+      '<p class="bs-note" id="bs-tb-bands-note">Tick bands below, then Scan bands (add to Seen) or Fresh scan. Use <b>Range</b> for a custom MHz sweep. Options for each feature are on its tab.</p>' +
+      '<div class="bs-row bs-tb-actions" id="bs-tb-band-row">' +
       '<button type="button" class="bs-primary" id="bs-start" title="Walk ticked bands and add to Seen counts.">Scan bands</button>' +
-      '<button type="button" id="bs-fresh" title="Clear peak list and scan from scratch.">Fresh scan</button>' +
+      '<button type="button" class="bs-btn-fresh" id="bs-fresh" title="Clear peak list and scan from scratch.">Fresh scan</button>' +
       '<button type="button" class="bs-stop" id="bs-stop" title="Stop the survey or bookmark scan right now.">Stop</button>' +
-      '<button type="button" class="bs-scan-top" id="bs-listen-top" title="Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded.">Scan bookmarks</button>' +
-      '<button type="button" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
-      '<span class="bs-check-wrap" id="bs-check-wrap">' +
-      '<button type="button" id="bs-check" title="Check that this page can run Band survey and show any fix on screen.">Check install</button>' +
-      '<button type="button" class="bs-check-dismiss" id="bs-check-dismiss" title="Hide Check install from the toolbar (Help tab still has Check install now).">×</button>' +
-      "</span>" +
+      '<button type="button" class="bs-btn-jump" id="bs-jump" title="Retune to the strongest peak on this waterfall tile only.">Jump loudest</button>' +
       '<span class="bs-count" id="bs-selcount"></span>' +
       "</div>" +
-      '<div class="bs-row">' +
-      '<button type="button" id="bs-hold" title="Stay on this frequency until you click Hold again or Skip.">Hold</button>' +
-      '<button type="button" id="bs-skip" title="Leave this frequency and go to the next bookmark.">Skip</button>' +
-      '<button type="button" id="bs-alwaysskip" title="Skip this MHz forever and continue the scan.">Always skip</button>' +
-      '<button type="button" id="bs-lockout" title="Skip this frequency for Lockout minutes (saved in this browser).">Lockout</button>' +
+      '<div class="bs-row bs-tb-actions" id="bs-tb-bm-row">' +
+      '<button type="button" class="bs-primary bs-scan-top" id="bs-listen-top" title="Loop through bookmarks continuously until Stop. New auto bookmarks first, then all local and loaded.">Scan bookmarks</button>' +
+      '<button type="button" class="bs-stop" id="bs-stop-bm" title="Stop the survey or bookmark scan right now.">Stop</button>' +
+      '<button type="button" class="bs-btn-hold" id="bs-hold" title="Stay on this frequency until you click Hold again or Skip.">Hold</button>' +
+      '<button type="button" class="bs-btn-skip" id="bs-skip" title="Leave this frequency and go to the next bookmark.">Skip</button>' +
+      '<button type="button" class="bs-btn-lock" id="bs-alwaysskip" title="Skip this MHz forever and continue the scan.">Always skip</button>' +
+      '<button type="button" class="bs-btn-lock" id="bs-lockout" title="Skip this frequency for Lockout minutes (saved in this browser).">Lockout</button>' +
       '<span class="bs-hint" id="bs-hophint">busy waits · Always skip = never again · same-band ~1s · other band 11s unless Own radio is on</span>' +
       "</div>" +
       '<div class="bs-status" id="bs-status"></div>' +
-      '<div class="bs-progress"><i id="bs-bar"></i></div>' +
+      '<div class="bs-progress" id="bs-tb-progress"><i id="bs-bar"></i></div>' +
       "</div>" +
       '<div class="bs-body" id="bs-body">' +
       '<div class="bs-tab-pane bs-tab-on" id="bs-tab-bands" data-tab="bands" role="tabpanel">' +
       '<div class="bs-row bs-band-filters" id="bs-band-filters">' +
-      '<button type="button" class="bs-tiny" data-preset="air" title="Add airband profiles (air_1–air_7). Does not untick others — use None to clear first.">Air</button>' +
-      '<button type="button" class="bs-tiny" data-preset="vhf" title="Add air, marine, 2m, and PMR voice profiles. Does not untick others.">VHF voice</button>' +
-      '<button type="button" class="bs-tiny" data-preset="allvhf" title="Add every local profile 30–300 MHz. Combine with All UHF. Does not untick others.">All VHF</button>' +
-      '<button type="button" class="bs-tiny" data-preset="alluhf" title="Add every local profile 300–1000 MHz. Combine with All VHF. Does not untick others.">All UHF</button>' +
-      '<button type="button" class="bs-tiny" data-preset="ham" title="Add HF/VHF/UHF ham band profiles. Does not untick others.">Ham</button>' +
-      '<button type="button" class="bs-tiny" data-preset="all" title="Tick every band profile.">All</button>' +
-      '<button type="button" class="bs-tiny" data-preset="none" title="Untick every band.">None</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="air" title="Add airband profiles (air_1–air_7). Does not untick others — use None to clear first.">Air</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="vhf" title="Add air, marine, 2m, and PMR voice profiles. Does not untick others.">VHF voice</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="allvhf" title="Add every local profile 30–300 MHz. Combine with All UHF. Does not untick others.">All VHF</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="alluhf" title="Add every local profile 300–1000 MHz. Combine with All VHF. Does not untick others.">All UHF</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="ham" title="Add HF/VHF/UHF ham band profiles. Does not untick others.">Ham</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="all" title="Tick every band profile.">All</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="none" title="Untick every band.">None</button>' +
+      '<span data-extra="digiSurvey" hidden>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="digi" title="Add digi / FT8 / WSPR-style profiles (name/id match). Additive.">Digi</button>' +
+      "</span>" +
+      '<span data-extra="dayNightBands" hidden>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="hfday" title="Add HF day bands (20–10m / 6m). Additive — use None first to replace.">HF day</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-preset="hfnight" title="Add HF night bands (160–30m). Additive — use None first to replace.">HF night</button>' +
+      "</span>" +
       '<input type="search" id="bs-filter" placeholder="Filter bands" style="flex:1;min-width:120px" title="Type to hide band names that do not match.">' +
       "</div>" +
       '<details class="bs-tab-opts" open>' +
@@ -8750,6 +9540,50 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute while running</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio — fast hops</label>' +
       '<label class="bs-chk" title="Don\'t retune/scan if other listeners are connected. Untick to scan while others are online."><input type="checkbox" id="bs-band-alone"> Only if alone</label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts" data-extra="digiSurvey" hidden>' +
+      '<summary title="Longer dwell and optional digi mode while surveying FT8/WSPR-style profiles.">Digi / FT8 survey</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Use Digi dwell seconds on digi profiles instead of the normal dwell."><input type="checkbox" id="bs-digi-long"> Longer dwell on digi profiles</label>' +
+      '<label class="bs-chk" title="Call UI.setModulation with Digi mode when hopping digi profiles."><input type="checkbox" id="bs-digi-force"> Force digi mode while surveying</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Seconds to sit on each digi profile (FT8 slots are ~15s; 60–120s recommended).">Digi dwell s <input type="number" id="bs-digi-dwell" min="15" max="180" step="5" style="width:4em"></label>' +
+      '<label title="Modulation id passed to OpenWebRX+ (ft8, ft4, wspr, …).">Digi mode <input type="text" id="bs-digi-mode" placeholder="ft8" style="width:5em"></label>' +
+      "</div>" +
+      '<p class="bs-hint">Tick <b>Digi</b> (or HF day/night) then Scan bands. Occupancy feeds the Peaks heatmap when that extra is on.</p>' +
+      "</details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="What happens when a band or range scan finishes (synced with Range).">After scan</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Switch to the Peaks tab when a survey completes."><input type="checkbox" id="bs-switch-peaks"> Switch to Peaks when done</label>' +
+      '<label class="bs-chk" title="Desktop notification and status when a survey completes."><input type="checkbox" id="bs-notify-done"> Notify when scan completes</label>' +
+      '<label class="bs-chk" title="Copy peak table to clipboard when a survey completes."><input type="checkbox" id="bs-copy-done"> Copy peaks after scan</label>' +
+      '<label class="bs-chk" title="Short beep when a new peak is counted during a scan."><input type="checkbox" id="bs-sound-peak"> Sound on new peak</label>' +
+      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new peak</label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Automatic scans while this browser tab stays open.">Scheduled scan</summary>' +
+      '<div class="bs-row">' +
+      '<label title="0 = off. Repeat while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em"></label>' +
+      '<label title="Band scan, bookmark scan, or both in sequence.">Action <select id="bs-sched-action">' +
+      '<option value="band">Band scan</option><option value="bookmark">Bookmark scan</option><option value="both">Both</option></select></label>' +
+      "</div>" +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Skip scheduled scan if you tuned manually in the last 10 minutes."><input type="checkbox" id="bs-sched-idle"> Only when receiver idle</label>' +
+      '<label class="bs-chk" data-extra="dayNightBands" hidden title="Before each scheduled band scan, tick HF day (08–20 local) or HF night bands."><input type="checkbox" id="bs-daynight-sched"> Apply HF day/night before schedule</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="No auto-scan between these times (24h, local). Leave blank to disable.">Quiet hours <input type="time" id="bs-quiet-start" style="width:6.5em"> – ' +
+      '<input type="time" id="bs-quiet-end" style="width:6.5em"></label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Pause on manual tune and wait after profile hops (synced with Range).">Courtesy</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Stop the survey when you tune manually on the waterfall."><input type="checkbox" id="bs-pause-tune"> Pause scan when I tune manually</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Milliseconds to wait after profile/frequency change before sampling. 0 = default (~700 ms).">Profile settle ms <input type="number" id="bs-settle-ms" min="0" max="5000" step="50" style="width:4.5em"></label>' +
       "</div></details>" +
       '<div class="bs-bands-wrap" id="bs-bands-wrap">' +
       '<div class="bs-bands" id="bs-bands"></div>' +
@@ -8782,6 +9616,23 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk" title="Skip the 11s wait between profiles. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-range-ownradio"> Own radio — fast hops</label>' +
       '<label class="bs-chk" title="Don\'t retune/scan if other listeners are connected. Untick to scan while others are online."><input type="checkbox" id="bs-range-alone"> Only if alone</label>' +
       "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="What happens when a band or range scan finishes (synced with Bands).">After scan</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Switch to the Peaks tab when a survey completes."><input type="checkbox" id="bs-range-switch-peaks"> Switch to Peaks when done</label>' +
+      '<label class="bs-chk" title="Desktop notification and status when a survey completes."><input type="checkbox" id="bs-range-notify-done"> Notify when scan completes</label>' +
+      '<label class="bs-chk" title="Copy peak table to clipboard when a survey completes."><input type="checkbox" id="bs-range-copy-done"> Copy peaks after scan</label>' +
+      '<label class="bs-chk" title="Short beep when a new peak is counted during a scan."><input type="checkbox" id="bs-range-sound-peak"> Sound on new peak</label>' +
+      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-range-notify"> Notify new peak</label>' +
+      "</div></details>" +
+      '<details class="bs-tab-opts">' +
+      '<summary title="Pause on manual tune and wait after profile hops (synced with Bands).">Courtesy</summary>' +
+      '<div class="bs-row bs-chk-grid">' +
+      '<label class="bs-chk" title="Stop the survey when you tune manually on the waterfall."><input type="checkbox" id="bs-range-pause-tune"> Pause scan when I tune manually</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Milliseconds to wait after profile/frequency change before sampling. 0 = default (~700 ms).">Profile settle ms <input type="number" id="bs-range-settle-ms" min="0" max="5000" step="50" style="width:4.5em"></label>' +
+      "</div></details>" +
       '<div class="bs-range-mode-box" id="bs-range-mode-box">' +
       '<div class="bs-range-mode-title">Scan mode</div>' +
       '<label class="bs-chk" title="Step through every MHz point in the span (Explorer-style continuous sweep)."><input type="radio" name="bs-range-mode" id="bs-range-mode-full" value="full"> Full range (Explorer)</label>' +
@@ -8789,45 +9640,122 @@ Plugins.band_survey.init = function () {
       "</div></div>" +
       '<div class="bs-row">' +
       '<button type="button" class="bs-primary" id="bs-range-start-btn" title="Walk the MHz range and add peaks to Seen.">Scan range</button>' +
-      '<button type="button" id="bs-range-fresh" title="Clear the peak list, then scan this range from scratch.">Fresh range scan</button>' +
+      '<button type="button" class="bs-btn-fresh" id="bs-range-fresh" title="Clear the peak list, then scan this range from scratch.">Fresh range scan</button>' +
+      '<button type="button" class="bs-stop" id="bs-range-stop" title="Stop the range or band survey right now.">Stop</button>' +
       "</div>" +
       '<p class="bs-hint" id="bs-range-est"></p>' +
       '<div id="bs-range-spectrum-wrap" hidden>' +
       '<p class="bs-hint bs-range-spectrum-title" id="bs-range-spectrum-title">Range spectrum</p>' +
       '<p class="bs-hint" id="bs-range-spectrum-cap"></p>' +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-range-spec-png" title="Download the spectrum chart as a PNG image.">Save PNG</button>' +
-      '<button type="button" id="bs-range-spec-csv" title="Download peak data for this range as CSV.">Save CSV</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-range-spec-png" title="Download the spectrum chart as a PNG image.">Save PNG</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-range-spec-csv" title="Download peak data for this range as CSV.">Save CSV</button>' +
       '<span data-extra="spectrumHistory" hidden>' +
-      '<button type="button" class="bs-tiny" id="bs-spec-hist-prev" title="Previous saved range spectrum.">◀</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-spec-hist-prev" title="Previous saved range spectrum.">◀</button>' +
       '<span class="bs-count" id="bs-spec-hist-lab"></span>' +
-      '<button type="button" class="bs-tiny" id="bs-spec-hist-next" title="Next saved range spectrum.">▶</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-spec-hist-next" title="Next saved range spectrum.">▶</button>' +
       "</span></div>" +
       '<canvas id="bs-range-spectrum" title="Range scan spectrum — click a peak marker to tune."></canvas>' +
       '<p class="bs-hint bs-range-spectrum-leg">Cyan fill = activity envelope · green = new · gold = seen · pink = priority · click marker to tune</p>' +
       "</div>" +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-explore" data-tab="explore" role="tabpanel">' +
-      '<p class="bs-note">Browse the <b>whole</b> spectrum — every SDR profile in frequency order, not the ticked Bands list. <b>◀ ▶</b> hop ~2.4&nbsp;MHz tiles. Turn <b>Explore on</b>, then drag the waterfall sideways (≥⅓ width) to hop, short-click to tune, Alt+wheel to hop. Panning past a tile switches to the covering profile. For automated sweeps use <b>Range → Full range</b>.</p>' +
+      '<div class="bs-ex-console">' +
+      '<div class="bs-ex-deck" id="bs-ex-deck">' +
+      '<section class="bs-ex-box bs-ex-box-tune" aria-label="Tune readout">' +
+      '<div class="bs-ex-box-h">Tune</div>' +
+      '<div class="bs-ex-lcd" title="Demodulator tune. Center is the waterfall tile.">' +
+      '<div class="bs-ex-lcd-top"><span class="bs-ex-lcd-tag">VFO</span><span class="bs-ex-lcd-mode" id="bs-ex-mode">—</span></div>' +
+      '<div class="bs-ex-lcd-row">' +
+      '<span class="bs-ex-freq" id="bs-ex-freq">——.——————</span>' +
+      '<span class="bs-ex-freq-unit">MHz</span>' +
+      "</div>" +
+      '<div class="bs-ex-lcd-meta">' +
+      '<span id="bs-ex-center">center —</span>' +
+      '<span id="bs-ex-offset-read">Δ —</span>' +
+      '<span class="bs-count" id="bs-ex-readout">—</span>' +
+      "</div></div>" +
+      '<div class="bs-ex-stats">' +
+      '<div class="bs-ex-stat"><span>PROFILE</span><b id="bs-ex-profile">—</b></div>' +
+      '<div class="bs-ex-stat"><span>SPAN</span><b id="bs-ex-span">—</b></div>' +
+      '<div class="bs-ex-stat"><span>STEP</span><b id="bs-ex-step-live">12.5 kHz</b></div>' +
+      '<div class="bs-ex-stat"><span>S-METER</span><b id="bs-ex-smeter">—</b></div>' +
+      "</div></section>" +
+      '<section class="bs-ex-box bs-ex-box-profile" aria-label="Profile hop">' +
+      '<div class="bs-ex-box-h">Profile <span class="bs-ex-box-sub">all SDR profiles · not Bands ticks</span></div>' +
       '<div class="bs-row bs-ex-toolbar">' +
       '<button type="button" class="bs-ex-btn bs-ex-toggle bs-primary" id="bs-ex-toggle" title="Enable waterfall drag/wheel hop across all profiles.">Explore off</button>' +
       '<button type="button" class="bs-ex-btn bs-ex-arrow" id="bs-ex-prev" title="Previous profile (whole spectrum, by MHz).">◀</button>' +
+      '<select id="bs-ex-profile-sel" class="bs-ex-profile-sel" title="Switch SDR profile — same list as the receiver."></select>' +
       '<button type="button" class="bs-ex-btn bs-ex-arrow" id="bs-ex-next" title="Next profile (whole spectrum, by MHz).">▶</button>' +
-      '<span class="bs-count" id="bs-ex-readout">—</span>' +
+      "</div>" +
+      '<p class="bs-ex-tip">On: drag waterfall ≥⅓ width to hop tiles · wheel = step · Alt+wheel = profile</p>' +
+      "</section>" +
+      '<section class="bs-ex-box bs-ex-box-vfo" id="bs-ex-box-vfo" aria-label="VFO step and jump">' +
+      '<div class="bs-ex-box-h">VFO <span class="bs-ex-box-sub">jump anywhere · step · snap</span></div>' +
+      '<div class="bs-ex-goto-hero" id="bs-ex-goto-hero">' +
+      '<label class="bs-ex-goto-lab" title="Type a frequency in MHz and press Go or Enter. Switches profile if needed.">' +
+      '<span class="bs-ex-goto-tag">Go MHz</span>' +
+      '<input type="number" id="bs-ex-goto" min="0.01" max="6000" step="0.000001" placeholder="e.g. 145.500">' +
+      "</label>" +
+      '<button type="button" class="bs-primary bs-btn-go bs-ex-btn bs-ex-go-btn" id="bs-ex-go" title="Tune to Go MHz, switching profile if needed.">Go</button>' +
+      "</div>" +
+      '<div class="bs-row bs-ex-vfo">' +
+      '<button type="button" class="bs-ex-btn bs-ex-nudge" id="bs-ex-down" title="Tune down one step.">−</button>' +
+      '<button type="button" class="bs-ex-btn bs-ex-nudge" id="bs-ex-up" title="Tune up one step.">+</button>' +
+      '<label title="Channel spacing for −/+ , Snap, and Explore-on wheel.">Step <input type="number" id="bs-ex-step" min="0.001" max="100000" step="0.001"> kHz</label>' +
+      '<label title="Grid offset: snap frequency = n × step + offset (PMR446: step 12.5, offset 6.25).">Off <input type="number" id="bs-ex-offset" min="0" max="100000" step="0.001"> kHz</label>' +
+      '<button type="button" class="bs-ex-btn bs-btn-jump" id="bs-ex-snap" title="Round the current tune onto the step/offset grid.">Snap</button>' +
+      "</div>" +
+      '<div class="bs-row bs-ex-chips" id="bs-ex-step-presets">' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="1" title="1 kHz">1</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="5" title="5 kHz">5</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="6.25" title="6.25 kHz">6.25</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="8.33" title="8.33 kHz airband">8.33</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="12.5" title="12.5 kHz">12.5</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="25" title="25 kHz">25</button>' +
+      '<button type="button" class="bs-tiny bs-ex-chip bs-btn-preset" data-ex-step="100" title="100 kHz">100</button>' +
+      "</div></section>" +
+      '<section class="bs-ex-box bs-ex-box-radio" aria-label="Receiver">' +
+      '<div class="bs-ex-box-h">Receiver <span class="bs-ex-box-sub">mode · audio · squelch</span></div>' +
+      '<div class="bs-ex-radio" id="bs-ex-radio">' +
+      '<div class="bs-ex-modes" id="bs-ex-modes" title="Analog demodulation — same as the receiver Modes row."></div>' +
+      '<div class="bs-row bs-ex-digi-row">' +
+      '<label title="Digital / secondary demod. Analog = none.">DIGI <select id="bs-ex-digi"><option value="">Analog</option></select></label>' +
+      '<span class="bs-ex-sql-led" id="bs-ex-sql-led" title="Squelch gate (green = open)."></span>' +
+      "</div>" +
+      '<div class="bs-ex-fader">' +
+      '<button type="button" class="bs-ex-btn bs-ex-icon bs-btn-util" id="bs-ex-mute" title="Mute receiver audio.">Mute</button>' +
+      '<label class="bs-ex-fader-lab">Vol <input type="range" id="bs-ex-vol" min="0" max="150" step="1" value="100"><span id="bs-ex-vol-val">100</span></label>' +
+      "</div>" +
+      '<div class="bs-ex-fader">' +
+      '<button type="button" class="bs-ex-btn bs-ex-icon bs-btn-util" id="bs-ex-sql-auto" title="Set squelch just above the current S-meter.">SQL auto</button>' +
+      '<label class="bs-ex-fader-lab">SQL <input type="range" id="bs-ex-sql" min="-150" max="0" step="1" value="-150"><span id="bs-ex-sql-val">−150 dB</span></label>' +
+      "</div>" +
+      '<div class="bs-ex-fader">' +
+      '<button type="button" class="bs-ex-btn bs-ex-icon bs-btn-util" id="bs-ex-nr" title="Noise reduction on/off.">NR</button>' +
+      '<label class="bs-ex-fader-lab">NR <input type="range" id="bs-ex-nr-lvl" min="-20" max="20" step="1" value="0"><span id="bs-ex-nr-val">0 dB</span></label>' +
+      "</div></div></section>" +
+      '<section class="bs-ex-box bs-ex-box-actions" aria-label="Quick actions">' +
+      '<div class="bs-ex-box-h">Actions</div>' +
+      '<div class="bs-row bs-ex-actions">' +
+      '<button type="button" class="bs-ex-btn bs-btn-util" id="bs-ex-copy" title="Copy the current tune to the clipboard.">Copy</button>' +
+      '<button type="button" class="bs-ex-btn bs-btn-bm" id="bs-ex-bm" title="Save a named blue bookmark at this tune.">Bookmark</button>' +
+      '<button type="button" class="bs-ex-btn bs-btn-jump" id="bs-ex-loud" title="Retune to the strongest peak on this waterfall tile.">Jump loudest</button>' +
       "</div>" +
       '<p class="bs-hint" id="bs-ex-status"></p>' +
-      "</div>" +
+      "</section></div></div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-analyzer" data-tab="analyzer" role="tabpanel">' +
       '<p class="bs-note"><b>Experimental.</b> Live spectrum + waterfall from the OpenWebRX waterfall (relative dB). Basic freq span / hop only — not a full HackRF sweep console. Off by default; enable under Settings → <b>Visible tabs</b>. Set Start–End MHz and press <b>Live on</b>.</p>' +
       '<div class="bs-row" id="bs-sa-presets">' +
-      '<button type="button" class="bs-tiny" data-sa-preset="88-108" title="FM broadcast">FM</button>' +
-      '<button type="button" class="bs-tiny" data-sa-preset="118-137" title="Airband">Air</button>' +
-      '<button type="button" class="bs-tiny" data-sa-preset="144-148" title="2m ham">2m</button>' +
-      '<button type="button" class="bs-tiny" data-sa-preset="430-440" title="70cm">70cm</button>' +
-      '<button type="button" class="bs-tiny" data-sa-preset="1090-1090.5" title="ADS-B">ADS-B</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-sa-preset="88-108" title="FM broadcast">FM</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-sa-preset="118-137" title="Airband">Air</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-sa-preset="144-148" title="2m ham">2m</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-sa-preset="430-440" title="70cm">70cm</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" data-sa-preset="1090-1090.5" title="ADS-B">ADS-B</button>' +
       '<label title="Start of analyzer span (MHz).">Start <input type="number" id="bs-sa-start" min="0.01" max="6000" step="0.001" style="width:6em"></label>' +
       '<label title="End of analyzer span (MHz).">End <input type="number" id="bs-sa-end" min="0.05" max="6000" step="0.001" style="width:6em"></label>' +
-      '<button type="button" id="bs-sa-apply" title="Apply Start/End and reset traces.">Apply</button>' +
+      '<button type="button" class="bs-btn-go" id="bs-sa-apply" title="Apply Start/End and reset traces.">Apply</button>' +
       '<button type="button" class="bs-primary" id="bs-sa-live" title="Start or stop live spectrum.">Live off</button>' +
       '<label class="bs-chk" title="Do not hop — only draw the current waterfall tile."><input type="checkbox" id="bs-sa-follow"> Follow tile</label>' +
       "</div>" +
@@ -8848,43 +9776,55 @@ Plugins.band_survey.init = function () {
       '<label title="Manual dB floor when Auto dB is off.">dB min <input type="number" id="bs-sa-dbmin" step="1" style="width:4em"></label>' +
       '<label title="Manual dB ceiling when Auto dB is off.">dB max <input type="number" id="bs-sa-dbmax" step="1" style="width:4em"></label>' +
       '<label title="Dwell per hop tile when sweeping a wide span.">Hop ms <input type="number" id="bs-sa-hop" min="150" max="5000" step="50" style="width:4.5em"></label>' +
-      '<button type="button" class="bs-tiny" id="bs-sa-clear-peak" title="Clear the peak-hold envelope.">Clear peak hold</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-sa-clear-peak" title="Clear the peak-hold envelope.">Clear peak hold</button>' +
       "</div>" +
       '<p class="bs-hint">Levels are relative (uncalibrated), same as the OpenWebRX waterfall — not absolute dBm.</p>' +
       "</details></div>" +
       '<div class="bs-tab-pane" id="bs-tab-peaks" data-tab="peaks" role="tabpanel">' +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
-      '<button type="button" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
-      '<button type="button" id="bs-csv" title="Download the peak list as a CSV file.">Export CSV</button>' +
-      '<button type="button" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
-      '<button type="button" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
-      '<button type="button" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
-      '<button type="button" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
-      '<button type="button" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
+      '<button type="button" class="bs-btn-bm" id="bs-bmqual" title="Save every peak with Seen at or above Min seen as a blue bookmark.">Bookmark qualified</button>' +
+      '<button type="button" class="bs-btn-util" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-csv" title="Download the peak list as a CSV file.">Export CSV</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-json" title="Download qualified peaks as JSON (for merging yellow server bookmarks).">Export JSON</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-csv-in" title="Restore Peaks/Seen from a previous Export CSV. Shift-click to paste.">Import CSV</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-json-in" title="Restore Peaks/Seen from a previous Export JSON. Shift-click to paste.">Import JSON</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-clearhits" title="Clear the Peaks table in this browser. Bookmarks are not deleted.">Clear list</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-clearskip" hidden title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
       '<label class="bs-chk" data-extra="whatsNew" hidden title="Show only peaks marked new since the last survey."><input type="checkbox" id="bs-show-new-only"> New only</label>' +
-      '<button type="button" data-extra="surveyDiff" hidden id="bs-survey-snap" title="Save current peaks as a snapshot for Δ compare.">Save snapshot</button>' +
+      '<button type="button" class="bs-btn-util" data-extra="surveyDiff" hidden id="bs-survey-snap" title="Save current peaks as a snapshot for Δ compare.">Save snapshot</button>' +
       '<label class="bs-chk" data-extra="surveyDiff" hidden title="Show only peaks not in the saved snapshot."><input type="checkbox" id="bs-show-diff-only"> Changed only</label>' +
+      '<span data-extra="occHeatmap" hidden class="bs-peaks-view">' +
+      '<button type="button" class="bs-tiny bs-btn-util bs-on" id="bs-peaks-view-list" title="Show the peak table.">List</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-peaks-view-heat" title="Show band × hour occupancy heatmap from surveys.">Heatmap</button>' +
+      '<label title="How many days of occupancy history to show.">Days <input type="number" id="bs-occ-days" min="1" max="30" step="1" style="width:3.2em"></label>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-occ-clear" title="Clear stored occupancy samples.">Clear heat</button>' +
+      "</span>" +
+      '<button type="button" class="bs-btn-export" data-extra="shareReport" hidden id="bs-share-report" title="Download a PNG summary of top peaks (and heatmap if enabled).">Share report</button>' +
+      '<button type="button" class="bs-btn-util" data-extra="sendToScanner" hidden id="bs-send-scanner-peaks" title="Mark local bookmarks scannable and start OWRX / freq_scanner.">Send to scanner</button>' +
+      '<label class="bs-chk" title="Restore Seen peak list from this browser next visit. Off = fresh list each session (faster). Export CSV first if you need the old list."><input type="checkbox" id="bs-keep-peaks"> Keep peaks between sessions</label>' +
+      '<label title="0 = unlimited. Trim oldest peaks when list grows. Try 1000–2000 if the panel feels slow.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em"></label>' +
       "</div>" +
       '<p class="bs-hint">Min seen and dB over noise are on the <b>Bands</b> tab — they control which peaks qualify for Bookmark qualified.</p>' +
       "<div><b>Peaks</b> · most active first · new since last run · click MHz to tune · click Name to rename · ign = always skip (click again to undo)</div>" +
       '<div class="bs-tab-scroll" id="bs-hitwrap"></div>' +
+      '<div class="bs-tab-scroll" id="bs-occ-heat" data-extra="occHeatmap" hidden></div>' +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-bookmarks" data-tab="bookmarks" role="tabpanel">' +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-bm-save" title="Download local blue bookmarks and [load] imports as one JSON file. Load bookmarks can re-import it.">Save bookmarks</button>' +
-      '<button type="button" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks unless the file is a Save bookmarks export.">Load bookmarks</button>' +
-      '<button type="button" id="bs-bm-loaduser" title="Pull OpenWebRX user bookmarks into the [load] list for the bands ticked below.">Load user bookmarks</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-bm-save" title="Download local blue bookmarks and [load] imports as one JSON file. Load bookmarks can re-import it.">Save bookmarks</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-bm-load" title="Import bookmark frequencies from JSON or CSV into a separate [load] list. Scan bookmarks includes them. Does not overwrite blue [auto] bookmarks unless the file is a Save bookmarks export.">Load bookmarks</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-bm-loaduser" title="Pull OpenWebRX user bookmarks into the [load] list for the bands ticked below.">Load user bookmarks</button>' +
       '<span data-extra="userBmShortcuts" hidden>' +
-      '<button type="button" class="bs-tiny" id="bs-bm-lu-cur" title="Tick only the current OpenWebRX profile.">Current</button>' +
-      '<button type="button" class="bs-tiny" id="bs-bm-lu-ticked" title="Tick the same bands as on the Bands tab.">Ticked</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" id="bs-bm-lu-cur" title="Tick only the current OpenWebRX profile.">Current</button>' +
+      '<button type="button" class="bs-tiny bs-btn-preset" id="bs-bm-lu-ticked" title="Tick the same bands as on the Bands tab.">Ticked</button>' +
       "</span>" +
-      '<button type="button" id="bs-bm-clearload" title="Remove all user/[load] bookmarks from this browser (imports and Load user bookmarks). Local blue bookmarks stay.">Clear user bookmarks</button>' +
-      '<button type="button" id="bs-bm-clearlocal" title="Remove all local blue bookmarks from this browser. [load] imports and always-skip are not touched.">Clear bookmarks</button>' +
-      '<button type="button" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-bm-clearload" title="Remove all user/[load] bookmarks from this browser (imports and Load user bookmarks). Local blue bookmarks stay.">Clear user bookmarks</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-bm-clearlocal" title="Remove all local blue bookmarks from this browser. [load] imports and always-skip are not touched.">Clear bookmarks</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-clearauto" title="Remove [auto] blue bookmarks from this browser. Named ones stay.">Clear auto bookmarks</button>' +
+      '<button type="button" class="bs-btn-util" data-extra="sendToScanner" hidden id="bs-send-scanner" title="Mark bookmarks scannable and start built-in / freq_scanner.">Send to scanner</button>' +
       '<span class="bs-count" id="bs-bmcount"></span>' +
       "</div>" +
-      '<details class="bs-tab-opts bs-bm-lu-wrap" open>' +
+      '<details class="bs-tab-opts bs-bm-lu-wrap">' +
       '<summary title="Which bands to include when loading OpenWebRX user bookmarks.">User bookmark bands</summary>' +
       '<div class="bs-row">' +
       '<label class="bs-chk" title="Load bookmarks from every band (ignores the list below)."><input type="checkbox" id="bs-bm-lu-allbands" checked> All bands</label>' +
@@ -8908,40 +9848,47 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk" title="Loop bookmarks until Stop without pausing on busy traffic — auto-hop after Listen s."><input type="checkbox" id="bs-continuousbm"> Continuous bookmark scan</label>' +
       '<label class="bs-chk" title="After Listen s minimum, stay while the waterfall shows activity and leave ~1.5s after quiet."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
       '<label class="bs-chk" title="Record demod while a bookmark is busy or voice-gated (see Record mode on Audio tab)."><input type="checkbox" id="bs-record"> Record busy</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Comma-separated MHz. Extra notify and sound when a new peak is within ± offset.">Alert MHz list <textarea id="bs-alert-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px"></textarea></label>' +
+      '<label title="Match alert list within ± this many kHz.">± kHz <input type="number" id="bs-alert-offset" min="1" max="500" step="1" style="width:3.5em"></label>' +
       "</div></details>" +
-      '<p class="bs-note">Local = blue [auto] · Loaded = [load] import · click to tune · ren to rename</p>' +
+      '<p class="bs-note">One list below: <b>Local</b> (blue / [auto]) then <b>Loaded</b> ([load] import). Click to tune · ren to rename.</p>' +
       '<details class="bs-tab-opts" data-extra="watchlist" hidden>' +
-      '<summary title="Alert / watch MHz list (same as Settings → Homelab).">Watchlist</summary>' +
+      '<summary title="Alert / watch MHz list (same as Bookmarks → Alert MHz).">Watchlist</summary>' +
       '<div class="bs-row">' +
       '<label title="Comma-separated MHz to watch." style="flex:1">Alert MHz <textarea id="bs-watchlist-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px"></textarea></label>' +
       "</div></details>" +
-      '<details class="bs-tab-opts" data-extra="sessionLog" hidden open>' +
+      '<details class="bs-tab-opts" data-extra="sessionLog" hidden>' +
       '<summary title="Bookmark-scan hop log (Extras).">Session log</summary>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-tiny" id="bs-session-export" title="Download session log as CSV.">Export log CSV</button>' +
-      '<button type="button" class="bs-tiny" id="bs-session-clear" title="Clear session log.">Clear log</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-session-export" title="Download session log as CSV.">Export log CSV</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-session-clear" title="Clear session log.">Clear log</button>' +
       "</div>" +
-      '<div class="bs-tab-scroll" id="bs-session-log" style="max-height:9em"></div>' +
+      '<div id="bs-session-log" class="bs-session-log"></div>' +
       "</details>" +
       '<div class="bs-tab-scroll bs-bm-scroll" id="bs-bmlist"></div>' +
-      '<div class="bs-tab-scroll bs-loaded-scroll" id="bs-loadedlist"></div>' +
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-audio" data-tab="audio" role="tabpanel">' +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-aud-save" title="Download every clip in Audio clips as separate files (MHz/timestamp names). Includes busy recordings and files you loaded.">Save all</button>' +
-      '<button type="button" id="bs-aud-save-zip" title="Download all Audio clips as one ZIP file. Loads JSZip from jsDelivr on first use.">Save all · ZIP</button>' +
-      '<button type="button" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
-      '<button type="button" id="bs-aud-clear" title="Remove every audio clip from this browser (IndexedDB). Files you already saved to disk are not deleted.">Clear all</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-aud-save" title="Download every clip in Audio clips as separate files (MHz/timestamp names). Includes busy recordings and files you loaded.">Save all</button>' +
+      '<button type="button" class="bs-btn-export" id="bs-aud-save-zip" title="Download all Audio clips as one ZIP file. Loads JSZip from jsDelivr on first use.">Save all · ZIP</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-aud-load" title="Pick audio files from disk to play in the panel. Nothing is uploaded.">Load audio</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-aud-clear" title="Remove every audio clip from this browser (IndexedDB). Files you already saved to disk are not deleted.">Clear all</button>' +
       '<label class="bs-aud-vol" title="Volume for Play and Preview all in this panel. Does not change OpenWebRX receiver volume.">Vol <input type="range" id="bs-aud-vol" min="0" max="100" step="1"> <span id="bs-aud-vol-lbl">80%</span></label>' +
       "</div>" +
       '<div class="bs-row" id="bs-aud-preview-row" hidden>' +
-      '<button type="button" id="bs-aud-preview" title="Play the first N seconds of each clip in order. Highlights the one playing, then advances.">Preview all</button>' +
+      '<button type="button" class="bs-btn-play" id="bs-aud-preview" title="Play the first N seconds of each clip in order. Highlights the one playing, then advances.">Preview all</button>' +
       '<label title="Seconds of each clip to play during Preview all (1–15).">First s <input type="number" id="bs-aud-preview-sec" min="1" max="15" step="0.5" style="width:3.6em"></label>' +
       '<span class="bs-hint">Skims many clips — lights up the row that is playing</span>' +
       "</div>" +
       '<div class="bs-row" data-extra="recCaps" hidden>' +
       '<label title="Stop Record busy after this many seconds on one channel (Extras).">Max clip s <input type="number" id="bs-max-clip-sec" min="5" max="600" step="5" style="width:4em"></label>' +
       '<span class="bs-hint">Caps how long a busy channel can keep recording</span>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<label title="Audio clips kept in this browser (5–200).">Max audio clips <input type="number" id="bs-max-clips" min="5" max="200" step="1" style="width:3.8em"></label>' +
+      '<span class="bs-hint">Oldest clips are dropped when the cap is reached</span>' +
       "</div>" +
       '<details class="bs-tab-opts" open>' +
       '<summary title="Recording quality and voice-gating fine-tune.">Recording options</summary>' +
@@ -8966,7 +9913,7 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-skip" data-tab="skip" role="tabpanel">' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-tiny" id="bs-clearskip-tab" title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-clearskip-tab" title="Forget all always-skip frequencies (bookmarks stay).">Clear always-skip</button>' +
       '<label title="Minutes a Lockout button skip lasts for that frequency.">Lockout min <input type="number" id="bs-lockmin" min="1" max="240" step="1" style="width:3.6em"></label>' +
       "</div>" +
       '<b id="bs-skiphead">Always skip</b>' +
@@ -8974,11 +9921,20 @@ Plugins.band_survey.init = function () {
       "</div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
+      '<div class="bs-factory-box" id="bs-factory-box">' +
+      '<div class="bs-range-mode-title">Factory reset</div>' +
+      '<p class="bs-hint bs-factory-hint">Settings tab, top. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. Panel layout is kept.</p>' +
+      '<p class="bs-hint" id="bs-factory-public" hidden>Public / shared receiver extra is on — Factory reset is disabled until you turn that extra off under Extras below.</p>' +
       '<div class="bs-row bs-factory-row">' +
       '<button type="button" class="bs-stop" id="bs-factory-reset" title="Wipe all SV data in this browser and restore defaults — peaks, bookmarks, audio, skip list, settings, Explore.">Factory reset</button>' +
-      '<span class="bs-hint bs-factory-hint">Wipe peaks, bookmarks, audio, skip list, and settings in this browser.</span>' +
+      "</div></div>" +
+      extrasSettingsHtml() +
+      '<p class="bs-note">Global panel preferences. Scan options are on Bands / Range, bookmark alerts on Bookmarks, peak limits on Peaks, clip cap on Audio.</p>' +
+      '<div class="bs-row" id="bs-settings-check">' +
+      '<button type="button" class="bs-btn-info" id="bs-check" title="Check that this page can run Band survey and show any fix on this tab.">Check install</button>' +
+      '<span class="bs-hint">Same as Help → Check install now. Result appears below.</span>' +
       "</div>" +
-      '<p class="bs-note">Global panel preferences — scan and bookmark options are on their respective tabs.</p>' +
+      '<div id="bs-health" class="bs-health" hidden></div>' +
       '<details class="bs-tab-opts" open>' +
       '<summary title="Panel open behaviour, layout, and text size.">Panel &amp; UI</summary>' +
       '<div class="bs-row bs-chk-grid">' +
@@ -8995,7 +9951,11 @@ Plugins.band_survey.init = function () {
       '<option value="small">Small</option><option value="default">Default</option><option value="large">Large</option></select></label>' +
       "</div>" +
       '<div class="bs-row bs-chk-grid">' +
-      '<label class="bs-chk" title="Hide the top strip (Scan bands, Fresh scan, Stop, Scan bookmarks, Jump loudest, Check install, Hold/Skip…). Scan buttons on Bands/Range tabs still work."><input type="checkbox" id="bs-hide-toolbar"> Hide top toolbar (Scan / Stop / …)</label>' +
+      '<label class="bs-chk" title="Never show the scan strip. By default it only appears on Bands and Bookmarks, and on any tab while a scan is running."><input type="checkbox" id="bs-hide-toolbar"> Always hide scan strip</label>' +
+      "</div>" +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-btn-util" id="bs-reset-btn-shades" title="Restore default colours for every button type. Tip: right-click any coloured button to pick a shade.">Reset button colours</button>' +
+      '<span class="bs-hint">Right-click any coloured button → choose shade (same type stays matched)</span>' +
       "</div>" +
       '<div class="bs-visible-tabs-box" title="Untick tabs for a minimal tab bar. Settings always stays on so you can restore tabs.">' +
       '<div class="bs-range-mode-title">Visible tabs</div>' +
@@ -9012,68 +9972,26 @@ Plugins.band_survey.init = function () {
       '<label class="bs-chk"><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help</label>' +
       '<label class="bs-chk" title="Settings cannot be hidden."><input type="checkbox" class="bs-tab-vis" data-tab="settings" checked disabled> Settings (always on)</label>' +
       "</div>" +
-      '<div class="bs-row"><button type="button" class="bs-tiny" id="bs-tabs-show-all" title="Turn every tab back on.">Show all tabs</button></div>' +
+      '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-tabs-show-all" title="Turn every tab back on.">Show all tabs</button></div>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<button type="button" id="bs-save-layout" title="Remember current panel position and size. Factory reset restores this layout.">Save panel layout</button>' +
-      '<button type="button" id="bs-reset-layout" title="Restore the last saved panel layout.">Restore saved layout</button>' +
-      '<button type="button" id="bs-default-layout" title="Place panel inside the waterfall below the frequency bar (full tab width).">Waterfall default</button>' +
-      '<button type="button" id="bs-restore-check" title="Show Check install on the toolbar again.">Re-show Check install</button>' +
-      "</div></details>" +
-      '<details class="bs-tab-opts" open>' +
-      '<summary title="What happens when a band or range scan finishes normally (not Stop).">After scan</summary>' +
-      '<div class="bs-row bs-chk-grid">' +
-      '<label class="bs-chk" title="Switch to the Peaks tab when a survey completes."><input type="checkbox" id="bs-switch-peaks"> Switch to Peaks when done</label>' +
-      '<label class="bs-chk" title="Desktop notification and status when a survey completes."><input type="checkbox" id="bs-notify-done"> Notify when scan completes</label>' +
-      '<label class="bs-chk" title="Copy peak table to clipboard when a survey completes."><input type="checkbox" id="bs-copy-done"> Copy peaks after scan</label>' +
-      '<label class="bs-chk" title="Short beep when a new peak is counted during a scan."><input type="checkbox" id="bs-sound-peak"> Sound on new peak</label>' +
-      "</div></details>" +
-      '<details class="bs-tab-opts" open>' +
-      '<summary title="Automatic scans while this tab stays open.">Scheduled scan</summary>' +
-      '<div class="bs-row">' +
-      '<label title="0 = off. Repeat while this tab stays open.">Every N hours <input type="number" id="bs-sched" min="0" max="24" step="0.25" style="width:3.8em"></label>' +
-      '<label title="Band scan, bookmark scan, or both in sequence.">Action <select id="bs-sched-action">' +
-      '<option value="band">Band scan</option><option value="bookmark">Bookmark scan</option><option value="both">Both</option></select></label>' +
-      "</div>" +
-      '<div class="bs-row bs-chk-grid">' +
-      '<label class="bs-chk" title="Skip scheduled scan if you tuned manually in the last 10 minutes."><input type="checkbox" id="bs-sched-idle"> Only when receiver idle</label>' +
-      "</div>" +
-      '<div class="bs-row">' +
-      '<label title="No auto-scan between these times (24h, local). Leave blank to disable.">Quiet hours <input type="time" id="bs-quiet-start" style="width:6.5em"> – ' +
-      '<input type="time" id="bs-quiet-end" style="width:6.5em"></label>' +
+      '<button type="button" class="bs-btn-util" id="bs-save-layout" title="Remember current panel position and size. Factory reset restores this layout.">Save panel layout</button>' +
+      '<button type="button" class="bs-btn-util" id="bs-reset-layout" title="Restore the last saved panel layout.">Restore saved layout</button>' +
+      '<button type="button" class="bs-btn-util" id="bs-default-layout" title="Place panel inside the waterfall below the frequency bar (full tab width).">Waterfall default</button>' +
       "</div></details>" +
       '<details class="bs-tab-opts">' +
-      '<summary title="Courtesy while scanning and profile settle time.">Courtesy</summary>' +
-      '<div class="bs-row bs-chk-grid">' +
-      '<label class="bs-chk" title="Stop the survey when you tune manually on the waterfall."><input type="checkbox" id="bs-pause-tune"> Pause scan when I tune manually</label>' +
-      '<label class="bs-chk" title="Browser notification when a new (unseen) peak is counted."><input type="checkbox" id="bs-notify"> Notify new peak</label>' +
-      '<label class="bs-chk" title="Don\'t retune if other listeners are connected."><input type="checkbox" id="bs-alone"> Only if alone</label>' +
-      "</div>" +
+      '<summary title="Export, import, and reset settings JSON. Factory reset is also at the top of this tab.">Data &amp; housekeeping</summary>' +
       '<div class="bs-row">' +
-      '<label title="Milliseconds to wait after profile/frequency change before sampling. 0 = default (~700 ms).">Profile settle ms <input type="number" id="bs-settle-ms" min="0" max="5000" step="50" style="width:4.5em"></label>' +
+      '<button type="button" class="bs-btn-export" id="bs-export-settings" title="Download settings JSON (not peak hits or audio).">Export settings</button>' +
+      '<button type="button" class="bs-btn-import" id="bs-import-settings" title="Import settings JSON and merge.">Import settings</button>' +
+      '<button type="button" class="bs-btn-clear" id="bs-reset-settings" title="Reset settings to defaults. Keeps peak list.">Reset settings</button>' +
+      '<button type="button" class="bs-stop" id="bs-factory-reset-2" title="Same as Factory reset at the top of Settings.">Factory reset</button>' +
       "</div></details>" +
       '<details class="bs-tab-opts">' +
-      '<summary title="Export, import, limits, and nuclear reset.">Data &amp; housekeeping</summary>' +
-      '<div class="bs-row">' +
-      '<button type="button" id="bs-export-settings" title="Download settings JSON (not peak hits or audio).">Export settings</button>' +
-      '<button type="button" id="bs-import-settings" title="Import settings JSON and merge.">Import settings</button>' +
-      '<button type="button" id="bs-reset-settings" title="Reset settings to defaults. Keeps peak list.">Reset settings</button>' +
-      "</div>" +
-      '<div class="bs-row">' +
-      '<label title="0 = unlimited. Trim oldest peaks when list grows. Try 1000–2000 if SV feels slow.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em"></label>' +
-      '<label class="bs-chk" title="Restore Seen peak list from this browser next visit. Off = fresh list each session (faster). Export CSV first if you need the old list."><input type="checkbox" id="bs-keep-peaks"> Keep peaks between sessions</label>' +
-      '<label title="Audio clips kept in this browser (5–200).">Max audio clips <input type="number" id="bs-max-clips" min="5" max="200" step="1" style="width:3.8em"></label>' +
-      "</div></details>" +
-      '<details class="bs-tab-opts">' +
-      '<summary title="Webhooks, alert frequencies, and homelab integrations.">Homelab</summary>' +
+      '<summary title="Webhook on each new peak.">Homelab</summary>' +
       '<div class="bs-row">' +
       '<label title="POST JSON {freq, name, db, band} on each new peak. Errors are ignored.">Webhook URL <input type="url" id="bs-webhook" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
-      "</div>" +
-      '<div class="bs-row">' +
-      '<label title="Comma-separated MHz. Extra notify and sound when a new peak is within ± offset.">Alert MHz list <textarea id="bs-alert-freqs" rows="2" placeholder="121.5, 243" style="flex:1;min-width:140px"></textarea></label>' +
-      '<label title="Match alert list within ± this many kHz.">± kHz <input type="number" id="bs-alert-offset" min="1" max="500" step="1" style="width:3.5em"></label>' +
       "</div></details>" +
-      extrasSettingsHtml() +
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-help" data-tab="help" role="tabpanel">' +
       '<div class="bs-tab-scroll bs-help-pane">' + helpContentHtml() + "</div></div></div>" +
@@ -9115,7 +10033,7 @@ Plugins.band_survey.init = function () {
     if ($("bs-recminsnr")) $("bs-recminsnr").value = S.recMinSnrDb || 0;
     if ($("bs-recheadroom")) $("bs-recheadroom").value = S.recSquelchHeadroomDb || 0;
     if ($("bs-recminratio")) $("bs-recminratio").value = S.recMinClipRatioPct || 0;
-    $("bs-notify").checked = S.notifyNew !== false;
+    if ($("bs-notify")) $("bs-notify").checked = S.notifyNew !== false;
     syncAloneUi(S.aloneOnly !== false);
     $("bs-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
     applyOwnerLock();
@@ -9185,6 +10103,8 @@ Plugins.band_survey.init = function () {
           : "Extra off.");
       };
     });
+    if ($("bs-extras-all")) $("bs-extras-all").onclick = function () { setExtrasAll(true, false); };
+    if ($("bs-extras-none")) $("bs-extras-none").onclick = function () { setExtrasAll(false, true); };
     if ($("bs-show-new-only")) $("bs-show-new-only").onchange = function () {
       S.showNewOnly = !!this.checked; saveSettings(); renderHits();
     };
@@ -9192,6 +10112,20 @@ Plugins.band_survey.init = function () {
       S.showDiffOnly = !!this.checked; saveSettings(); renderHits();
     };
     if ($("bs-survey-snap")) $("bs-survey-snap").onclick = saveSurveySnapNow;
+    if ($("bs-peaks-view-list")) $("bs-peaks-view-list").onclick = function () { setPeaksView("list"); };
+    if ($("bs-peaks-view-heat")) $("bs-peaks-view-heat").onclick = function () { setPeaksView("heatmap"); };
+    if ($("bs-occ-days")) $("bs-occ-days").onchange = function () { readForm(); saveSettings(); renderOccHeatmap(); };
+    if ($("bs-occ-clear")) $("bs-occ-clear").onclick = clearOccHeat;
+    if ($("bs-share-report")) $("bs-share-report").onclick = shareSurveyReport;
+    if ($("bs-send-scanner")) $("bs-send-scanner").onclick = sendToScannerAction;
+    if ($("bs-send-scanner-peaks")) $("bs-send-scanner-peaks").onclick = sendToScannerAction;
+    if ($("bs-digi-long") || $("bs-digi-force") || $("bs-digi-dwell") || $("bs-digi-mode") || $("bs-daynight-sched")) {
+      ["bs-digi-long", "bs-digi-force", "bs-digi-dwell", "bs-digi-mode", "bs-daynight-sched"].forEach(function (id) {
+        var el = $(id);
+        if (!el) return;
+        el.onchange = function () { readForm(); saveSettings(); };
+      });
+    }
     if ($("bs-session-export")) $("bs-session-export").onclick = exportSessionLogCsv;
     if ($("bs-session-clear")) $("bs-session-clear").onclick = clearSessionLog;
     if ($("bs-watchlist-freqs")) $("bs-watchlist-freqs").onchange = function () {
@@ -9241,15 +10175,7 @@ Plugins.band_survey.init = function () {
       ev.stopPropagation();
       togglePanelMinimized();
     };
-    applyCheckInstallDismiss();
-    if ($("bs-check-dismiss")) {
-      $("bs-check-dismiss").onclick = function (ev) {
-        ev.stopPropagation();
-        dismissCheckInstall();
-        setStatus("Check install hidden from toolbar. Use Help → Check install now any time.");
-      };
-    }
-    $("bs-check").onclick = function () { runCheckInstall(); };
+    if ($("bs-check")) $("bs-check").onclick = function () { runCheckInstall(); };
     $("bs-start").onclick = function () { runSurvey(false); };
     $("bs-fresh").onclick = function () { runSurvey(true); };
     if ($("bs-range-start-btn")) $("bs-range-start-btn").onclick = function () { runRangeSurvey(false); };
@@ -9276,6 +10202,12 @@ Plugins.band_survey.init = function () {
     if ($("bs-range-ownradio")) $("bs-range-ownradio").onchange = readRangeForm;
     if ($("bs-range-alone")) $("bs-range-alone").onchange = readRangeForm;
     if ($("bs-band-alone")) $("bs-band-alone").onchange = readForm;
+    [
+      "bs-range-switch-peaks", "bs-range-notify-done", "bs-range-copy-done",
+      "bs-range-sound-peak", "bs-range-notify", "bs-range-pause-tune", "bs-range-settle-ms"
+    ].forEach(function (id) {
+      if ($(id)) $(id).onchange = readForm;
+    });
     if ($("bs-range-mode-full")) $("bs-range-mode-full").onchange = readRangeForm;
     if ($("bs-range-mode-bands")) $("bs-range-mode-bands").onchange = readRangeForm;
     if ($("bs-range-spec-png")) $("bs-range-spec-png").onclick = exportRangeSpectrumPng;
@@ -9283,8 +10215,49 @@ Plugins.band_survey.init = function () {
     if ($("bs-ex-toggle")) $("bs-ex-toggle").onclick = function () { setExploreMode(!explore.on); };
     if ($("bs-ex-prev")) $("bs-ex-prev").onclick = function () { exploreShiftProfile(-1); };
     if ($("bs-ex-next")) $("bs-ex-next").onclick = function () { exploreShiftProfile(1); };
+    if ($("bs-ex-down")) $("bs-ex-down").onclick = function () { exploreNudge(-1); };
+    if ($("bs-ex-up")) $("bs-ex-up").onclick = function () { exploreNudge(1); };
+    if ($("bs-ex-snap")) $("bs-ex-snap").onclick = function () { exploreSnap(); };
+    if ($("bs-ex-go")) $("bs-ex-go").onclick = function () { exploreGo(); };
+    if ($("bs-ex-copy")) $("bs-ex-copy").onclick = function () { exploreCopyFreq(); };
+    if ($("bs-ex-bm")) $("bs-ex-bm").onclick = function () { exploreBookmarkHere(); };
+    if ($("bs-ex-loud")) $("bs-ex-loud").onclick = function () { jumpLoudest(); };
+    if ($("bs-ex-profile-sel")) {
+      $("bs-ex-profile-sel").onchange = function () {
+        var v = $("bs-ex-profile-sel").value;
+        if (!v) return;
+        switchProfile(v).then(function () {
+          exploreFillProfiles();
+          exploreRefreshHud();
+        });
+      };
+    }
+    bindExploreRadio();
+    if ($("bs-ex-step")) {
+      $("bs-ex-step").onchange = function () { readForm(); exploreRefreshHud(); };
+    }
+    if ($("bs-ex-offset")) {
+      $("bs-ex-offset").onchange = function () { readForm(); exploreRefreshHud(); };
+    }
+    if ($("bs-ex-goto")) {
+      $("bs-ex-goto").onkeydown = function (ev) {
+        if (ev && ev.key === "Enter") { ev.preventDefault(); exploreGo(); }
+      };
+    }
+    var exPresets = $("bs-ex-step-presets");
+    if (exPresets) {
+      exPresets.querySelectorAll("[data-ex-step]").forEach(function (btn) {
+        btn.onclick = function () {
+          if ($("bs-ex-step")) $("bs-ex-step").value = btn.getAttribute("data-ex-step");
+          readForm();
+          exploreRefreshHud();
+        };
+      });
+    }
     initExploreUi();
     $("bs-stop").onclick = stopSurvey;
+    if ($("bs-stop-bm")) $("bs-stop-bm").onclick = stopSurvey;
+    if ($("bs-range-stop")) $("bs-range-stop").onclick = stopSurvey;
     $("bs-jump").onclick = function () { jumpLoudest(); };
     $("bs-hold").onclick = function () {
       var wasHold = listenCmd === "hold";
@@ -9323,10 +10296,11 @@ Plugins.band_survey.init = function () {
     ["bs-recdebounce", "bs-recquiet", "bs-recminsnr", "bs-recheadroom", "bs-recminratio"].forEach(function (id) {
       if ($(id)) $(id).onchange = readForm;
     });
-    $("bs-notify").onchange = function () { readForm(); askNotifyPerm(); };
+    if ($("bs-notify")) $("bs-notify").onchange = function () { readForm(); askNotifyPerm(); };
+    if ($("bs-range-notify")) $("bs-range-notify").onchange = function () { readForm(); askNotifyPerm(); };
     if ($("bs-notify-done")) $("bs-notify-done").onchange = function () { readForm(); askNotifyPerm(); };
-    $("bs-alone").onchange = readForm;
-    $("bs-ownradio").onchange = readForm;
+    if ($("bs-range-notify-done")) $("bs-range-notify-done").onchange = function () { readForm(); askNotifyPerm(); };
+    if ($("bs-ownradio")) $("bs-ownradio").onchange = readForm;
     if ($("bs-autoopen")) $("bs-autoopen").onchange = readForm;
     [
       "bs-remember-tab", "bs-switch-peaks", "bs-notify-done", "bs-sound-peak", "bs-copy-done",
@@ -9336,14 +10310,14 @@ Plugins.band_survey.init = function () {
     });
     [
       "bs-default-tab", "bs-text-size", "bs-sched-action", "bs-quiet-start", "bs-quiet-end",
-      "bs-settle-ms", "bs-max-peaks", "bs-keep-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset"
+      "bs-settle-ms", "bs-max-peaks", "bs-keep-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset", "bs-digi-long", "bs-digi-force", "bs-digi-dwell", "bs-digi-mode", "bs-daynight-sched", "bs-occ-days"
     ].forEach(function (id) {
       if ($(id)) $(id).onchange = readForm;
     });
     if ($("bs-reset-layout")) $("bs-reset-layout").onclick = resetPanelLayoutDefaults;
+    if ($("bs-reset-btn-shades")) $("bs-reset-btn-shades").onclick = resetBtnShades;
     if ($("bs-save-layout")) $("bs-save-layout").onclick = savePanelLayoutManual;
     if ($("bs-default-layout")) $("bs-default-layout").onclick = applyWaterfallPanelDefault;
-    if ($("bs-restore-check")) $("bs-restore-check").onclick = restoreCheckInstall;
     var visBox = $("bs-visible-tabs");
     if (visBox) {
       Array.prototype.forEach.call(visBox.querySelectorAll("input.bs-tab-vis"), function (inp) {
@@ -9367,6 +10341,7 @@ Plugins.band_survey.init = function () {
     };
     if ($("bs-reset-settings")) $("bs-reset-settings").onclick = resetSettingsToDefaults;
     if ($("bs-factory-reset")) $("bs-factory-reset").onclick = factoryReset;
+    if ($("bs-factory-reset-2")) $("bs-factory-reset-2").onclick = factoryReset;
     if ($("bs-settings-file")) {
       $("bs-settings-file").onchange = function () {
         var f = this.files && this.files[0];
@@ -9793,12 +10768,550 @@ Plugins.band_survey.init = function () {
     if (msg) setStatus(msg);
   }
 
+  function exploreFmtMhz(hz) {
+    if (!hz || !isFinite(hz)) return "——.——————";
+    var mhz = hz / 1e6;
+    if (mhz >= 1000) return mhz.toFixed(3);
+    if (mhz >= 30) return mhz.toFixed(6);
+    return mhz.toFixed(4);
+  }
+
+  function exploreCurrentHz() {
+    var t = currentTuneHz();
+    if (t && isFinite(t) && t > 0) return t;
+    return typeof window.center_freq === "number" ? window.center_freq : 0;
+  }
+
+  function exploreStepHz() {
+    var khz = Number(S.exploreStepKhz);
+    if (!isFinite(khz) || khz <= 0) khz = 12.5;
+    return khz * 1000;
+  }
+
+  function exploreOffsetHz() {
+    var khz = Number(S.exploreOffsetKhz);
+    if (!isFinite(khz) || khz < 0) return 0;
+    return khz * 1000;
+  }
+
+  function exploreSnapHz(hz) {
+    var step = exploreStepHz();
+    var off = exploreOffsetHz();
+    if (!(step > 0) || !isFinite(hz)) return hz;
+    return Math.round((hz - off) / step) * step + off;
+  }
+
+  function exploreModeLabel() {
+    try {
+      if (window.dems) {
+        var ids = Object.keys(window.dems);
+        var d = ids.length ? window.dems[ids[0]] : null;
+        if (d && typeof d.get_modulation === "function") {
+          var m = d.get_modulation();
+          if (m) return String(m).toUpperCase();
+        }
+      }
+    } catch (e) {}
+    try {
+      if (window.UI && typeof UI.getModulation === "function") {
+        var um = UI.getModulation();
+        if (um) return String(um).toUpperCase();
+      }
+    } catch (e2) {}
+    return "—";
+  }
+
+  var EX_ANALOG_FALLBACK = [
+    { modulation: "nfm", name: "NFM" },
+    { modulation: "wfm", name: "WFM" },
+    { modulation: "am", name: "AM" },
+    { modulation: "lsb", name: "LSB" },
+    { modulation: "usb", name: "USB" },
+    { modulation: "cw", name: "CW" },
+    { modulation: "dsb", name: "DSB" }
+  ];
+  var EX_ANALOG_ORDER = ["nfm", "wfm", "am", "ams", "lsb", "usb", "cw", "dsb", "sam", "iq"];
+
+  function exploreAnalogModes() {
+    try {
+      if (window.Modes && typeof Modes.getModes === "function") {
+        var list = (Modes.getModes() || []).filter(function (m) {
+          return m && m.type === "analog" && m.modulation;
+        });
+        if (list.length) {
+          list.sort(function (a, b) {
+            var ia = EX_ANALOG_ORDER.indexOf(a.modulation);
+            var ib = EX_ANALOG_ORDER.indexOf(b.modulation);
+            if (ia < 0) ia = 99;
+            if (ib < 0) ib = 99;
+            if (ia !== ib) return ia - ib;
+            return String(a.name || a.modulation).localeCompare(String(b.name || b.modulation));
+          });
+          return list;
+        }
+      }
+    } catch (e) {}
+    return EX_ANALOG_FALLBACK;
+  }
+
+  function exploreDigiModes() {
+    try {
+      if (window.Modes && typeof Modes.getModes === "function") {
+        return (Modes.getModes() || []).filter(function (m) {
+          return m && m.type === "digimode" && m.modulation;
+        }).sort(function (a, b) {
+          return String(a.name || a.modulation).localeCompare(String(b.name || b.modulation));
+        });
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function exploreFillModes() {
+    var wrap = $("bs-ex-modes");
+    if (!wrap) return;
+    var analog = exploreAnalogModes();
+    var sig = analog.map(function (m) { return m.modulation; }).join(",");
+    if (wrap.getAttribute("data-sig") !== sig) {
+      wrap.setAttribute("data-sig", sig);
+      wrap.innerHTML = analog.map(function (m) {
+        var lab = escapeHtml(m.name || String(m.modulation).toUpperCase());
+        return '<button type="button" class="bs-tiny bs-ex-mode" data-ex-mod="' +
+          escapeHtml(m.modulation) + '" title="' + lab + '">' + lab + "</button>";
+      }).join("");
+    }
+    var digi = $("bs-ex-digi");
+    if (digi) {
+      var dlist = exploreDigiModes();
+      var dsig = dlist.map(function (m) { return m.modulation; }).join(",");
+      if (digi.getAttribute("data-sig") !== dsig) {
+        var keep = digi.value;
+        digi.setAttribute("data-sig", dsig);
+        digi.innerHTML = '<option value="">Analog</option>' + dlist.map(function (m) {
+          return '<option value="' + escapeHtml(m.modulation) + '">' +
+            escapeHtml(m.name || m.modulation) + "</option>";
+        }).join("");
+        if (keep) digi.value = keep;
+      }
+    }
+  }
+
+  function exploreCurrentMod() {
+    try {
+      if (window.UI && typeof UI.getModulation === "function") {
+        var m = UI.getModulation();
+        if (m) return String(m);
+      }
+    } catch (e) {}
+    try {
+      var demod = window.UI && UI.getDemodulator && UI.getDemodulator();
+      if (demod && typeof demod.get_modulation === "function") {
+        var sec = typeof demod.get_secondary_demod === "function" ? demod.get_secondary_demod() : "";
+        return String(sec || demod.get_modulation() || "");
+      }
+    } catch (e2) {}
+    return "";
+  }
+
+  function exploreSetMode(mod, underlying) {
+    if (!mod) return;
+    if (!window.UI || typeof UI.setModulation !== "function") {
+      exploreSetStatus("Mode API missing on this page.");
+      return;
+    }
+    try {
+      UI.setModulation(mod, underlying || "");
+    } catch (e) {
+      exploreSetStatus("Could not set mode " + mod);
+      return;
+    }
+    exploreSyncRadioUi();
+    exploreSetStatus("Mode → " + String(mod).toUpperCase());
+  }
+
+  function exploreSetVolume(v) {
+    v = Math.max(0, Math.min(150, Math.round(Number(v))));
+    try {
+      if (window.UI && typeof UI.setVolume === "function") UI.setVolume(v);
+      else if (window.audioEngine && typeof audioEngine.setVolume === "function") {
+        var gain = v > 0 ? Math.pow(10, ((v / 2.5) - 55) / 20) : 0;
+        audioEngine.setVolume(gain);
+      }
+    } catch (e) {}
+    if ($("bs-ex-vol-val")) $("bs-ex-vol-val").textContent = String(v);
+  }
+
+  function exploreToggleMute() {
+    try {
+      if (window.UI && typeof UI.toggleMute === "function") UI.toggleMute();
+    } catch (e) {}
+    exploreSyncRadioUi();
+  }
+
+  function exploreSetSquelch(v) {
+    v = Math.max(-150, Math.min(0, Math.round(Number(v))));
+    try {
+      var demod = window.UI && UI.getDemodulator && UI.getDemodulator();
+      if (demod && typeof demod.setSquelch === "function") demod.setSquelch(v);
+      var panel = window.UI && UI.getDemodulatorPanel && UI.getDemodulatorPanel();
+      if (panel && panel.el && panel.el.find) {
+        panel.el.find(".openwebrx-squelch-slider").val(v);
+      }
+    } catch (e) {}
+    if ($("bs-ex-sql-val")) $("bs-ex-sql-val").textContent = v + " dB";
+  }
+
+  function exploreAutoSquelch() {
+    var db = smeterDb();
+    try {
+      if (db == null && typeof getLogSmeterValue === "function" && typeof smeter_level !== "undefined") {
+        db = getLogSmeterValue(smeter_level);
+      }
+    } catch (e) {}
+    var margin = 10;
+    try {
+      var panel = window.UI && UI.getDemodulatorPanel && UI.getDemodulatorPanel();
+      if (panel && typeof panel.squelchAvailable === "function" && !panel.squelchAvailable()) {
+        exploreSetStatus("Squelch is off in this mode.");
+        return;
+      }
+      if (panel && typeof panel.getSquelchMargin === "function") margin = panel.getSquelchMargin();
+    } catch (e2) {}
+    if (db == null || !isFinite(db)) {
+      exploreSetStatus("No S-meter yet — wait for audio.");
+      return;
+    }
+    var v = Math.max(-150, Math.min(0, Math.round(db + margin)));
+    exploreSetSquelch(v);
+    var el = $("bs-ex-sql");
+    if (el) el.value = v;
+    exploreSetStatus("Squelch auto → " + v + " dB");
+  }
+
+  function exploreToggleNr() {
+    try {
+      if (window.UI && typeof UI.toggleNR === "function") UI.toggleNR();
+    } catch (e) {}
+    exploreSyncRadioUi();
+  }
+
+  function exploreSetNr(v) {
+    v = Math.max(-20, Math.min(20, Math.round(Number(v))));
+    try {
+      if (window.UI && typeof UI.setNR === "function") {
+        if (!UI.nrEnabled && typeof UI.toggleNR === "function") UI.toggleNR(true);
+        UI.setNR(v);
+      }
+    } catch (e) {}
+    if ($("bs-ex-nr-val")) $("bs-ex-nr-val").textContent = v + " dB";
+  }
+
+  function exploreSyncRadioUi() {
+    exploreFillModes();
+    var active = document.activeElement && document.activeElement.id;
+    var analog = exploreCurrentMod();
+    var underlying = "";
+    try {
+      if (window.UI && typeof UI.getUnderlying === "function") underlying = UI.getUnderlying() || "";
+    } catch (e) {}
+    var wrap = $("bs-ex-modes");
+    if (wrap) {
+      var analogId = underlying || analog;
+      wrap.querySelectorAll("[data-ex-mod]").forEach(function (btn) {
+        var id = btn.getAttribute("data-ex-mod");
+        btn.classList.toggle("bs-ex-chip-on", id === analogId || id === analog);
+      });
+    }
+    var digi = $("bs-ex-digi");
+    if (digi && active !== "bs-ex-digi") {
+      var dlist = exploreDigiModes();
+      var isDigi = false;
+      for (var i = 0; i < dlist.length; i++) {
+        if (dlist[i].modulation === analog) { isDigi = true; break; }
+      }
+      digi.value = isDigi ? analog : "";
+    }
+    var muted = !!(window.UI && UI.volumeMuted >= 0);
+    var muteBtn = $("bs-ex-mute");
+    if (muteBtn) {
+      muteBtn.classList.toggle("bs-on", muted);
+      muteBtn.textContent = muted ? "Muted" : "Mute";
+    }
+    var vol = $("bs-ex-vol");
+    var volN = (window.UI && typeof UI.volume === "number" && UI.volume >= 0)
+      ? (muted && UI.volumeMuted >= 0 ? UI.volumeMuted : UI.volume)
+      : (vol ? Number(vol.value) : 100);
+    if (vol && active !== "bs-ex-vol") {
+      vol.value = muted ? 0 : volN;
+      vol.disabled = muted;
+    }
+    if ($("bs-ex-vol-val")) $("bs-ex-vol-val").textContent = muted ? "mute" : String(Math.round(muted ? 0 : volN));
+    var sql = $("bs-ex-sql");
+    var sqlN = squelchSliderDb();
+    if (sql && active !== "bs-ex-sql" && sqlN != null) sql.value = sqlN;
+    if ($("bs-ex-sql-val") && sqlN != null) $("bs-ex-sql-val").textContent = Math.round(sqlN) + " dB";
+    var led = $("bs-ex-sql-led");
+    if (led) {
+      var open = squelchOpen();
+      led.classList.toggle("bs-ex-sql-open", open === true);
+      led.classList.toggle("bs-ex-sql-shut", open === false);
+      led.title = open === true ? "Squelch open" : open === false ? "Squelch closed" : "Squelch unknown";
+    }
+    var nrOn = !!(window.UI && UI.nrEnabled);
+    var nrBtn = $("bs-ex-nr");
+    if (nrBtn) nrBtn.classList.toggle("bs-on", nrOn);
+    var nrLvl = $("bs-ex-nr-lvl");
+    var nrN = (window.UI && typeof UI.nrThreshold === "number") ? UI.nrThreshold : 0;
+    if (nrLvl && active !== "bs-ex-nr-lvl") {
+      nrLvl.value = nrN;
+      nrLvl.disabled = !nrOn;
+    }
+    if ($("bs-ex-nr-val")) $("bs-ex-nr-val").textContent = (nrOn ? nrN : "off") + (nrOn ? " dB" : "");
+    var sm = $("bs-ex-smeter");
+    if (sm) {
+      var db = smeterDb();
+      sm.textContent = db == null ? "—" : (Math.round(db * 10) / 10) + " dB";
+    }
+  }
+
+  function bindExploreRadio() {
+    var modes = $("bs-ex-modes");
+    if (modes && !modes._bs_bound) {
+      modes._bs_bound = true;
+      modes.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest("[data-ex-mod]");
+        if (!btn) return;
+        exploreSetMode(btn.getAttribute("data-ex-mod"));
+      });
+    }
+    var digi = $("bs-ex-digi");
+    if (digi) {
+      digi.onchange = function () {
+        var v = digi.value;
+        if (!v) {
+          var analog = "";
+          try {
+            if (window.UI && typeof UI.getUnderlying === "function") analog = UI.getUnderlying() || "";
+            if (!analog && window.UI && typeof UI.getModulation === "function") analog = UI.getModulation() || "";
+          } catch (e) {}
+          if (!analog) analog = "nfm";
+          exploreSetMode(analog);
+        } else exploreSetMode(v);
+      };
+    }
+    if ($("bs-ex-mute")) $("bs-ex-mute").onclick = function () { exploreToggleMute(); };
+    if ($("bs-ex-vol")) {
+      $("bs-ex-vol").oninput = function () { exploreSetVolume(this.value); };
+      $("bs-ex-vol").onchange = function () { exploreSetVolume(this.value); };
+    }
+    if ($("bs-ex-sql")) {
+      $("bs-ex-sql").oninput = function () { exploreSetSquelch(this.value); };
+      $("bs-ex-sql").onchange = function () { exploreSetSquelch(this.value); };
+    }
+    if ($("bs-ex-sql-auto")) $("bs-ex-sql-auto").onclick = function () { exploreAutoSquelch(); };
+    if ($("bs-ex-nr")) $("bs-ex-nr").onclick = function () { exploreToggleNr(); };
+    if ($("bs-ex-nr-lvl")) {
+      $("bs-ex-nr-lvl").oninput = function () { exploreSetNr(this.value); };
+      $("bs-ex-nr-lvl").onchange = function () { exploreSetNr(this.value); };
+    }
+    exploreFillModes();
+    exploreSyncRadioUi();
+  }
+
+  function exploreProfileLabel() {
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    if (sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) {
+      return sel.options[sel.selectedIndex].text || sel.value || "—";
+    }
+    return "—";
+  }
+
+  function exploreFillProfiles() {
+    var dest = $("bs-ex-profile-sel");
+    var src = $("openwebrx-sdr-profiles-listbox");
+    if (!dest) return;
+    if (!src || !src.options.length) {
+      if (dest.getAttribute("data-sig") !== "empty") {
+        dest.setAttribute("data-sig", "empty");
+        dest.innerHTML = '<option value="">No profiles</option>';
+      }
+      return;
+    }
+    var sig = "";
+    var html = "";
+    for (var i = 0; i < src.options.length; i++) {
+      var opt = src.options[i];
+      sig += (opt.value || "") + "\t" + (opt.text || "") + "\n";
+      html += '<option value="' + escapeHtml(opt.value) + '">' +
+        escapeHtml(opt.text || opt.value) + "</option>";
+    }
+    if (dest.getAttribute("data-sig") !== sig) {
+      dest.setAttribute("data-sig", sig);
+      dest.innerHTML = html;
+    }
+    if (document.activeElement !== dest) dest.value = src.value;
+  }
+
+  function exploreRefreshHud() {
+    exploreRefreshReadout();
+  }
+
+  function exploreTuneTo(hz) {
+    hz = Math.round(hz);
+    if (!isFinite(hz) || hz <= 0) {
+      exploreSetStatus("Need a frequency to tune.");
+      return;
+    }
+    var p = profileForFreq(hz);
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    var needSwitch = !!(p && sel && p.value && sel.value !== p.value);
+    var finish = function () {
+      pluginSetFrequency(hz);
+      var bw = window.bandwidth || 0;
+      var c = window.center_freq || 0;
+      if (bw && c && (hz < c - bw * 0.42 || hz > c + bw * 0.42)) {
+        exploreSendCenter(hz, true);
+      }
+      exploreRefreshHud();
+    };
+    if (needSwitch) {
+      exploreSetStatus("Profile → " + (p.label || p.id || "") + " · " + fmtMhz(hz));
+      switchProfile(p.value).then(function () { finish(); });
+    } else {
+      finish();
+      exploreSetStatus("Tune → " + fmtMhz(hz));
+    }
+  }
+
+  function exploreNudge(dir) {
+    var hz = exploreCurrentHz();
+    if (!hz) {
+      exploreSetStatus("No tune yet — wait for the receiver, or use Go MHz.");
+      return;
+    }
+    exploreTuneTo(hz + dir * exploreStepHz());
+  }
+
+  function exploreSnap() {
+    var hz = exploreCurrentHz();
+    if (!hz) {
+      exploreSetStatus("Nothing to snap.");
+      return;
+    }
+    exploreTuneTo(exploreSnapHz(hz));
+  }
+
+  function exploreGo() {
+    var el = $("bs-ex-goto");
+    var raw = el ? Number(el.value) : NaN;
+    if (!isFinite(raw) || raw <= 0) {
+      exploreSetStatus("Type a frequency in MHz, then Go.");
+      return;
+    }
+    var hz = raw >= 10000 ? raw : raw * 1e6;
+    exploreTuneTo(hz);
+  }
+
+  function exploreFallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      exploreSetStatus("Copied " + text);
+    } catch (e) {
+      exploreSetStatus("Copy failed.");
+    }
+  }
+
+  function exploreCopyFreq() {
+    var hz = exploreCurrentHz();
+    if (!hz) {
+      exploreSetStatus("No frequency to copy.");
+      return;
+    }
+    var t = exploreFmtMhz(hz) + " MHz";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () {
+        exploreSetStatus("Copied " + t);
+      }).catch(function () { exploreFallbackCopy(t); });
+    } else exploreFallbackCopy(t);
+  }
+
+  function exploreBookmarkHere() {
+    var hz = exploreCurrentHz();
+    if (!hz) {
+      exploreSetStatus("No frequency to bookmark.");
+      return;
+    }
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    var pid = "";
+    if (sel && sel.value) {
+      pid = sel.value.indexOf("|") >= 0 ? sel.value.split("|").slice(1).join("|") : sel.value;
+    }
+    var row = addBookmark({
+      freq: hz,
+      seen: 99,
+      pid: pid,
+      mode: (exploreModeLabel() !== "—" ? String(exploreModeLabel()).toLowerCase() : guessMode(pid)),
+      label: "Explore",
+      name: "Explore " + exploreFmtMhz(hz)
+    });
+    if (row) {
+      refreshBookmarks();
+      exploreSetStatus(row.already ? "Already bookmarked · " + row.name : "Bookmarked " + row.name);
+    }
+  }
+
   function exploreRefreshReadout() {
     var el = $("bs-ex-readout");
-    if (!el) return;
     var c = typeof window.center_freq === "number" ? window.center_freq : 0;
     var bw = typeof window.bandwidth === "number" ? window.bandwidth : 0;
-    el.textContent = (c ? fmtMhz(c) : "—") + (bw ? " · span " + (bw >= 1e6 ? (bw / 1e6).toFixed(2) + " MHz" : Math.round(bw / 1000) + " kHz") : "");
+    var tune = exploreCurrentHz();
+    var spanTxt = bw
+      ? (bw >= 1e6 ? (bw / 1e6).toFixed(2) + " MHz" : Math.round(bw / 1000) + " kHz")
+      : "—";
+    if (el) {
+      el.textContent = (c ? fmtMhz(c) : "—") + (bw ? " · span " + spanTxt : "");
+    }
+    var freqEl = $("bs-ex-freq");
+    if (freqEl) freqEl.textContent = exploreFmtMhz(tune);
+    var modeEl = $("bs-ex-mode");
+    if (modeEl) modeEl.textContent = exploreModeLabel();
+    var cen = $("bs-ex-center");
+    if (cen) cen.textContent = c ? ("center " + fmtMhz(c)) : "center —";
+    var offEl = $("bs-ex-offset-read");
+    if (offEl) {
+      var offHz = (tune && c) ? (tune - c) : 0;
+      offEl.textContent = (tune && c)
+        ? ("Δ " + (offHz >= 0 ? "+" : "") + (Math.round(offHz / 10) / 100) + " kHz")
+        : "Δ —";
+    }
+    var prof = $("bs-ex-profile");
+    if (prof) prof.textContent = exploreProfileLabel();
+    var spanEl = $("bs-ex-span");
+    if (spanEl) spanEl.textContent = spanTxt;
+    var stepLive = $("bs-ex-step-live");
+    if (stepLive) {
+      var sk = Number(S.exploreStepKhz) > 0 ? Number(S.exploreStepKhz) : 12.5;
+      var ok = Number(S.exploreOffsetKhz) || 0;
+      stepLive.textContent = ok ? (sk + " / +" + ok + " kHz") : (sk + " kHz");
+    }
+    var gotoEl = $("bs-ex-goto");
+    if (gotoEl && document.activeElement !== gotoEl && tune) {
+      if (!gotoEl.value) gotoEl.placeholder = exploreFmtMhz(tune);
+    }
+    var chips = $("bs-ex-step-presets");
+    if (chips) {
+      var cur = String(Number(S.exploreStepKhz) > 0 ? S.exploreStepKhz : 12.5);
+      chips.querySelectorAll("[data-ex-step]").forEach(function (btn) {
+        btn.classList.toggle("bs-ex-chip-on", btn.getAttribute("data-ex-step") === cur);
+      });
+    }
+    exploreSyncRadioUi();
+    exploreFillProfiles();
   }
 
   function exploreShiftProfile(direction) {
@@ -9818,6 +11331,7 @@ Plugins.band_survey.init = function () {
     explore.segmentStart = 0;
     explore.segmentEnd = 0;
     exploreSetStatus("→ " + (opt.text || opt.value));
+    exploreFillProfiles();
     exploreRefreshReadout();
     return true;
   }
@@ -9845,7 +11359,6 @@ Plugins.band_survey.init = function () {
         setTimeout(function () { bsInternalTune = false; }, 0);
       }
       exploreRefreshReadout();
-      exploreDrawMinimap();
     };
     if (immediate) fire();
     else explore.debounceTimer = setTimeout(fire, EX_DEBOUNCE_MS);
@@ -9880,14 +11393,13 @@ Plugins.band_survey.init = function () {
   function exploreOnWheel(ev) {
     if (!exploreIsPanTarget(ev.target)) return;
     exploreBlock(ev);
-    var bw = window.bandwidth || 2400000;
     if (ev.altKey) {
       exploreShiftProfile(ev.deltaY > 0 ? 1 : -1);
       return;
     }
-    var step = bw * (ev.deltaY > 0 ? 0.08 : -0.08);
-    if (ev.shiftKey) step *= 0.25;
-    exploreSendCenter((window.center_freq || 0) + step);
+    var step = exploreStepHz();
+    if (ev.shiftKey) step *= 10;
+    exploreTuneTo((exploreCurrentHz() || window.center_freq || 0) + (ev.deltaY > 0 ? step : -step));
   }
 
   function exploreOnDown(ev) {
@@ -9999,87 +11511,20 @@ Plugins.band_survey.init = function () {
     window._bs_ex_wf_hooked = true;
   }
 
+  function exploreRemoveMinimapDom() {
+    explore.minimapOn = false;
+    explore.minimap = null;
+    explore.minimapCtx = null;
+    var wrap = $("bs-ex-minimap-wrap");
+    if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+  }
+
   function exploreDrawMinimap() {
-    if (!explore.minimapOn || !explore.minimapCtx || !explore.on) return;
-    exploreEnsureSegment();
-    var ctx = explore.minimapCtx;
-    var w = explore.minimap.width;
-    var h = explore.minimap.height;
-    ctx.fillStyle = "#0a0a0c";
-    ctx.fillRect(0, 0, w, h);
-    var ov = explore.overview;
-    var minL = -90;
-    var maxL = -30;
-    if (window.waterfall_levels) {
-      if (window.waterfall_levels.min != null) minL = window.waterfall_levels.min;
-      if (window.waterfall_levels.max != null) maxL = window.waterfall_levels.max;
-    }
-    var range = maxL - minL || 1;
-    if (ov) {
-      var x;
-      for (x = 0; x < EX_MINIMAP_BINS; x++) {
-        var v = ov[x];
-        if (!(isFinite(v) && v > EX_OVERVIEW_EMPTY + 1)) continue;
-        var t = Math.max(0, Math.min(1, (v - minL) / range));
-        var g = Math.round(40 + t * 180);
-        ctx.fillStyle = "rgb(" + g + "," + Math.round(g * 0.85) + "," + Math.round(30 + t * 40) + ")";
-        var px = Math.floor((x / EX_MINIMAP_BINS) * w);
-        ctx.fillRect(px, 2, Math.max(1, Math.ceil(w / EX_MINIMAP_BINS)), h - 4);
-      }
-    }
-    var center = window.center_freq || 0;
-    var bw = window.bandwidth || 2400000;
-    var segW = explore.segmentEnd - explore.segmentStart;
-    if (segW > 0) {
-      var vL = ((center - bw / 2) - explore.segmentStart) / segW * w;
-      var vR = ((center + bw / 2) - explore.segmentStart) / segW * w;
-      ctx.strokeStyle = "rgba(120, 200, 255, 0.95)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(Math.max(0, vL), 1, Math.max(4, vR - vL), h - 2);
-      ctx.fillStyle = "rgba(120, 200, 255, 0.12)";
-      ctx.fillRect(Math.max(0, vL), 1, Math.max(4, vR - vL), h - 2);
-    }
+    exploreRemoveMinimapDom();
   }
 
   function exploreEnsureMinimapDom() {
-    var container = exploreCanvas();
-    var wrap = $("bs-ex-minimap-wrap");
-    if (wrap && container && wrap.parentNode !== container) {
-      wrap.parentNode.removeChild(wrap);
-      container.appendChild(wrap);
-    }
-    if (wrap) {
-      explore.minimap = wrap.querySelector("canvas");
-      if (explore.minimap) explore.minimapCtx = explore.minimap.getContext("2d");
-      return;
-    }
-    if (!container) return;
-    wrap = document.createElement("div");
-    wrap.id = "bs-ex-minimap-wrap";
-    explore.minimap = document.createElement("canvas");
-    explore.minimap.id = "bs-ex-minimap-canvas";
-    explore.minimap.className = "bs-ex-minimap-canvas";
-    explore.minimap.width = 900;
-    explore.minimap.height = 44;
-    wrap.appendChild(explore.minimap);
-    container.appendChild(wrap);
-    explore.minimapCtx = explore.minimap.getContext("2d");
-    explore.minimap.addEventListener("click", function (ev) {
-      if (!explore.on) return;
-      var rect = explore.minimap.getBoundingClientRect();
-      var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-      var f = explore.segmentStart + frac * (explore.segmentEnd - explore.segmentStart);
-      exploreSendCenter(f, true);
-      if (window.UI && typeof UI.setFrequency === "function") UI.setFrequency(Math.round(f));
-    });
-    window.addEventListener("resize", function () {
-      if (!explore.minimap) return;
-      var w = wrap.clientWidth;
-      if (w > 64 && Math.abs(explore.minimap.width - w) > 2) {
-        explore.minimap.width = w;
-        exploreDrawMinimap();
-      }
-    });
+    exploreRemoveMinimapDom();
   }
 
   function exploreRefreshButtons() {
@@ -10089,11 +11534,14 @@ Plugins.band_survey.init = function () {
       tog.classList.toggle("bs-on", explore.on);
       tog.classList.toggle("bs-primary", explore.on);
     }
-    var mm = $("bs-ex-minimap-btn");
-    if (mm) mm.classList.toggle("bs-on", explore.minimapOn);
-    var wrap = $("bs-ex-minimap-wrap");
-    if (wrap) wrap.style.display = explore.on && explore.minimapOn ? "block" : "none";
+    exploreRemoveMinimapDom();
     document.body.classList.toggle("bs-explore-mode", explore.on);
+  }
+
+  function setExploreMinimap() {
+    explore.minimapOn = false;
+    exploreSaveBool(LS_EXPLORE_MM, false);
+    exploreRemoveMinimapDom();
   }
 
   function setExploreMode(on) {
@@ -10103,44 +11551,34 @@ Plugins.band_survey.init = function () {
       removeStandaloneExplorer();
       exploreInstallHandlers();
       exploreHookWaterfall();
-      exploreEnsureMinimapDom();
-      exploreSetStatus("Explore on — drag waterfall to hop profiles · ◀▶ also work.");
+      exploreRemoveMinimapDom();
+      exploreSetStatus("Explore on — drag to hop tiles · wheel steps VFO · Alt+wheel hops profiles.");
     } else {
       exploreSetStatus("Explore off.");
     }
     exploreRefreshButtons();
     exploreRefreshReadout();
-    exploreDrawMinimap();
-  }
-
-  function setExploreMinimap(on) {
-    explore.minimapOn = !!on;
-    exploreSaveBool(LS_EXPLORE_MM, explore.minimapOn);
-    if (explore.minimapOn) exploreEnsureMinimapDom();
-    exploreRefreshButtons();
-    exploreDrawMinimap();
   }
 
   function initExploreUi() {
     if (initExploreUi._done) return;
     initExploreUi._done = true;
     explore.on = exploreLoadBool(LS_EXPLORE, false);
-    explore.minimapOn = exploreLoadBool(LS_EXPLORE_MM, false);
+    explore.minimapOn = false;
+    exploreSaveBool(LS_EXPLORE_MM, false);
     removeStandaloneExplorer();
     exploreInstallHandlers();
     exploreHookWaterfall();
-    if (explore.on && explore.minimapOn) exploreEnsureMinimapDom();
-    else {
-      var stale = $("bs-ex-minimap-wrap");
-      if (stale) stale.style.display = "none";
-    }
+    exploreRemoveMinimapDom();
     exploreRefreshButtons();
     exploreRefreshReadout();
-    if (explore.on) exploreSetStatus("Explore on — drag waterfall to hop · ◀▶ previous/next profile.");
+    if (explore.on) exploreSetStatus("Explore on — drag to hop tiles · wheel steps VFO · Alt+wheel hops profiles.");
+    exploreFillModes();
+    exploreFillProfiles();
+    exploreSyncRadioUi();
     setInterval(function () {
       if (!exploreCanvas() || !exploreCanvas()._bs_ex_handlers) exploreInstallHandlers();
       exploreRefreshReadout();
-      if (explore.on) exploreDrawMinimap();
     }, 500);
   }
 
