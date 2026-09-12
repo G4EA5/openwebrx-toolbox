@@ -7245,7 +7245,7 @@ Plugins.toolbox.init = function () {
       "<h3>Versions &amp; Band Survey download</h3>" +
       "<ul>" +
       "<li><b>This build</b> — Toolbox <b>v" + (Plugins.toolbox._version || "?") + "</b> (<code>toolbox.js</code>).</li>" +
-      "<li><b>GitHub</b> — same repo as Band Survey (<code>G4EA5/owrx-band-survey</code>), display name OpenWebRX Toolbox. Clone / Releases for updates.</li>" +
+      "<li><b>GitHub</b> — repo <code>G4EA5/openwebrx-toolbox</code> (formerly Band Survey). Clone / Releases for updates.</li>" +
       "<li><b>Last Band Survey (v127)</b> — still in the repo under <code>legacy/band_survey/</code> and as root <code>band_survey.js</code> / <code>band_survey.css</code> if you specifically want the old plugin. Prefer Toolbox.</li>" +
       "<li><b>Older Toolbox builds</b> — use GitHub <b>Releases</b> / tags when published, or <code>git checkout</code> an older commit.</li>" +
       "</ul>" +
@@ -14613,9 +14613,9 @@ Plugins.toolbox.init = function () {
   }
 
   var TOOLBOX_DIST = {
-    repo: "G4EA5/owrx-band-survey",
-    cdn: "https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/",
-    raw: "https://raw.githubusercontent.com/G4EA5/owrx-band-survey/main/",
+    repo: "G4EA5/openwebrx-toolbox",
+    cdn: "https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/",
+    raw: "https://raw.githubusercontent.com/G4EA5/openwebrx-toolbox/main/",
     local: "static/plugins/receiver/toolbox/"
   };
 

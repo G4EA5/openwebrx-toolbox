@@ -1,6 +1,6 @@
 # Release checklist — OpenWebRX Toolbox
 
-Publish on the **same** GitHub repo (`G4EA5/owrx-band-survey`).
+Publish on the **same** GitHub repo (`G4EA5/openwebrx-toolbox`).
 
 ## Every Toolbox release
 

@@ -4,7 +4,7 @@
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
 `toolbox`.
 
-> **Repo:** [G4EA5/owrx-band-survey](https://github.com/G4EA5/owrx-band-survey)
+> **Repo:** [G4EA5/openwebrx-toolbox](https://github.com/G4EA5/openwebrx-toolbox)
 > (same repository; display name **OpenWebRX Toolbox**). Older **Band Survey**
 > builds remain downloadable — see [Band Survey (legacy)](#band-survey-legacy).
 
@@ -57,7 +57,7 @@ plugin and includes every Band Survey feature plus much more.
 | **Current plugin (recommended)** | `./install.sh` → loads `toolbox` |
 | **Last Band Survey (v127)** | [`legacy/band_survey/`](legacy/band_survey/) **or** root `band_survey.js` + `band_survey.css` |
 | **Band Survey v110** | GitHub Release / tag **`band-survey-v110`** |
-| **Any older build** | [Releases](https://github.com/G4EA5/owrx-band-survey/releases) or `git checkout <tag>` |
+| **Any older build** | [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) or `git checkout <tag>` |
 
 **Do not load `band_survey` and `toolbox` together** — they share UI hooks and will
 clash. The installer always configures `init.js` to load **only Toolbox**.
@@ -65,7 +65,7 @@ clash. The installer always configures `init.js` to load **only Toolbox**.
 CDN pin for a specific Band Survey version:
 
 ```js
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@band-survey-v110/band_survey.js");
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-survey-v110/band_survey.js");
 ```
 
 ---
@@ -170,8 +170,8 @@ Practical differences by setup:
 On the radio host:
 
 ```bash
-git clone https://github.com/G4EA5/owrx-band-survey.git
-cd owrx-band-survey
+git clone https://github.com/G4EA5/openwebrx-toolbox.git
+cd openwebrx-toolbox
 chmod +x install.sh
 ./install.sh          # blue-screen wizard (dialog/whiptail) when interactive
 ./install.sh --no-tui # plain-text prompts on minimal systems
@@ -218,7 +218,7 @@ Logs: `~/owrx-toolbox-reports/toolbox-report-*.txt`
 In `plugins/receiver/init.js`:
 
 ```js
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/toolbox.js");
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
 ```
 
 Pin a release/tag for production instead of floating `@main` when you can.
@@ -268,8 +268,8 @@ Typical flow:
 
 ```bash
 docker exec -it openwebrx bash
-cd /tmp && git clone https://github.com/G4EA5/owrx-band-survey.git
-cd owrx-band-survey && ./install.sh --profile docker
+cd /tmp && git clone https://github.com/G4EA5/openwebrx-toolbox.git
+cd openwebrx-toolbox && ./install.sh --profile docker
 ```
 
 Then `docker restart openwebrx` and hard-refresh the browser.
@@ -446,27 +446,27 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 
 | Want | How |
 | --- | --- |
-| **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/owrx-band-survey/releases) → newest **Toolbox** |
-| **This Toolbox build (v405)** | Tag [`toolbox-v405`](https://github.com/G4EA5/owrx-band-survey/releases/tag/toolbox-v405) |
+| **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
+| **This Toolbox build (v405)** | Tag [`toolbox-v405`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v405) |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
-| **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/owrx-band-survey/releases/tag/band-survey-v110) |
+| **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
 
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
 /* Toolbox v405 */
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@toolbox-v405/toolbox.js");
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-v405/toolbox.js");
 
 /* Band Survey v110 */
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@band-survey-v110/band_survey.js");
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-survey-v110/band_survey.js");
 ```
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
 | **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v405**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) and root `band_survey.*` (**v127**) |
-| **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/owrx-band-survey/releases) / tags |
+| **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
 ---
 
@@ -478,6 +478,6 @@ MIT — see [LICENSE](LICENSE).
 
 ## Links
 
-- Source: https://github.com/G4EA5/owrx-band-survey
+- Source: https://github.com/G4EA5/openwebrx-toolbox
 - OpenWebRX+: https://github.com/luarvique/openwebrx
 - Related: [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1) (separate project)
