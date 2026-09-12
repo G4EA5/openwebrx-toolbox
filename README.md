@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v405)
+# OpenWebRX Toolbox (v407)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -22,10 +22,10 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | **Rename** | **OpenWebRX Toolbox** (`toolbox`) replaces Band Survey; installer migrates safely |
 | **Explore** | Full receiver controls, S-meter, mute/vol, side dock |
 | **Audio** | Clip archive, record modes, export for digi tools |
-| **Public** | Shared-receiver mode + visitor allowlist |
-| **Settings** | Mute when changing tab (default on), personal defaults, UX feel |
-| **Legacy** | Band Survey **v127** kept in-repo for download — see below |
-| **Docs** | README + Help **v405** aligned for public GitHub |
+| **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
+| **Settings** | Toolbox Settings tab is **admin-only**; mute-on-tab-hide, personal defaults, UX feel |
+| **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
+| **Docs** | README + Help **v407** — public mode via stock admin Settings |
 
 ---
 
@@ -51,7 +51,7 @@ plugin and includes every Band Survey feature plus much more.
 | Want | How |
 | --- | --- |
 | **Current plugin (recommended)** | `./install.sh` → loads `toolbox` |
-| **Last Band Survey (v127)** | [`legacy/band_survey/`](legacy/band_survey/) **or** root `band_survey.js` + `band_survey.css` |
+| **Last Band Survey (v127)** | [`legacy/band_survey/`](legacy/band_survey/) |
 | **Band Survey v110** | GitHub Release / tag **`band-survey-v110`** |
 | **Any older build** | [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) or `git checkout <tag>` |
 
@@ -393,10 +393,39 @@ Nothing is uploaded except optional **Webhook URL** POSTs.
 
 ## Public vs own radio
 
-- **Personal install** (`./install.sh` / `--personal`): **Own radio — fast hops**
-  available.
-- **Public install** (`./install.sh --public`): fast hops locked for visitors;
-  Factory reset can be restricted; use **Public visitor allowlist**.
+### Preferred: stock OpenWebRX admin switch
+
+1. Log into OpenWebRX **Settings** (admin password).
+2. Open **General**.
+3. Tick **Toolbox: public / shared receiver mode** → Save.
+4. Hard-refresh the receiver page.
+
+That setting applies to **all** visitors. The Toolbox **Settings** tab (visitor allowlist, extras, factory reset, …) is only visible while you are logged into OpenWebRX admin — guests never see it.
+
+| Want | Do this |
+| --- | --- |
+| **Turn public on/off day to day** | Settings → General → **Toolbox: public / shared receiver mode** |
+| **Edit visitor allowlist** | Open Toolbox while logged in as admin → Settings → Public visitor allowlist |
+| **First-time shared install** | `./install.sh --public` (see below) |
+
+### Installer
+
+`./install.sh --public` / `--personal` **does** handle public mode:
+
+| Flag | What it does |
+| --- | --- |
+| **`--public`** | Bakes Own-radio lock into `toolbox.js` **and** sets `toolbox_public_mode: true` in `/var/lib/openwebrx/settings.json` when writable |
+| **`--personal`** | Leaves Own-radio available **and** sets `toolbox_public_mode: false` in `settings.json` when writable |
+
+After install, prefer the **General** checkbox for day-to-day changes (no reinstall). Re-run `--public` / `--personal` if you want the installer to re-sync the bake flag and `settings.json` together.
+
+> **Note:** The General checkbox appears on hosts where OpenWebRX was patched to expose `toolbox_public_mode` (homelab / updated packages). The installer still writes the key into `settings.json` either way; without the UI checkbox you can edit that key by hand or use `--public` / `--personal`.
+
+### Summary
+
+- **Personal install** (`./install.sh` / `--personal`): Own radio / fast hops available unless the stock public switch is on.
+- **Public install** (`./install.sh --public`): hard Own-radio lock + stock public switch on.
+- Visitor allowlist: Toolbox Settings (admin session only), when public mode is on.
 
 ---
 
@@ -441,8 +470,8 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-sur
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v405**) |
-| **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) and root `band_survey.*` (**v127**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v407**) |
+| **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
 ---

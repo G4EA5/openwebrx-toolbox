@@ -109,6 +109,62 @@ path_needs_sudo() {
   return 0
 }
 
+# Write toolbox_public_mode into OpenWebRX settings.json (stock General switch).
+# $1 = 0|1  (false|true). No-op if settings.json missing.
+set_toolbox_public_mode_setting() {
+  local want="$1"
+  local settings="${OWRX_SETTINGS_JSON:-/var/lib/openwebrx/settings.json}"
+  local tmp py_on
+  [[ -f "$settings" ]] || {
+    warn "No $settings — skip toolbox_public_mode (plugin install only)."
+    return 0
+  }
+  if [[ "$want" == "1" || "$want" == "true" ]]; then
+    py_on="True"
+  else
+    py_on="False"
+  fi
+  tmp="$(mktemp)"
+  if ! python3 - "$settings" "$py_on" "$tmp" <<'PY'
+import json, sys
+path, flag, out = sys.argv[1], sys.argv[2], sys.argv[3]
+on = flag == "True"
+try:
+    data = json.loads(open(path, encoding="utf-8").read())
+except Exception as e:
+    print("WARN: could not parse settings.json:", e, file=sys.stderr)
+    raise SystemExit(2)
+data["toolbox_public_mode"] = on
+open(out, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+print("toolbox_public_mode=" + ("true" if on else "false"))
+PY
+  then
+    rm -f "$tmp"
+    warn "Could not update toolbox_public_mode in $settings"
+    return 0
+  fi
+  if need_write_path "$settings"; then
+    cp -f "$tmp" "$settings" || {
+      warn "Could not write $settings"
+      rm -f "$tmp"
+      return 0
+    }
+  else
+    sudo cp -f "$tmp" "$settings" 2>/dev/null || {
+      warn "Could not write $settings (need sudo). Use OpenWebRX Settings → General later, or re-run with sudo."
+      rm -f "$tmp"
+      return 0
+    }
+  fi
+  rm -f "$tmp"
+  if [[ "$want" == "1" || "$want" == "true" ]]; then
+    say "Updated $settings → toolbox_public_mode=true"
+  else
+    say "Updated $settings → toolbox_public_mode=false"
+  fi
+  say "  Day-to-day on/off: OpenWebRX Settings → General → Toolbox: public / shared receiver mode"
+}
+
 ensure_sudo() {
   local reason="${1:-OpenWebRX htdocs is often owned by root - sudo is needed to install plugin files.}"
   if ! command -v sudo >/dev/null 2>&1; then
@@ -735,9 +791,9 @@ Public = shared internet site (locks fast hops).
   done
   PUBLIC_SET=1
   if [[ "$PUBLIC" -eq 1 ]]; then
-    say "Audience: public / shared (Own radio locked for visitors)."
+    say "Audience: public / shared (Own radio locked; settings.json toolbox_public_mode=true when writable)."
   else
-    say "Audience: personal / owner-only."
+    say "Audience: personal / owner-only (settings.json toolbox_public_mode=false when writable)."
   fi
   return 0
 }
@@ -1261,9 +1317,35 @@ collect_openwebrx() {
   fi
 
   if [[ -f "$dest/toolbox.js" ]] && grep -q 'TOOLBOX_ALLOW_OWNER_OVERRIDE = false' "$dest/toolbox.js"; then
-    r_ok "Public mode: Own radio - fast hops locked for visitors"
+    r_ok "Public bake: Own radio - fast hops locked in toolbox.js (--public)"
   elif [[ -f "$dest/toolbox.js" ]]; then
-    r_info "Personal mode: owner can tick Own radio - fast hops (use ./install.sh --public on shared sites)"
+    r_info "Personal bake: Own radio available (use ./install.sh --public on shared sites)"
+  fi
+  if [[ -r /var/lib/openwebrx/settings.json ]]; then
+    local tb_pub
+    tb_pub="$(python3 - <<'PY' 2>/dev/null || true
+import json
+from pathlib import Path
+p = Path("/var/lib/openwebrx/settings.json")
+try:
+    d = json.loads(p.read_text(encoding="utf-8"))
+    v = d.get("toolbox_public_mode", None)
+    if isinstance(v, bool):
+        print("true" if v else "false")
+    elif v is None:
+        print("missing")
+    else:
+        print(repr(v))
+except Exception as e:
+    print("unreadable")
+PY
+)"
+    case "$tb_pub" in
+      true) r_ok "settings.json toolbox_public_mode=true (stock General switch / all visitors)" ;;
+      false) r_info "settings.json toolbox_public_mode=false — turn on in Settings → General when sharing" ;;
+      missing) r_info "settings.json has no toolbox_public_mode yet — run ./install.sh --public/--personal or add the General checkbox patch" ;;
+      *) r_info "settings.json toolbox_public_mode=$tb_pub" ;;
+    esac
   fi
 
   log_line ""
@@ -2052,6 +2134,13 @@ run_install() {
   fix_plugin_readable "$DEST"
   cleanup_plugin_junk "$DEST"
 
+  # Sync stock OpenWebRX public switch with install audience
+  if [[ "$PUBLIC" == 1 ]]; then
+    set_toolbox_public_mode_setting 1
+  else
+    set_toolbox_public_mode_setting 0
+  fi
+
   strip_legacy_band_survey_loads "$INIT"
   for stray in \
     "$RX/toolbox/band_survey.js" \
@@ -2096,9 +2185,15 @@ run_install() {
   say "  Backup:  $BACKUP"
   say "  Plugin:  $DEST"
   say "  Loader:  $INIT"
+  if [[ "$PUBLIC" == 1 ]]; then
+    say "  Public:  on (--public bake + settings.json when writable)"
+  else
+    say "  Public:  off (Settings → General to enable for all visitors)"
+  fi
   show_report_path
   show_install_success "$DEST" "$PROFILE"
   say ""
+  say "Public on/off: OpenWebRX Settings → General → Toolbox: public / shared receiver mode"
   say "Verify later:  ./install.sh --check"
   say "Report only:   ./install.sh --report"
 }
@@ -2108,7 +2203,7 @@ usage() {
   say ""
   say "  ./install.sh                    Install Toolbox (blue-screen wizard when interactive)"
   say "  ./install.sh --personal         Personal / owner-only (default if non-interactive)"
-  say "  ./install.sh --public           Public shared receiver (lock fast hops)"
+  say "  ./install.sh --public           Public shared receiver (lock fast hops + settings.json)"
   say "  ./install.sh --no-tui           Plain-text prompts (no dialog/whiptail)"
   say "  ./install.sh --check            Verify + write diagnostic report"
   say "  ./install.sh --report           Diagnostic report only"
@@ -2117,13 +2212,16 @@ usage() {
   say "  ./install.sh --purge-legacy     Remove old band_survey only (backup first)"
   say "  ./install.sh --profile TYPE     pi | debian | docker | mac-browser | auto"
   say ""
+  say "Public mode day-to-day: OpenWebRX Settings → General → Toolbox: public / shared"
+  say "  (--public/--personal also write toolbox_public_mode into settings.json when writable)."
+  say ""
   say "Recommended: Toolbox only. It includes every Band Survey feature and many more."
   say "Do not load band_survey and toolbox together - they clash in the browser."
   say "Keeping Band Survey on disk is optional (rollback); init.js still loads Toolbox only."
   say ""
   say "Reports: $REPORT_ROOT/toolbox-report-*.txt"
   say "Env:     OWRX_HTDOCS  OWRX_REPORT_DIR  OWRX_BACKUP_DIR  OWRX_PROFILE"
-  say "         OWRX_LEGACY=ask|remove|keep  OWRX_PUBLIC=0|1"
+  say "         OWRX_LEGACY=ask|remove|keep  OWRX_PUBLIC=0|1  OWRX_SETTINGS_JSON"
 }
 
 # --- parse args ---

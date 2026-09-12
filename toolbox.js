@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 405;
+  Plugins.toolbox._version = 409;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -291,7 +291,7 @@ Plugins.toolbox.init = function () {
     { id: "recCaps", label: "Max clip length", where: "Audio", tip: "Cap Record busy clips at N seconds (default 60)." },
     { id: "scanOrder", label: "Bookmark scan order", where: "Bookmarks", tip: "Priority / freq / name / random order for Scan bookmarks." },
     { id: "copyTuneLink", label: "Copy tune link", where: "Peaks / Bookmarks", tip: "Copy MHz + mode text for chat or notes." },
-    { id: "publicMode", label: "Public / shared receiver mode", where: "Settings", tip: "Force alone-only, disable fast hops and factory reset. Use Public visitor allowlist (below) to choose what guests may use.", defaultOn: false },
+    { id: "publicMode", label: "Public / shared receiver mode", where: "Settings", tip: "Prefer OpenWebRX Settings → General → “Toolbox: public / shared receiver mode” (admin password). That server switch applies to all visitors. This tick is a legacy/local fallback only when the server key has not arrived yet.", defaultOn: false },
     { id: "idlePresets", label: "Quiet-hours presets", where: "Settings", tip: "One-click night / evening quiet-hour presets for scheduled scans." },
     { id: "autoStartOwrx", label: "Auto Start OpenWebRX+", where: "Settings", tip: "Click the main Start OpenWebRX+ play overlay when the page loads (some browsers still block audio without a gesture)." },
     { id: "speechToText", label: "Clip transcribe (browser)", where: "Audio", tip: "Try Web Speech API while a clip plays (Chrome; quality varies)." },
@@ -1412,12 +1412,17 @@ Plugins.toolbox.init = function () {
   }
 
   function isPublicReceiver() {
-    return !ownerOverrideAllowed() || !!(S.extras && S.extras.publicMode);
+    /* Hard --public install bake always wins. */
+    if (!ownerOverrideAllowed()) return true;
+    /* Stock OpenWebRX General → Toolbox public mode (all visitors). */
+    if (serverPublicMode != null) return !!serverPublicMode;
+    /* Legacy fallback until WS config arrives. */
+    return !!(S.extras && S.extras.publicMode);
   }
 
   function canEditPublicPolicy() {
-    /* Only personal installs can edit. --public installs use baked policy / safe defaults. */
-    return ownerOverrideAllowed();
+    /* Visitor allowlist / public policy: OpenWebRX admin session only. */
+    return isOwrxAdmin();
   }
 
   function effectivePublicPolicy() {
@@ -1427,8 +1432,11 @@ Plugins.toolbox.init = function () {
   }
 
   function publicAllowsTab(id) {
+    if (!id) return true;
+    /* Settings is admin-only (OpenWebRX /settings login), even when not in public mode. */
+    if (id === "settings") return isOwrxAdmin();
     if (!isPublicReceiver()) return true;
-    if (!id || id === "settings" || id === "help") return true;
+    if (id === "help") return true;
     var pol = effectivePublicPolicy();
     return (pol.tabs || []).indexOf(id) >= 0;
   }
@@ -1714,7 +1722,7 @@ Plugins.toolbox.init = function () {
     "factory reset": "Wipes Toolbox data in this browser. Panel layout is kept.",
     "install check": "Verify this page can run Toolbox and download the latest plugin zip.",
     "extras": "Optional features, on by default (Public mode stays off). Untick to hide UI — Add all extras turns everything back on.",
-    "public visitor allowlist": "What guests may use when Public mode / --public is on. Extras are allowed by default; Safe defaults clears them. Includes Explore MHz/bands limits.",
+    "public visitor allowlist": "What guests may use when public mode is on (OpenWebRX Settings → General, or ./install.sh --public). Extras are allowed by default; Safe defaults clears them. Includes Explore MHz/bands limits. Admin-only.",
     "explore mhz limit": "When public, clamp Explore Go / hop / wheel / drag to this MHz window. Blank = no limit.",
     "explore bands": "When public, guests may only Explore these SDR profiles. All bands (or none ticked) = no band restriction.",
     "panel startup": "Whether Toolbox opens on load and which tab shows first.",
@@ -2215,18 +2223,24 @@ Plugins.toolbox.init = function () {
     var wrap = $("bs-public-policy");
     var canEdit = canEditPublicPolicy();
     if (wrap) {
-      /* Guests on ./install.sh --public installs cannot edit — hide the whole allowlist so they cannot poke at it. */
+      /* Guests cannot edit — hide the whole allowlist so they cannot poke at it. */
       wrap.hidden = !canEdit;
       wrap.classList.toggle("bs-public-policy-locked", !canEdit);
     }
     var note = $("bs-public-policy-note");
     if (note) {
-      if (!ownerOverrideAllowed()) {
-        note.textContent = "This install is public (./install.sh --public). Allowlist is host-baked (TOOLBOX_PUBLIC_POLICY) and hidden from visitors.";
+      if (!isOwrxAdmin()) {
+        note.textContent = "Log in to OpenWebRX Settings (admin) to edit the visitor allowlist. Public on/off is in Settings → General.";
+      } else if (!ownerOverrideAllowed()) {
+        note.textContent = "This install is baked --public. Prefer stock Settings → General for on/off; allowlist may still be baked via TOOLBOX_PUBLIC_POLICY.";
+      } else if (serverPublicMode === true) {
+        note.textContent = "Public mode is ON in OpenWebRX Settings → General (applies to all visitors). Edit the allowlist below.";
+      } else if (serverPublicMode === false) {
+        note.textContent = "Public mode is OFF in OpenWebRX Settings → General. Allowlist is unused until you enable it there.";
       } else if (extraOn("publicMode")) {
-        note.textContent = "Public mode is on in this browser. For a shared receiver that locks all guests, reinstall with ./install.sh --public and bake TOOLBOX_PUBLIC_POLICY into toolbox.js.";
+        note.textContent = "Waiting for server setting… Local public tick is a temporary fallback. Use Settings → General → Toolbox public mode for all visitors.";
       } else {
-        note.textContent = "Used when you enable Public / shared receiver mode (Extras), or on ./install.sh --public installs. Tick what visitors may use.";
+        note.textContent = "Switch public mode in OpenWebRX Settings → General (admin password). This allowlist applies when that switch is on.";
       }
     }
     fillPublicPolicyForm();
@@ -2312,9 +2326,17 @@ Plugins.toolbox.init = function () {
       var el = $("bs-extra-" + e.id);
       if (!el) return;
       if (e.id === "publicMode") {
-        el.disabled = !canEditPublicPolicy();
+        var serverOwns = serverPublicMode != null;
+        el.disabled = !canEditPublicPolicy() || serverOwns;
+        if (serverOwns) {
+          el.checked = !!serverPublicMode;
+          el.title = "Controlled in OpenWebRX Settings → General → Toolbox: public / shared receiver mode (admin).";
+        }
         var row = el.closest && el.closest("[data-extra='publicMode']");
-        if (row) row.hidden = !canEditPublicPolicy();
+        if (row) {
+          /* Keep visible for admins so they see the pointer to stock Settings; hide from guests. */
+          row.hidden = !canEditPublicPolicy();
+        }
         return;
       }
       var allowed = publicAllowsExtra(e.id);
@@ -4256,6 +4278,86 @@ Plugins.toolbox.init = function () {
     return TOOLBOX_ALLOW_OWNER_OVERRIDE !== false;
   }
 
+  /* Stock OpenWebRX General setting toolbox_public_mode (via WS config). null=unknown. */
+  var serverPublicMode = null;
+  /* OpenWebRX /settings admin session. null=unknown; fail closed for Settings tab. */
+  var owrxAdmin = null;
+  var owrxAdminProbeAt = 0;
+
+  function isOwrxAdmin() {
+    return owrxAdmin === true;
+  }
+
+  function refreshOwrxAdmin(done) {
+    owrxAdminProbeAt = Date.now();
+    fetch("/settings", { credentials: "same-origin", cache: "no-store", redirect: "manual" })
+      .then(function (res) {
+        var ok = res.status === 200 && res.type !== "opaqueredirect";
+        owrxAdmin = ok;
+        if (done) done(ok);
+      })
+      .catch(function () {
+        owrxAdmin = false;
+        if (done) done(false);
+      });
+  }
+
+  function applyServerPublicMode(val) {
+    if (typeof val === "undefined") return;
+    serverPublicMode = !!val;
+    try {
+      if (S && S.extras) S.extras.publicMode = !!val;
+    } catch (e) {}
+    try {
+      if (typeof applyPublicModeExtra === "function") applyPublicModeExtra();
+      if (typeof applyHiddenTabs === "function") applyHiddenTabs();
+      if (typeof gatePublicActions === "function") gatePublicActions();
+      if (typeof applyPublicPolicyUi === "function") applyPublicPolicyUi();
+    } catch (e2) {}
+  }
+
+  function hookToolboxServerConfig() {
+    if (window._toolbox_cfg_hooked) return;
+    window._toolbox_cfg_hooked = true;
+    function ingestFromEvent(ev) {
+      try {
+        if (!ev || typeof ev.data !== "string" || ev.data.charAt(0) !== "{") return;
+        var msg = JSON.parse(ev.data);
+        if (!msg || msg.type !== "config") return;
+        var cfg = msg.value || msg.params || {};
+        if (Object.prototype.hasOwnProperty.call(cfg, "toolbox_public_mode")) {
+          applyServerPublicMode(cfg.toolbox_public_mode);
+        }
+      } catch (e) {}
+    }
+    function wrapOnWsRecv() {
+      if (typeof window.on_ws_recv !== "function" || window._tb_on_ws_wrap) return;
+      window._tb_on_ws_wrap = true;
+      var prevRecv = window.on_ws_recv;
+      window.on_ws_recv = function (ev) {
+        ingestFromEvent(ev);
+        return prevRecv.apply(this, arguments);
+      };
+    }
+    function wrapSock(sock) {
+      if (!sock || sock._tb_pub_wrap) return;
+      sock._tb_pub_wrap = true;
+      var prev = sock.onmessage;
+      sock.onmessage = function (ev) {
+        ingestFromEvent(ev);
+        if (typeof prev === "function") return prev.apply(this, arguments);
+      };
+    }
+    wrapOnWsRecv();
+    wrapSock(window.ws);
+    var n = 0;
+    var t = setInterval(function () {
+      wrapOnWsRecv();
+      wrapSock(window.ws);
+      if (++n > 80) clearInterval(t);
+    }, 250);
+  }
+
   function ownerHopsOn() {
     return ownerOverrideAllowed() && !!S.ownRadio;
   }
@@ -4522,7 +4624,9 @@ Plugins.toolbox.init = function () {
   }
 
   function isTabHidden(id) {
-    if (!id || id === "settings") return false;
+    if (!id) return false;
+    /* Toolbox Settings requires OpenWebRX admin session — guests never see it. */
+    if (id === "settings") return !isOwrxAdmin();
     if (!publicAllowsTab(id)) return true;
     var role = uxFeelActiveRole();
     if (role && UX_ROLE_TABS[role]) {
@@ -4539,7 +4643,7 @@ Plugins.toolbox.init = function () {
     for (i = 0; i < TAB_IDS.length; i++) {
       if (!isTabHidden(TAB_IDS[i])) return TAB_IDS[i];
     }
-    return "settings";
+    return "help";
   }
 
   function fillVisibleTabsForm() {
@@ -4552,9 +4656,13 @@ Plugins.toolbox.init = function () {
       /* Personal preference only — public allowlist has its own Tabs box. */
       var prefOn = id === "settings" || !(Array.isArray(list) && list.indexOf(id) >= 0);
       inp.checked = prefOn;
-      inp.disabled = id === "settings" || (pub && !canEditPublicPolicy());
+      /* Settings tab itself is admin-gated; don't offer guests a visible-tabs tick for it. */
+      inp.disabled = id === "settings" || (pub && !canEditPublicPolicy()) || (id === "settings" && !isOwrxAdmin());
       var lab = inp.closest && inp.closest("label");
-      if (lab) lab.classList.toggle("bs-tab-vis-off", !prefOn && id !== "settings");
+      if (lab) {
+        lab.classList.toggle("bs-tab-vis-off", !prefOn && id !== "settings");
+        if (id === "settings") lab.hidden = !isOwrxAdmin();
+      }
     });
   }
 
@@ -7246,7 +7354,7 @@ Plugins.toolbox.init = function () {
       "<ul>" +
       "<li><b>This build</b> — Toolbox <b>v" + (Plugins.toolbox._version || "?") + "</b> (<code>toolbox.js</code>).</li>" +
       "<li><b>GitHub</b> — repo <code>G4EA5/openwebrx-toolbox</code> (formerly Band Survey). Clone / Releases for updates.</li>" +
-      "<li><b>Last Band Survey (v127)</b> — still in the repo under <code>legacy/band_survey/</code> and as root <code>band_survey.js</code> / <code>band_survey.css</code> if you specifically want the old plugin. Prefer Toolbox.</li>" +
+      "<li><b>Last Band Survey (v127)</b> — under <code>legacy/band_survey/</code> if you specifically want the old plugin. Prefer Toolbox.</li>" +
       "<li><b>Older Toolbox builds</b> — use GitHub <b>Releases</b> / tags when published, or <code>git checkout</code> an older commit.</li>" +
       "</ul>" +
       "<h3>SDR hardware (HackRF, RTL-SDR, Airspy, Lime, …)</h3>" +
@@ -7261,7 +7369,8 @@ Plugins.toolbox.init = function () {
       "<h3>Install</h3>" +
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Interactive installs use a blue-screen wizard (<code>dialog</code> / <code>whiptail</code>; <code>--no-tui</code> for plain text) with <b>Back</b> between steps: welcome → setup type → personal vs public → older Band Survey (only if found) → confirm → install. Use <b>Back</b> to change earlier choices.</p>" +
       "<ul>" +
-      "<li><code>./install.sh --personal</code> / <code>--public</code> — owner-only vs shared receiver (public locks Own radio / fast hops).</li>" +
+      "<li><code>./install.sh --personal</code> / <code>--public</code> — owner-only vs shared. <b>--public</b> locks Own radio in the plugin file <em>and</em> sets OpenWebRX <code>toolbox_public_mode</code> in <code>settings.json</code> when that file is writable.</li>" +
+      "<li><b>Day-to-day public on/off (preferred)</b> — log into OpenWebRX <b>Settings</b> (admin password) → <b>General</b> → <b>Toolbox: public / shared receiver mode</b>. That switch applies to <b>all</b> visitors. The Toolbox <b>Settings</b> tab itself is only visible while you are logged in as admin.</li>" +
       "<li><code>./install.sh --remove-legacy</code> — delete old <code>band_survey</code> (recommended). <code>--keep-legacy</code> keeps the folder on disk for rollback but still loads only Toolbox. <code>--purge-legacy</code> removes Band Survey only.</li>" +
       "<li>Smart checks: <code>./install.sh --check</code> or <code>--report</code> write a log under <code>~/owrx-toolbox-reports/</code>.</li>" +
       "<li>On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</li>" +
@@ -7274,7 +7383,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Explore LCD</b> — hover a digit and scroll the mouse wheel to nudge that place value (Shift ×10).</li>" +
       "</ul>" +
       "<h3>Title bar tabs</h3>" +
-      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b>. Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Enable Analyzer under Settings → <b>Visible tabs</b>. Settings always stays on. Drag the title bar to move the panel.</p>" +
+      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> (OpenWebRX <b>admin only</b>). Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Enable Analyzer under Settings → <b>Visible tabs</b>. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
       "<ul>" +
       "<li><b>Scan bands</b> / <b>Fresh scan</b> / <b>Stop</b> / <b>Jump loudest</b> — boxed <b>Scan bands</b> strip at the top of the Bands tab (same style as Presets / Band list).</li>" +
@@ -7386,16 +7495,17 @@ Plugins.toolbox.init = function () {
       "<li><b>Header tabs</b> — right-click a tab to colour it (inactive only; the tab you are on stays yellow). Shift+right-click → <b>Close tab</b>.</li>" +
       "<li><b>Tab view</b> — <b>Full</b> (default) or <b>Minimal</b> for every tab. Minimal keeps the most useful controls and hides secondary boxes (Explore VFO/IF/…, Range extras, Bookmarks files, Settings extras, etc.). Header <b>M</b> / <b>F</b> (next to S) toggles the current tab; <b>Reset tab overrides</b> clears per-tab choices.</li>" +
       "<li><b>UX feel (optional)</b> — six soft overlays (role presets, lean chrome, simple mode, quieter Explore boxes, task strip, extras grouped by job). Off by default; does not rewrite your Visible tabs or Extras ticks.</li>" +
-      "<li><b>Visible tabs</b> — untick tabs to remove them from the header. <b>Analyzer</b> is off by default; <b>Show all tabs</b> still leaves Analyzer off. Settings cannot be hidden. Off extras stay as greyed boxes (no page jump). Guest limits are under Public visitor allowlist.</li>" +
+      "<li><b>Visible tabs</b> — untick tabs to remove them from the header. <b>Analyzer</b> is off by default; <b>Show all tabs</b> still leaves Analyzer off. <b>Settings</b> is only for OpenWebRX admins (guests never see it). Off extras stay as greyed boxes (no page jump). Guest limits are under Public visitor allowlist.</li>" +
       "<li><b>Check install</b> — verify the plugin and receiver. Result box appears on this tab. Help also has <b>Check install now</b>.</li>" +
       "<li><b>Always hide scan strip</b> — never show the scan strip. Normally it only appears on <b>Bands</b> (Scan bands) and <b>Bookmarks</b> (Scan bookmarks / Hold / Skip), plus <b>Stop</b> and status on any tab while a scan is running. Range has Scan range / Stop on that tab.</li>" +
       "<li><b>Hide stock receiver panel</b> — hide OpenWebRX’s floating receiver controls (modes, volume, squelch). Default off. Use Explore instead when hidden. Clicking top-bar <b>Receiver</b> turns this off again so the stock panel can open.</li>" +
       "<li><b>Mute when changing tab</b> — when on (default, same as stock <code>owrx_hush</code>), receiver audio mutes while this browser tab is in the background and restores when you return. Untick to keep listening in other tabs.</li>" +
-      "<li><b>Public visitor allowlist</b> — when <b>Public / shared receiver mode</b> is on (or the install used <code>./install.sh --public</code>), choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Settings and Help stay available. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> for all visitors on a shared host.</li>" +
+      "<li><b>Public mode (admin)</b> — turn on/off in OpenWebRX <b>Settings → General → Toolbox: public / shared receiver mode</b> (admin password). That applies to every visitor. Re-run <code>./install.sh --public</code> / <code>--personal</code> to match the stock switch in <code>settings.json</code> and (for --public) bake a hard Own-radio lock into <code>toolbox.js</code>.</li>" +
+      "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Edit this under Toolbox Settings while logged into OpenWebRX admin. Guests never see Settings. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> if you want a host-fixed allowlist.</li>" +
       "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 35, range 20–60). Preferred % is clamped to ~280–920&nbsp;px so small and 4K/ultrawide screens stay usable; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> (between Help and Minimal) resets width to 35%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
-      "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, turn off the <b>Public / shared receiver mode</b> extra.</li>" +
+      "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, public mode is on (turn it off in OpenWebRX Settings → General).</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
       "<li><b>Save as my defaults</b> — store the settings currently shown as personal defaults in this browser. <b>Reset settings</b> and <b>Factory reset</b> restore them afterwards (Factory reset still clears peaks, bookmarks, and audio). <b>Clear my defaults</b> returns to built-in Toolbox defaults.</li>" +
       "</ul><p><b>Webhook</b></p><ul>" +
@@ -21669,20 +21779,30 @@ Plugins.toolbox.init = function () {
 
   function bindToolboxToggle(btn) {
     btn.onclick = function () {
-      window._bs_user_closed_panel = false;
+      /*
+       * Do NOT clear _bs_user_closed_panel before makePanel().
+       * With side dock on, makePanel() auto-opens when userClosed is false; a
+       * following hidden=!hidden then closes again and leaves body.bs-side-dock
+       * chrome on — empty light column where Toolbox should be (the “white box”).
+       */
       try { makePanel(); } catch (e1) {}
       var panel = $("bs-panel");
       if (!panel) return;
-      panel.hidden = !panel.hidden;
-      if (!panel.hidden) {
+      var opening = !!panel.hidden;
+      if (opening) {
+        window._bs_user_closed_panel = false;
+        panel.hidden = false;
         showPanel();
         try { syncBandsFromProfiles({ force: true }); } catch (e3) {}
       } else {
         window._bs_user_closed_panel = true;
         window._bs_startup_grace_until = 0;
+        panel.hidden = true;
         if (typeof saStop === "function") {
           try { saStop(); } catch (e4) {}
         }
+        try { syncSideDockLayout(); } catch (e5) {}
+        try { applyPanelLayout(); } catch (e6) {}
       }
       ensureSvAccessChip();
     };
@@ -24210,6 +24330,7 @@ Plugins.toolbox.init = function () {
 
   function ensureUi() {
     try {
+      try { hookToolboxServerConfig(); } catch (eCfg) {}
       /* 1) Always mount the single Survey link first — standalone, no SC. */
       mountSurveyLink();
       ensureSvAccessChip();
@@ -24223,6 +24344,25 @@ Plugins.toolbox.init = function () {
       } catch (err) {
         try { console.error("toolbox makePanel failed", err); } catch (e0) {}
       }
+      /* Admin probe after panel exists — never block / bleach first paint */
+      try {
+        if (owrxAdmin === null || (Date.now() - owrxAdminProbeAt) > 60000) {
+          refreshOwrxAdmin(function () {
+            try {
+              if (typeof applyHiddenTabs === "function") applyHiddenTabs();
+              if (typeof applyPublicPolicyUi === "function") applyPublicPolicyUi();
+              if (typeof gatePublicActions === "function") gatePublicActions();
+              try {
+                var panel = $("bs-panel");
+                if (panel && !panel.hidden && !isOwrxAdmin() && S && S.tab === "settings" &&
+                    typeof switchTab === "function") {
+                  switchTab(firstVisibleTab(), true);
+                }
+              } catch (eTab) {}
+            } catch (eAdm) {}
+          });
+        }
+      } catch (eAdm0) {}
       try { applyStockReceiverVisibility(); } catch (eRx) {}
       try { applyMuteOnTabHidePref(); } catch (eMute) {}
       try { bindStockReceiverOpenUnhide(); } catch (eBindRx) {}
