@@ -57,3 +57,26 @@ Toolbox becomes the default on `main`):
 ```text
 https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@<tag>/band_survey.js
 ```
+
+## Screenshots (Band Survey era)
+
+<p>
+  <strong>Range</strong> — FM broadcast range survey with spectrum<br>
+  <img src="screenshots/range-fm-spectrum.png" alt="Band Survey — Range FM spectrum" width="640">
+</p>
+<p>
+  <strong>Peaks</strong> — ranked list from the same scan<br>
+  <img src="screenshots/peaks-fm-range.png" alt="Band Survey — Peaks FM range" width="640">
+</p>
+<p>
+  <strong>Bookmarks</strong> — auto-bookmarked carriers<br>
+  <img src="screenshots/bookmarks-fm-auto.png" alt="Band Survey — Bookmarks" width="640">
+</p>
+<p>
+  <strong>Bands</strong> — scan options<br>
+  <img src="screenshots/bands-scan-options.png" alt="Band Survey — Bands scan options" width="640">
+</p>
+<p>
+  <strong>Top bar</strong> — Survey button (Band Survey naming)<br>
+  <img src="screenshots/topbar-survey-button.png" alt="Band Survey — top bar Survey button" width="720">
+</p>

@@ -36,11 +36,7 @@ open the receiver page and click **Toolbox** in the **top bar** — between **He
 and **Status** (bar-graph icon). That opens the Toolbox panel. If the top bar is
 missing, look for **TB** on the frequency bar (fallback).
 
-<p>
-  <img src="screenshots/topbar-survey-button.png" alt="OpenWebRX+ top bar — Help, Toolbox (between Help and Status), Status, Chat, Receiver, Map, Files, Settings" width="720">
-</p>
-
-<p><em>Click <strong>Toolbox</strong> (highlighted above) to open the panel, then Settings → <strong>Check install</strong>.</em></p>
+<p><em>Click <strong>Toolbox</strong> in the top bar, then Settings → <strong>Check install</strong>.</em></p>
 
 **Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those
 are optional extras if you already load them.
@@ -111,25 +107,6 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-sur
 <p>
   <strong>Public visitor allowlist</strong> — shared-receiver guest limits<br>
   <img src="screenshots/settings-public.png" alt="OpenWebRX Toolbox — Public visitor allowlist" width="640">
-</p>
-
-### Example — FM broadcast range survey (88–108 MHz)
-
-<p>
-  <strong>Range</strong> — full-span scan with spectrum chart<br>
-  <img src="screenshots/range-fm-spectrum.png" alt="Range tab with FM spectrum" width="640">
-</p>
-<p>
-  <strong>Peaks</strong> — ranked signal list from the same scan<br>
-  <img src="screenshots/peaks-fm-range.png" alt="Peaks tab — FM range hits" width="640">
-</p>
-<p>
-  <strong>Bookmarks</strong> — auto-bookmarked carriers<br>
-  <img src="screenshots/bookmarks-fm-auto.png" alt="Bookmarks tab — auto FM bookmarks" width="640">
-</p>
-<p>
-  <strong>Bands</strong> — scan options<br>
-  <img src="screenshots/bands-scan-options.png" alt="Bands tab — scan options" width="640">
 </p>
 
 ---
