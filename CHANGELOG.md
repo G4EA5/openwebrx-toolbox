@@ -1,15 +1,35 @@
 # Changelog
 
+## [409] — Side-dock reopen fix
+
+- Closing Toolbox with × then reopening from the top-bar icon no longer leaves an empty light column when side dock is on (toggle no longer races `makePanel()` auto-open).
+
+## [408] — Admin probe after first paint
+
+- Probe OpenWebRX `/settings` only after the panel exists so first paint is not blocked or blanked.
+
+## [407] — Public mode via stock admin Settings
+
+- README + Help: turn public on/off in OpenWebRX **Settings → General → Toolbox: public / shared receiver mode** (admin password).
+- Toolbox **Settings** tab is admin-only; guests never see it.
+- `install.sh --public` / `--personal` also write `toolbox_public_mode` into `settings.json` when writable.
+- `./install.sh --check` reports the stock `toolbox_public_mode` value.
+
+## [406] — Admin-gated Settings + stock General switch (server)
+
+- OpenWebRX General checkbox `toolbox_public_mode` (when host is patched) drives public mode for all visitors.
+- Toolbox Settings / visitor allowlist require an OpenWebRX admin session.
+
 ## [405] — OpenWebRX Toolbox (public release)
 
 - First public **OpenWebRX Toolbox** release on this repo (plugin id `toolbox`).
 - Explore side-% pack fix; mute-when-changing-tab setting; Help/README aligned.
-- Band Survey **v127** kept in-repo; older builds via GitHub tags/Releases (`band-survey-v110`, …).
+- Band Survey **v127** kept under `legacy/band_survey/`; older builds via GitHub tags/Releases.
 
 ## [404] — OpenWebRX Toolbox (prep)
 
 - README + in-panel Help aligned for public GitHub (Toolbox naming, mute-when-tab setting, versions).
-- Band Survey **v127** kept for download: `legacy/band_survey/` and root `band_survey.js` / `.css`.
+- Band Survey **v127** kept for download under `legacy/band_survey/`.
 - Softened `magic_key` comment (optional OpenWebRX+ override, not homelab-only).
 
 ## [403] — Mute when changing tab

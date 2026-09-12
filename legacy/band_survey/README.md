@@ -9,8 +9,7 @@ This folder holds the **last Band Survey release** before the project became
 | **Version** | **127** |
 | **Files** | `band_survey.js`, `band_survey.css` |
 
-The same frozen files are also kept at the **repo root** (`band_survey.js` /
-`band_survey.css`) so older download / CDN links keep working.
+The frozen plugin lives **only** in this folder. Prefer **Toolbox** from the repo root.
 
 ## You almost certainly want Toolbox instead
 
