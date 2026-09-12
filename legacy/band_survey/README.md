@@ -50,11 +50,12 @@ cd openwebrx-toolbox
 git checkout <tag-or-commit>   # e.g. a band-survey-v* tag when available
 ```
 
-jsDelivr (pin a commit or tag — do not rely on `@main` for Band Survey after
-Toolbox becomes the default on `main`):
+jsDelivr (pin a commit or tag — on current `main`, Band Survey lives under
+`legacy/band_survey/`):
 
 ```text
-https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@<tag>/band_survey.js
+https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/legacy/band_survey/band_survey.js
+https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-survey-v110/band_survey.js
 ```
 
 ## Screenshots (Band Survey era)

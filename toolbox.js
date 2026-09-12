@@ -14758,8 +14758,8 @@ Plugins.toolbox.init = function () {
     var remoteJsUrls = [
       TOOLBOX_DIST.cdn + "toolbox.js",
       TOOLBOX_DIST.raw + "toolbox.js",
-      TOOLBOX_DIST.cdn + "band_survey.js",
-      TOOLBOX_DIST.raw + "band_survey.js"
+      TOOLBOX_DIST.cdn + "legacy/band_survey/band_survey.js",
+      TOOLBOX_DIST.raw + "legacy/band_survey/band_survey.js"
     ];
     return Promise.all([
       fetchTextUrl(localJs).catch(function () { return null; }),

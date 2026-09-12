@@ -3,6 +3,7 @@
 ## [409] — Side-dock reopen fix
 
 - Closing Toolbox with × then reopening from the top-bar icon no longer leaves an empty light column when side dock is on (toggle no longer races `makePanel()` auto-open).
+- Repo layout: Band Survey files live only under `legacy/band_survey/` (removed duplicate root `band_survey.*` and root `screenshot.png`).
 
 ## [408] — Admin probe after first paint
 
