@@ -1,43 +1,79 @@
-# Band survey — OpenWebRX+ plugin (v127)
+# OpenWebRX Toolbox (v405)
 
-> **Broken after updating to v91–v96?** No Survey button but `./install.sh --check` says OK?  
-> Pull **v97+**, re-run `./install.sh`, then hard-refresh the receiver page (Ctrl+Shift+R).  
-> F12 console may show `TAB_IDS` / `indexOf` — that was a startup crash in v91–v96, fixed in v97.
+**OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
+audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
+`toolbox`.
 
-Standalone receiver plugin. Walks the bands you tick (or a custom MHz range), counts
-real waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
+> **Repo:** [G4EA5/owrx-band-survey](https://github.com/G4EA5/owrx-band-survey)
+> (same repository; display name **OpenWebRX Toolbox**). Older **Band Survey**
+> builds remain downloadable — see [Band Survey (legacy)](#band-survey-legacy).
 
-**Works with any SDR OpenWebRX+ supports** (HackRF, RTL-SDR, Airspy, Lime, …) — the plugin
-talks to the OpenWebRX+ UI, not to USB hardware directly. See
+Standalone plugin. Walks the bands you tick (or a custom MHz range), counts real
+waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
+
+**Works with any SDR OpenWebRX+ supports** (HackRF, RTL-SDR, Airspy, Lime, …) —
+the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
-**Recent (v127):** Settings → Extras — Digi/FT8 survey, HF day/night band sets, band×hour
-heatmap, share report PNG, send-to-scanner, ←/→ in bookmark scan (with Keyboard). **v111:**
-Settings panel-only; after-scan/schedule on Bands. **v110:** No duplicate SV chip. **v97:**
-Init crash fix (`TAB_IDS`).
+### What’s new (high level)
+
+| Area | Highlights |
+| --- | --- |
+| **Rename** | **OpenWebRX Toolbox** (`toolbox`) replaces Band Survey; installer migrates safely |
+| **Explore** | Full receiver controls, S-meter, mute/vol, side dock |
+| **Audio** | Clip archive, record modes, export for digi tools |
+| **Public** | Shared-receiver mode + visitor allowlist |
+| **Settings** | Mute when changing tab (default on), personal defaults, UX feel |
+| **Legacy** | Band Survey **v127** kept in-repo for download — see below |
+| **Docs** | README + Help **v405** aligned for public GitHub |
+
+---
 
 ## Where to start
 
-After [install](#install) and a hard-refresh (**Ctrl+Shift+R** / **Cmd+Shift+R**), open the
-receiver page and click **Survey** in the **top bar** — between **Help** and **Status**
-(bar-graph icon). That opens the Band survey panel. If the top bar is missing, look for
-orange **SV** on the frequency bar (fallback).
+After [install](#install) and a hard-refresh (**Ctrl+Shift+R** / **Cmd+Shift+R**),
+open the receiver page and click **Toolbox** in the **top bar** — between **Help**
+and **Status** (bar-graph icon). That opens the Toolbox panel. If the top bar is
+missing, look for **TB** on the frequency bar (fallback).
 
 <p>
-  <img src="screenshots/topbar-survey-button.png" alt="OpenWebRX+ top bar — Help, Survey (between Help and Status), Status, Chat, Receiver, Map, Files, Settings" width="720">
+  <img src="screenshots/topbar-survey-button.png" alt="OpenWebRX+ top bar — Help, Toolbox (between Help and Status), Status, Chat, Receiver, Map, Files, Settings" width="720">
 </p>
 
-<p><em>Click <strong>Survey</strong> (highlighted above) to open the panel, then Settings → <strong>Check install</strong>.</em></p>
+<p><em>Click <strong>Toolbox</strong> (highlighted above) to open the panel, then Settings → <strong>Check install</strong>.</em></p>
 
-**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those are
-optional extras if you already load them.
+**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those
+are optional extras if you already load them.
+
+---
+
+## Band Survey (legacy)
+
+This project used to be **Band Survey** only. **OpenWebRX Toolbox** is the current
+plugin and includes every Band Survey feature plus much more.
+
+| Want | How |
+| --- | --- |
+| **Current plugin (recommended)** | `./install.sh` → loads `toolbox` |
+| **Last Band Survey (v127)** | [`legacy/band_survey/`](legacy/band_survey/) **or** root `band_survey.js` + `band_survey.css` |
+| **Band Survey v110** | GitHub Release / tag **`band-survey-v110`** |
+| **Any older build** | [Releases](https://github.com/G4EA5/owrx-band-survey/releases) or `git checkout <tag>` |
+
+**Do not load `band_survey` and `toolbox` together** — they share UI hooks and will
+clash. The installer always configures `init.js` to load **only Toolbox**.
+
+CDN pin for a specific Band Survey version:
+
+```js
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@band-survey-v110/band_survey.js");
+```
 
 ---
 
 ### Screenshots — FM broadcast range survey (88–108 MHz)
 
 <p>
-  <strong>Range</strong> — full-span scan with spectrum chart (280 peaks, wideband FM detection)<br>
+  <strong>Range</strong> — full-span scan with spectrum chart<br>
   <img src="screenshots/range-fm-spectrum.png" alt="Range tab with FM spectrum" width="640">
 </p>
 <p>
@@ -49,7 +85,7 @@ optional extras if you already load them.
   <img src="screenshots/bookmarks-fm-auto.png" alt="Bookmarks tab — auto FM bookmarks" width="640">
 </p>
 <p>
-  <strong>Bands</strong> — scan options (wideband peaks, dB threshold, passes)<br>
+  <strong>Bands</strong> — scan options<br>
   <img src="screenshots/bands-scan-options.png" alt="Bands tab — scan options" width="640">
 </p>
 
@@ -57,28 +93,29 @@ optional extras if you already load them.
 
 ## SDR hardware (HackRF, RTL-SDR, Airspy, Lime, …)
 
-Band survey is an **OpenWebRX+ browser plugin**. It does **not** open `/dev/hackrf0`,
-run `hackrf_sweep`, or talk to Soapy/USB itself.
+**OpenWebRX Toolbox** is an **OpenWebRX+ browser plugin**. It does **not** open
+`/dev/hackrf0`, run `hackrf_sweep`, or talk to Soapy/USB itself.
 
 | Layer | Role |
 | --- | --- |
 | Your SDR (HackRF, RTL-SDR, …) | Owned by OpenWebRX+ / SoapySDR |
 | OpenWebRX+ receiver page | Profiles, waterfall FFT, tune / profile hop |
-| Band survey | Reads waterfall, switches profiles, bookmarks in **this browser** |
+| Toolbox | Reads waterfall, switches profiles, bookmarks in **this browser** |
 
-**If** OpenWebRX already shows a normal waterfall and an SDR profile list for that radio,
-this plugin can survey it — same code path for HackRF, RTL-SDR, Airspy, Lime, etc.
+**If** OpenWebRX already shows a normal waterfall and an SDR profile list for that
+radio, this plugin can survey it — same code path for HackRF, RTL-SDR, Airspy, Lime,
+etc.
 
 Practical differences by setup:
 
-- **Profiles must cover the MHz you scan.** Range, Explore, and Analyzer only hop where
-  profiles allow. One wide HackRF profile behaves differently from many ~2.4 MHz RTL slices.
-- **Bandwidth comes from OpenWebRX** (`window.bandwidth`). Hop step and “tile” size follow
-  the active profile, not a fixed HackRF sweep bin width.
-- **Presets** (Air, FM, …) match common profile id/name patterns (`air_`, `fm_`, …). Custom
-  names still work — tick bands manually or use **All**.
-- **Analyzer** (experimental, off by default) draws from the live OWRX waterfall (relative
-  dB). It is **not** a standalone [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1).
+- **Profiles must cover the MHz you scan.** Range, Explore, and Analyzer only hop
+  where profiles allow.
+- **Bandwidth comes from OpenWebRX** (`window.bandwidth`).
+- **Presets** (Air, FM, …) match common profile id/name patterns. Custom names still
+  work — tick bands manually or use **All**.
+- **Analyzer** (experimental, off by default) draws from the live OWRX waterfall
+  (relative dB). It is **not** a standalone
+  [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1).
 - Vanilla OpenWebRX (no `+`) cannot load plugins.
 
 ---
@@ -93,50 +130,55 @@ On the radio host:
 git clone https://github.com/G4EA5/owrx-band-survey.git
 cd owrx-band-survey
 chmod +x install.sh
-./install.sh
+./install.sh          # blue-screen wizard (dialog/whiptail) when interactive
+./install.sh --no-tui # plain-text prompts on minimal systems
 ```
 
-Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click **Survey**
-→ **Settings** → **Check install**.
+Hard-refresh the receiver: **Ctrl+Shift+R** (Mac: **Cmd+Shift+R**). Click
+**Toolbox** → **Settings** → **Check install**.
 
-Verify without writing files (writes a full diagnostic log):
+### Upgrading from Band Survey (`band_survey`)
+
+**Recommended: Toolbox only.**
+
+```bash
+./install.sh --remove-legacy   # delete old band_survey, install Toolbox  ★ recommended
+./install.sh --keep-legacy     # keep band_survey folder on disk; only Toolbox loads
+./install.sh --purge-legacy    # remove old band_survey only (no Toolbox file copy)
+```
+
+Interactive installs ask the same question when old Band Survey is found (default
+**[1] Remove**).
+
+Verify without writing files:
 
 ```bash
 ./install.sh --check
 ```
 
-Report only (same log, no install):
+Report only:
 
 ```bash
 ./install.sh --report
 ```
 
-Logs go to `~/owrx-band-survey-reports/band-survey-report-*.txt` (OS, Pi/Docker detection, file checks, HTTP probe, Mac browser hints). Pick a setup type when prompted, or:
+Logs: `~/owrx-toolbox-reports/toolbox-report-*.txt`
 
 ```bash
 ./install.sh --profile pi          # Raspberry Pi image
-./install.sh --profile mac-browser # you browse from Mac; install runs on the server
-```
-
-**Public shared receiver** (hide **Own radio — fast hops** from visitors):
-
-```bash
-./install.sh --public
+./install.sh --profile mac-browser # browse from Mac; install runs on the server
+./install.sh --public              # shared receiver (locks Own radio / fast hops)
 ```
 
 ### Load from URL
 
-Add inside your existing `async` block in `plugins/receiver/init.js`:
+In `plugins/receiver/init.js`:
 
 ```js
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/band_survey.js");
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@main/toolbox.js");
 ```
 
-GitHub Pages (when live):
-
-```js
-await Plugins.load("https://g4ea5.github.io/owrx-band-survey/band_survey.js");
-```
+Pin a release/tag for production instead of floating `@main` when you can.
 
 Raspberry Pi images with Varnish:
 
@@ -146,189 +188,57 @@ sudo systemctl restart varnish nginx
 
 ### Manual install
 
-1. Find `htdocs` (folder containing `openwebrx.js`):
-
-   ```bash
-   find /usr /opt -name openwebrx.js 2>/dev/null
-   ```
-
-2. **Back up first:**
+1. Find `htdocs` (folder containing `openwebrx.js`).
+2. Back up `init.js` and any existing `toolbox/` / `band_survey/` folders.
+3. Copy into htdocs:
 
    ```bash
    HTDOCS=/usr/lib/python3/dist-packages/htdocs
-   mkdir -p ~/owrx-band-survey-backups/manual
-   cp -a "$HTDOCS/plugins/receiver/init.js" ~/owrx-band-survey-backups/manual/ 2>/dev/null || true
-   cp -a "$HTDOCS/plugins/receiver/band_survey" ~/owrx-band-survey-backups/manual/ 2>/dev/null || true
-   cp -a /var/lib/openwebrx/bookmarks.json ~/owrx-band-survey-backups/manual/ 2>/dev/null || true
-   cp -a /var/lib/openwebrx/settings.json ~/owrx-band-survey-backups/manual/ 2>/dev/null || true
+   sudo mkdir -p "$HTDOCS/plugins/receiver/toolbox"
+   sudo cp -a toolbox.js toolbox.css README.md LICENSE install.sh \
+     "$HTDOCS/plugins/receiver/toolbox/"
    ```
 
-3. Copy the plugin files into `htdocs` (repo root is the plugin — there is no nested `band_survey/` folder):
-
-   ```bash
-   sudo mkdir -p "$HTDOCS/plugins/receiver/band_survey"
-   sudo cp -a band_survey.js band_survey.css README.md LICENSE install.sh \
-     "$HTDOCS/plugins/receiver/band_survey/"
-   ```
-
-4. Add to `$HTDOCS/plugins/receiver/init.js`:
+4. In `init.js`:
 
    ```js
    (async () => {
-     await Plugins.load("band_survey");
+     await Plugins.load("toolbox");
    })();
    ```
-
-   If you already have `init.js` (e.g. from
-   [0xAF plugins](https://github.com/0xAF/openwebrxplus-plugins)), add only the
-   `await Plugins.load("band_survey");` line inside your existing block.
 
 5. Hard-refresh the receiver.
 
 ### What you need
 
-- [OpenWebRX+](https://github.com/luarvique/openwebrx) (the `+` fork). Vanilla OpenWebRX
-  has no plugin loader.
-- An SDR that OpenWebRX+ already drives (RTL-SDR, HackRF, Airspy, LimeSDR, etc.) with at
-  least one **profile** and a live **waterfall** on the receiver page.
-- SSH or file copy onto the radio host (for local install).
-- A **hard** refresh after install.
+- [OpenWebRX+](https://github.com/luarvique/openwebrx) (the `+` fork)
+- An SDR OpenWebRX+ already drives, with at least one **profile** and a live
+  **waterfall**
+- SSH or file copy onto the radio host
+- A **hard** refresh after install
 
-### Install script details
+### Docker
 
-`install.sh` backs up first, then copies the plugin and adds one load line to `init.js`
-if missing. Backups go to:
+Install **inside** the OpenWebRX+ container (or bind-mount `plugins/receiver`).
+See the longer Docker notes in git history / Help tab if you use compose volumes.
+Typical flow:
 
-`~/owrx-band-survey-backups/YYYYMMDD-HHMMSS/`
+```bash
+docker exec -it openwebrx bash
+cd /tmp && git clone https://github.com/G4EA5/owrx-band-survey.git
+cd owrx-band-survey && ./install.sh --profile docker
+```
 
-Diagnostic reports go to:
+Then `docker restart openwebrx` and hard-refresh the browser.
 
-`~/owrx-band-survey-reports/band-survey-report-*.txt`
+`install.sh` backs up to `~/owrx-toolbox-backups/YYYYMMDD-HHMMSS/` and writes
+diagnostics under `~/owrx-toolbox-reports/`.
 
-(includes OS/hardware detection, file checksums, service status, HTTP probe, and
-browser next-steps tailored to Pi / Docker / Mac / Linux).
-
-Backup folder also includes `init.js`, previous `band_survey/`, `bookmarks.json`,
-`settings.json`, `RESTORE.txt`, and `diagnostic-report.txt` after install.
-
-If `install.sh` cannot find OpenWebRX+:
+If auto-detect fails:
 
 ```bash
 export OWRX_HTDOCS=/path/to/htdocs
 ./install.sh
-```
-
-Typical `htdocs` paths:
-
-- `/usr/lib/python3/dist-packages/htdocs` (Debian / Ubuntu package, many Docker images)
-- `/opt/openwebrx/htdocs`
-
-### Docker (OpenWebRX+ in a container)
-
-You need **OpenWebRX+** (image must include `plugins.js`). Vanilla OpenWebRX images
-cannot load plugins.
-
-Band survey files must end up in **`htdocs/plugins/receiver/band_survey/`** with
-`await Plugins.load("band_survey");` in **`init.js`**. How you get them there depends
-on your compose file.
-
-#### Method 1 — Install inside the container (usual)
-
-On the **Docker host**:
-
-```bash
-docker ps                                    # note container name, e.g. openwebrx
-docker exec -it openwebrx bash               # shell inside container
-```
-
-Inside the container:
-
-```bash
-find /usr /opt -name openwebrx.js 2>/dev/null   # confirm htdocs path
-# common: /usr/lib/python3/dist-packages/htdocs
-
-apt-get update && apt-get install -y git        # if git is missing
-
-cd /tmp
-git clone https://github.com/G4EA5/owrx-band-survey.git
-cd owrx-band-survey
-chmod +x install.sh
-./install.sh --profile docker
-./install.sh --check
-exit
-```
-
-Restart the container (some images cache static files):
-
-```bash
-docker restart openwebrx
-```
-
-Then hard-refresh the receiver page (**Ctrl+Shift+R** / **Cmd+Shift+R**) and click
-**Survey** (or orange **SV**).
-
-If auto-detect cannot find htdocs inside the container:
-
-```bash
-export OWRX_HTDOCS=/usr/lib/python3/dist-packages/htdocs
-./install.sh --profile docker
-```
-
-Verify from the host without opening a shell:
-
-```bash
-docker exec openwebrx bash -c 'cd /tmp/owrx-band-survey && ./install.sh --report'
-```
-
-Reports are written **inside the container** at `~/owrx-band-survey-reports/` unless
-you bind-mount home — copy out with `docker cp` if needed.
-
-**Note:** If you `docker compose down` and recreate the container **without** a volume
-on `plugins/receiver`, an in-container install is lost. Use Method 2 for persistence,
-or re-run `./install.sh` after recreate.
-
-#### Method 2 — Bind-mount `plugins/receiver` from the host (persistent)
-
-If your `docker-compose.yml` mounts the receiver plugin tree from the host, e.g.:
-
-```yaml
-volumes:
-  - ./plugins/receiver:/usr/lib/python3/dist-packages/htdocs/plugins/receiver
-```
-
-Install on the **host** into that folder (or run `install.sh` on the host with
-`OWRX_HTDOCS` pointing at the parent `htdocs` if you mount all of it):
-
-```bash
-git clone https://github.com/G4EA5/owrx-band-survey.git
-cd owrx-band-survey
-export OWRX_HTDOCS=/path/to/your/openwebrx/htdocs   # parent of plugins/receiver
-chmod +x install.sh
-./install.sh --profile docker
-docker restart openwebrx
-```
-
-Ensure `init.js` on the **host mount** includes:
-
-```js
-await Plugins.load("band_survey");
-```
-
-**Read-only mounts:** if the volume is `:ro`, the installer cannot write — remove
-`:ro` for install, or copy files into the host source directory by hand, then restart.
-
-#### Docker Desktop on Mac or Windows
-
-Docker runs Linux containers; install steps are the same (`docker exec` on the host).
-Your **browser** on Mac/Windows still needs a hard refresh on the receiver page —
-install does not run on the Mac itself unless OpenWebRX+ is natively installed there
-(unusual).
-
-#### Public shared Docker receiver
-
-```bash
-docker exec -it openwebrx bash
-cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 ```
 
 ---
@@ -336,14 +246,14 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 ## Quick start
 
 1. Hard-refresh: **Ctrl+Shift+R** / **Cmd+Shift+R**.
-2. Click **Survey** in the top bar (between **Help** and **Status**) — see [Where to start](#where-to-start).
-3. Open **Settings** and click **Check install**. Green = ready.
-4. Tick bands (or tap **Air**, **VHF voice**, **All VHF**, etc.) and press **Scan bands**.
-5. Results appear on the **Peaks** tab. Hover any control for a tip (one tip at a time — no double browser+custom tips).
+2. Click **Toolbox** in the top bar (between **Help** and **Status**).
+3. Open **Settings** → **Check install**. Green = ready.
+4. Tick bands (or a preset) and press **Scan bands**.
+5. Results appear on **Peaks**. Hover any control for a tip.
 
 | You see | Meaning |
 | --- | --- |
-| **Survey** (or orange **SV**) | Plugin loaded |
+| **Toolbox** (or **TB** fallback) | Plugin loaded |
 | Band checkboxes | Profiles visible |
 | **Check install** “looks good” | Ready to survey |
 | Red / yellow box | Follow on-screen fix, then Check install again |
@@ -352,18 +262,18 @@ cd /tmp/owrx-band-survey && ./install.sh --public --profile docker
 
 ## Panel layout
 
-Tabs: **Bands**, **Range**, **Explore**, **Analyzer** (experimental, off by default),
-**Peaks**, **Bookmarks**, **Audio**, **Skip**, **Settings**, **Help**.
+Tabs (left → right): **Explore**, **Bands**, **Range**, **Analyzer** (experimental,
+off by default), **Peaks**, **Bookmarks**, **Audio**, **Skip**, **Settings**,
+**Help**. Explore is first and opens by default.
 
-Hide any tab under Settings → **Visible tabs**. **Show all tabs** restores everything
-except Analyzer (still off until you tick it). Settings always stays on.
+Hide tabs under Settings → **Visible tabs**. **Show all tabs** restores everything
+except **Analyzer** (still off until you tick it). Settings always stays on.
 
-Scan controls appear below the tabs **when that tab needs them**: Scan bands on
-**Bands**, Scan bookmarks / Hold / Skip on **Bookmarks**, Scan range / Stop on **Range**.
-On Explore / Settings / Help the strip stays hidden unless a scan is running (then
-**Stop** and status show). Drag panel edges or the corner to resize; drag the title bar
-to move. Default position: 12 vw from left, 28 vh from top, 28 vw wide, 58 vh tall —
-remembered in this browser.
+**Mouse:** hover = tip; **Shift+click** = secondary action; **right-click** = colour
+picker (when enabled).
+
+**Side dock (default on):** Toolbox column on the **left** (~35% width). Title-bar
+**S** toggles dock; **R** hard-refreshes the page.
 
 ---
 
@@ -371,255 +281,81 @@ remembered in this browser.
 
 | Control | What it does |
 | --- | --- |
-| **Scan bands** / **Scanning bands** | Walk ticked bands; add to Seen counts. Label changes during band or range scan. |
-| **Fresh scan** | Clear peak list, then scan ticked bands from scratch. |
-| **Stop** | Halt band survey, range survey, or bookmark scan. Auto-bookmarks qualified peaks when **Auto-bookmark actives** is on. |
-| **Scan bookmarks** / **Scanning bookmarks** | Loop local and loaded bookmarks until Stop. Becomes **Continue scan bookmarks** when paused (continuous mode off + busy channel). |
-| **Jump loudest** | Retune to strongest peak on **this waterfall tile only**. |
-| **Hold** / **Skip** / **Always skip** / **Lockout** | During bookmark scan: stay, move on, skip forever, or skip for Lockout minutes. |
-
-Status line below the toolbar reserves two lines so the panel does not bounce when text
-wraps.
+| **Scan bands** / **Fresh scan** | Walk ticked bands; Fresh clears peaks first |
+| **Stop** | Halt band / range / bookmark scan; may auto-bookmark qualified peaks |
+| **Scan bookmarks** | Loop local / loaded bookmarks until Stop |
+| **Jump loudest** | Strongest peak on **this** waterfall tile |
+| **Hold** / **Skip** / **Always skip** / **Lockout** | Bookmark-scan dwell controls |
 
 ---
 
-## Tab guide
+## Tab guide (summary)
+
+Full detail is also in the in-panel **Help** tab (always matches this build).
 
 ### Bands
 
-- **Presets** — **Air**, **VHF voice**, **All VHF** (30–300 MHz), **All UHF** (300–1000 MHz),
-  **Ham**, **All**, **None**. Presets are **additive** (combine VHF+UHF; **None** clears all).
-- **Band checkboxes** — include each SDR profile in **Scan bands**. Filter box hides
-  non-matching names.
-- **Band scan options** (expandable):
-  - **Passes** — how many times to walk ticked bands per run.
-  - **Dwell s** — seconds on each band while counting peaks.
-  - **Min seen** — peaks below this Seen count do not qualify for auto-bookmark or
-    **Bookmark qualified**.
-  - **dB over noise** — peak must be this far above the noise floor.
-- **Hide birdies** — hide always-skipped rows from the peak list.
-- **Mute while running** — silence audio during band/range survey walks.
-- **Only if alone** — do not retune when other listeners are online (also on Range).
-- **Own radio — fast hops** — ~1 s between profile changes instead of ~11 s. Only on a
-  receiver you run yourself. Locked on public installs (`./install.sh --public`).
-- **After scan** (also on Range): Switch to Peaks, notify/copy when done, sound on new
-  peak, notify new peak.
-- **Scheduled scan** — every N hours while this browser tab stays open (band, bookmark,
-  or both). Quiet hours and idle skip.
-- **Courtesy** (also on Range): pause when you tune manually, profile settle ms.
+Presets & filter → scan options → band list → after-scan / schedule / courtesy.
+**Bands edit** (Extras) can alias, hide, or **Delete** OpenWebRX profiles (admin).
 
 ### Range
 
-Custom MHz sweep — not tied to ticked bands. Plugin picks covering SDR profiles.
-
-- **Start MHz** / **End MHz** — sweep span (e.g. 109–200). For channel grids, use the
-  band edge / nominal start (e.g. **446** for PMR446).
-- **Step kHz** — hop size. In auto coverage, **0** = ~88% of waterfall span (min 12.5 kHz).
-  In **Channel grid**, this is channel spacing (e.g. **12.5** for PMR446).
-- **Offset kHz** — channel grid only: first tune = Start + offset (PMR446: offset **6.25**
-  → 446.00625 MHz).
-- **Channel grid** + **Grid preset** — hop exact channel centres. Presets: Airband 25 /
-  8.33 kHz, PMR446 12.5 / 6.25, LPD433, Marine VHF ~25 kHz, 2m / 70cm FM, CB, FM broadcast
-  100/200 kHz, MW AM 9/10 kHz, or **Custom**. Off = previous waterfall-coverage behaviour.
-- **Scan range** — add peaks to Seen.
-- **Fresh range scan** — clear peak list first.
-- **Full range (Explorer)** vs **Ticked bands only** — full span hops every step; bands
-  mode only covers overlapping ticked profiles (channel grid N/A).
-- **Range scan options** (on Range tab, synced with Bands): Passes, Dwell, Min seen,
-  dB, Hide birdies, Wideband peaks, Mute, **Only if alone**, Own radio, after-scan, courtesy.
-- **Spectrum map** — after finish or Stop: green = new, amber = seen, pink = priority;
-  bar height = dB; ≥12 frequency labels on the X-axis; click a bar to tune.
+Custom MHz sweep, optional **channel grid** presets (Airband, PMR446, …), spectrum
+map after scan.
 
 ### Explore
 
-Browse the **whole** spectrum — every SDR profile in frequency order (not the ticked
-Bands list). Tile width follows the active profile bandwidth (often ~2.4 MHz on RTL
-setups; wider on many HackRF profiles).
-
-- Frequency counter shows the demodulator tune, waterfall center, profile, and span.
-- **Step kHz** / **Offset kHz** set the VFO grid (same idea as Range channel grid).
-  **− / +** nudge one step; **Snap** lands on the grid; **Go** jumps to a typed MHz.
-- Step presets: 1 / 5 / 6.25 / 8.33 / 12.5 / 25 / 100 kHz.
-- Turn **Explore on**, then drag the waterfall sideways (≥⅓ width) to hop tiles,
-  short-click to tune. Wheel steps the VFO (Shift = ×10, Alt = next/previous profile).
-- **◀ ▶** and the **Profile** dropdown switch SDR profiles (same list as the receiver).
-- **Receiver** on this tab: analog modes (NFM, WFM, AM, LSB, USB, CW, and any others
-  the receiver offers), digital mode list, **Mute**, **Volume**, **Squelch** (with Auto),
-  and **NR**. These drive the same OpenWebRX controls as the receiver panel.
-- **Copy**, **Bookmark here**, and **Jump loudest** live on this tab.
-- For automated sweeps use **Range → Full range (Explorer)**.
+Browse the whole spectrum; receiver controls (modes, SQL, NR, mute/vol), zoom,
+memories, find.
 
 ### Analyzer (experimental)
 
-Live spectrum + mini-waterfall from the OpenWebRX waterfall (relative / uncalibrated dB).
-**Off by default** — enable under Settings → **Visible tabs** → **Analyzer · experimental**.
-**Show all tabs** does not turn it on.
+Live spectrum from the OWRX waterfall. Off by default — enable under **Visible tabs**.
 
-- Set **Start** / **End** MHz (or presets: FM, Air, 2m, 70cm, ADS-B), press **Live on**.
-- Wide spans hop tiles like Range; **Follow tile** stays on the current waterfall only.
-- Peak hold, averaging, dB scale, and hop ms live under **Analyzer settings** on that tab.
-- Click the plot to tune.
-- Basic only — not a full HackRF sweep console.
+### Peaks / Bookmarks / Audio / Skip
 
-### Peaks
-
-Ranked survey results — sort by Seen, MHz, or dB.
-
-| Action | Purpose |
-| --- | --- |
-| Click MHz | Tune receiver |
-| Click name | Rename bookmark |
-| **ign** / **un-ign** | Always skip / undo skip a birdie |
-| **Bookmark qualified** | Save peaks with Seen ≥ Min seen as blue bookmarks |
-| **Copy list** | Copy table as text |
-| **Export CSV** / **Export JSON** | Download log; JSON for merging yellow server bookmarks |
-| **Import CSV** / **Import JSON** | Restore Peaks/Seen (file picker; Shift-click to paste) |
-| **Clear list** | Wipe peak table (bookmarks stay) |
-
-**Max peaks** and **Keep peaks between sessions** are on this tab.
-
-### Bookmarks
-
-- **Blue** local bookmarks — **[auto]** from surveys vs named.
-- **Amber [load]** — imported list (separate from blue).
-- **Save bookmarks** / **Load bookmarks** / **Clear loaded** / **Clear bookmarks** /
-  **Clear auto bookmarks** / **ren** to rename.
-
-**Bookmark scan options:**
-
-| Option | Purpose |
-| --- | --- |
-| **Listen s** | Minimum seconds on each bookmark after ~0.7 s tune settle |
-| **Priority** | MHz list (e.g. 121.5); guard/tower/ATIS added automatically; listened first |
-| **Auto-bookmark actives** | Save busy peaks as **[auto]** (scan end and Stop) |
-| **Scan new bookmarks when done** | One-shot bookmark scan after band survey |
-| **Hide auto bookmarks** | Hide **[auto]** from OpenWebRX bookmark bar |
-| **Continuous bookmark scan** | Loop without pausing on busy (default on) |
-| **Hold while busy** | When continuous off: stay until ~1.5 s quiet; button becomes **Continue scan bookmarks** |
-| **Record busy** | Capture demod audio while parked (see Audio tab) |
-| **Alert MHz list** / **± kHz** | Extra notify and sound when a new peak is within tolerance |
-
-**Scan bookmarks** loops new auto bookmarks first, then all local and loaded. Same-band
-hops ~1 s; other-band ~11 s (or ~1 s with **Own radio — fast hops**).
-
-### Audio
-
-Recorded clips from **Record busy** during bookmark scan. Persist in **IndexedDB**
-across refresh and browser restart.
-
-| Action | Purpose |
-| --- | --- |
-| **Save all** | Download each clip separately |
-| **Save all · ZIP** | Bundle all clips (loads JSZip on first use) |
-| **Load audio** | Add files from disk (nothing uploaded) |
-| **Clear all** | Remove all clips from browser storage |
-| **×** on a row | Remove one clip |
-
-**Recording options:**
-
-| Mode | Behaviour |
-| --- | --- |
-| **Original** (default) | Record on first waterfall-busy sample; no squelch/voice gating |
-| **Balanced** | Squelch open + light debounce |
-| **Strict voice** | Squelch + S-meter + SNR, pause on quiet, discard hiss |
-
-Fine-tune (Balanced/Strict; Original ignores): **Squelch open only**, **Debounce ms**,
-**Quiet pause ms**, **Min SNR dB**, **Squelch headroom dB**, **Min clip voice %**
-(0 = mode default).
-
-Default cap: 40 clips or ~48 MB (set **Max audio clips** on this tab). Scanner waits
-≥2 s before hopping so clips are not cut off.
-
-### Skip
-
-- **Always skip** list — frequencies skipped forever. Add via **ign** or toolbar
-  **Always skip**. Undo with **un-ign** or **Clear always-skip**.
-- **Lockout min** — duration for toolbar **Lockout** skips (default 30 min).
-
-### Help
-
-Full in-panel manual (this document in condensed form), **Check install now**, and
-bookmark backup buttons: **Restore first-run bookmarks**, **Restore last backup**,
-**Download bookmark backup**.
+Ranked peaks, local bookmarks + scan, clip archive / record modes, always-skip and
+timed lockouts.
 
 ---
 
-## Settings reference
-
-Panel-wide preferences only. Scan options are on Bands / Range, bookmark alerts on
-Bookmarks, peak limits on Peaks, clip cap on Audio.
-
-### Extras
-
-Optional add-ons, all off by default. **Add all extras** turns them on except
-**Public / shared receiver mode** (that extra greys out Factory reset). **Clear extras**
-turns them all off. Ticked extras add controls on the tab named in parentheses.
-
-### Panel & UI
+## Settings (panel-wide)
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| **Open panel on startup** | off | Open SV when OpenWebRX loads (waits for band profiles) |
-| **Remember last tab** | on | Restore tab between sessions |
-| **Default tab** | Last used | Tab shown on open (Bands, Range, Peaks, …) |
-| **UI text size** | Default | Small (~90%), Default, Large (~110%) |
-| **Visible tabs** | all on except Analyzer | Untick tabs for a minimal bar. **Analyzer** is experimental and off by default; **Show all tabs** still leaves Analyzer off. Settings always stays on |
-| **Reset panel layout** | — | Restore default / waterfall / saved position |
-| **Always hide scan strip** | off | Never show the Bands/Bookmarks scan strip (even while a scan is running, use Range Stop or keyboard S) |
-| **Check install** | — | Verify plugin and receiver. Result box appears on Settings. Help also has **Check install now** |
+| **Open panel on startup** | off | Open Toolbox when OpenWebRX loads |
+| **Auto-click Start OpenWebRX+** | off | Click the Start overlay on load |
+| **Remember last tab** | on | Restore last tab |
+| **Default tab** | Always Explore | Tab on open |
+| **UI text size** | Default | Small / Default / Large |
+| **On/off style** | Tick boxes | Or switches |
+| **Tab view** | Full | Or Minimal; header **M**/**F** per tab |
+| **Show colour picker** | on | Right-click buttons/tabs for shade menu |
+| **Show right-click colour tip** | on | Hover hint mentions right-click colour |
+| **Mute when changing tab** | **on** | Mute receiver audio while this browser tab is in the background (stock `owrx_hush` behaviour). Untick to keep listening in other tabs |
+| **Hide stock receiver panel** | off | Use Explore instead of the floating stock panel |
+| **Always hide scan strip** | off | Never show the Bands/Bookmarks scan strip |
+| **Side dock** | on, left ~35% | Column layout; **S** in title bar; **%** resets width to 35% |
+| **Visible tabs** | Analyzer off | Untick tabs to hide from the header |
+| **UX feel** | all off | Optional soft overlays |
+| **Public visitor allowlist** | — | When Public mode / `--public` |
+| **Save as my defaults** | — | Personal defaults for Reset / Factory reset |
+| **Check install** | — | Verify plugin + receiver |
+| **Webhook URL** | blank | Optional POST on each new peak |
+| **Quiet-hours presets** | — | Extra: night / evening / clear for scheduled scans |
 
-### Data & housekeeping
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Export settings** | — | Download settings JSON (not peaks or audio) |
-| **Import settings** | — | Merge settings from JSON file |
-| **Reset settings** | — | Defaults (keeps peak list and bookmarks) |
-| **Factory reset** | — | Red box at the **top of Settings**, and again under Data & housekeeping. Wipe everything in this browser. Greyed out if the Public / shared extra is on |
-
-### Homelab
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Webhook URL** | blank | POST `{freq, name, db, band}` on each new peak |
-
-After-scan, scheduled scan, and courtesy (pause / settle / notify) are on the **Bands**
-tab. Range shares after-scan and courtesy. **Max peaks** / **Keep peaks** are on
-**Peaks**. **Max audio clips** is on **Audio**. **Alert MHz** / **± kHz** are on
-**Bookmarks**.
+Scan options live on **Bands** / **Range**; bookmark options on **Bookmarks**; peak
+limits on **Peaks**; clip caps on **Audio**.
 
 ---
 
 ## Scan behaviour
 
-### Band survey
-
-Walks ticked SDR profiles. Counts waterfall peaks above **dB over noise** threshold.
-Same-band hops ~1 s; cross-band profile changes ~11 s (or ~1 s with **Own radio — fast
-hops**). **Scan bands** adds to Seen; **Fresh scan** clears first.
-
-### Range survey
-
-Hops MHz steps across profiles (waterfall coverage, or exact **channel grid** centres when
-that mode is on). Shares peak list and scan options with band survey.
-Spectrum map shown after finish or Stop.
-
-### Bookmark scan
-
-- **Continuous mode** (default): loops until Stop; auto-hops after **Listen s** unless
-  **Hold** pressed.
-- **Pause mode** (continuous off): waits on busy channel; orange button becomes
-  **Continue scan bookmarks**; use **Hold while busy**, **Skip**, or release **Hold**.
-
-### Stop and auto-bookmark
-
-Pressing **Stop** during band or range survey auto-bookmarks qualified peaks (Seen ≥
-Min seen) when **Auto-bookmark actives** is on — same as normal scan end.
-
-### Recording
-
-**Record busy** captures demod audio only while parked on a bookmark — not during survey
-walks or quiet hops.
+- **Band / range:** same-band hops ~1 s; other-band ~11 s (or ~1 s with **Own radio —
+  fast hops** on a receiver you run).
+- **Bookmark scan:** continuous loop, or pause-on-busy with Continue / Skip / Hold.
+- **Recording:** **Record busy** while parked on a bookmark; **Record now** for a
+  manual clip. Not during band/range walks.
 
 ---
 
@@ -627,55 +363,20 @@ walks or quiet hops.
 
 | Data | Storage |
 | --- | --- |
-| Settings, peak list, skip list, panel position | **localStorage** |
+| Settings, peaks, skip list, panel layout | **localStorage** |
 | Audio clips | **IndexedDB** |
 | Blue bookmarks | OpenWebRX local bookmark store |
-| Bookmark backups | **localStorage** (first-run and last-backup copies) |
 
-Nothing is uploaded except optional **Webhook URL** POSTs. Clearing site data removes
-everything.
+Nothing is uploaded except optional **Webhook URL** POSTs.
 
 ---
 
 ## Public vs own radio
 
-Personal installs: you may tick **Own radio — fast hops** for ~1 s profile gaps.
-
-Public shared OpenWebRX:
-
-```bash
-./install.sh --public
-```
-
-Or edit `band_survey.js`:
-
-```js
-var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = false;
-```
-
-This hides the checkbox and always uses the 11 s gap. Not a hard security fence — enable
-OpenWebRX **bot-ban** if you need the server to kick hoppers.
-
----
-
-## Restore backups
-
-**Peaks/Seen:** Survey → **Import CSV** or **Import JSON**.
-
-**Blue bookmarks:** Help tab → **Restore first-run bookmarks** or **Restore last backup**.
-
-**Server files** (from `install.sh` backup):
-
-```bash
-ls ~/owrx-band-survey-backups
-sudo cp ~/owrx-band-survey-backups/STAMP/init.js /usr/lib/python3/dist-packages/htdocs/plugins/receiver/init.js
-sudo cp ~/owrx-band-survey-backups/STAMP/bookmarks.json /var/lib/openwebrx/bookmarks.json
-```
-
-Read `RESTORE.txt` in that stamp folder.
-
-Yellow **server** bookmarks are admin-only. **Export JSON** and merge the `bookmarks`
-array on the radio host.
+- **Personal install** (`./install.sh` / `--personal`): **Own radio — fast hops**
+  available.
+- **Public install** (`./install.sh --public`): fast hops locked for visitors;
+  Factory reset can be restricted; use **Public visitor allowlist**.
 
 ---
 
@@ -683,46 +384,57 @@ array on the radio host.
 
 | Problem | Fix |
 | --- | --- |
-| **Server check OK but no SV button** | Hard-refresh the **receiver** page (Ctrl+Shift+R / Cmd+Shift+R). Not map-only or admin. Pi: `sudo systemctl restart varnish nginx`. Run `./install.sh --report` and check browser steps in the log. If you updated to **v91–v96**, pull **v97+** — those builds could crash on load (`TAB_IDS`) with a clean server check; F12 console showed the error. |
-| **No Survey / SV button** | Plugin not loaded or cached old file. `./install.sh --check`, hard-refresh. |
-| **PermissionError on init.js** | Files left mode `600`. Re-run `./install.sh` (v91+ sets `chmod 644` on plugin + `init.js`). |
-| **Install “didn’t work” but --check passes** | Install is on the server; the browser still has a cached page. Hard-refresh on the PC/Mac you listen from. Help → **Copy diagnostic report**. |
-| **Slow panel / many stored peaks** | Peaks tab → **Max peaks** (1000–2000) or untick **Keep peaks between sessions**. Peaks load when you open Survey, not on page load. |
-| **No profile list** | Open receiver page (not map/settings only); wait for OpenWebRX+ to load. |
-| **No waterfall data** | Wait after connect; check SDR is started in OpenWebRX. Plugin needs the receiver waterfall, not a standalone HackRF app. |
-| **Range/Analyzer skip large spans** | No profile covers that MHz — add OpenWebRX profiles, or narrow Start/End. |
-| **Presets tick nothing** | Profile ids do not match Air/FM patterns — tick bands manually or use **All**. |
-| **Analyzer missing** | Experimental and off by default. Settings → **Visible tabs** → enable **Analyzer · experimental**. |
-| **Local bookmarks API missing** | Auto-bookmark disabled; Export JSON still works. |
-| **Other listeners online** | Untick **Only if alone** on Range or Bands. |
-| **Nothing counted** | Lower dB over noise, pick busier band, wait for waterfall activity. Wideband peaks for FM/HF broadcast. |
-| **Banned / kicked** | Leave **Own radio — fast hops** off on shared receivers. |
+| No **Toolbox** button | Hard-refresh; run `./install.sh --check`; confirm `Plugins.load("toolbox")` in `init.js` |
+| **Band Survey and Toolbox both loaded** | Edit `init.js` to load only `toolbox`; `./install.sh --remove-legacy` |
+| Audio stays muted after leaving the tab | Update to v403+ (mute restore) / v405 docs; Settings → **Mute when changing tab** (on = mute in background, restores on return) |
+| Explore boxes empty on the right after **%** / side resize | Hard-refresh to **v405+**; Explore re-packs after side width settles |
+| Check install yellow/red | Follow the on-screen fix; Help → **Copy diagnostic report** |
+| Docker install vanished | Persist `plugins/receiver` with a volume, or re-run install after recreate |
 
-**Diagnostic logs:** `./install.sh --report` on the radio host (SSH). **Browser side:** Survey → Help → **Copy diagnostic report**. Send both if asking for help.
-
-Settings → **Check install** and Help tab **Check install now** run the same checks.
-
-See **[Docker](#docker-openwebrx-in-a-container)** under Install for container install steps.
+More detail: in-panel **Help**, or `./install.sh --report`.
 
 ---
 
-## Uninstall
+## Versions and downloads
 
-```bash
-sudo rm -rf "$HTDOCS/plugins/receiver/band_survey"
-# remove Plugins.load("band_survey") from init.js
+Yes — older builds stay downloadable forever via **GitHub Releases** and **git tags**.
+Each publish gets a tag (e.g. `toolbox-v405`, `band-survey-v110`). When Toolbox reaches
+v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag.
+
+| Want | How |
+| --- | --- |
+| **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/owrx-band-survey/releases) → newest **Toolbox** |
+| **This Toolbox build (v405)** | Tag [`toolbox-v405`](https://github.com/G4EA5/owrx-band-survey/releases/tag/toolbox-v405) |
+| **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
+| **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/owrx-band-survey/releases/tag/band-survey-v110) |
+| **Any older commit** | Releases page, or `git checkout <tag>` |
+
+**CDN pin (do not use floating `@main` for production):**
+
+```js
+/* Toolbox v405 */
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@toolbox-v405/toolbox.js");
+
+/* Band Survey v110 */
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@band-survey-v110/band_survey.js");
 ```
 
-Or restore `init.js` from `~/owrx-band-survey-backups/…`.
+| Line | Plugin id | Where |
+| --- | --- | --- |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v405**) |
+| **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) and root `band_survey.*` (**v127**) |
+| **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/owrx-band-survey/releases) / tags |
 
 ---
-
-## Upstream
-
-Standalone tester repo. A later step can be a pull request into
-[0xAF/openwebrxplus-plugins](https://github.com/0xAF/openwebrxplus-plugins). Until then,
-clone or load from this repository.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## Links
+
+- Source: https://github.com/G4EA5/owrx-band-survey
+- OpenWebRX+: https://github.com/luarvique/openwebrx
+- Related: [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1) (separate project)
