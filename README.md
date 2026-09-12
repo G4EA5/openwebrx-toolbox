@@ -70,7 +70,50 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@band-surv
 
 ---
 
-### Screenshots — FM broadcast range survey (88–108 MHz)
+## Screenshots
+
+<p>
+  <strong>Explore</strong> — tune, S-meter, modes, waterfall / IF / zoom<br>
+  <img src="screenshots/explore.png" alt="OpenWebRX Toolbox — Explore tab" width="640">
+</p>
+<p>
+  <strong>Bands</strong> — scan options, presets, band list<br>
+  <img src="screenshots/bands-list.png" alt="OpenWebRX Toolbox — Bands tab" width="640">
+</p>
+<p>
+  <strong>Range</strong> — custom start–end MHz scan<br>
+  <img src="screenshots/range-scan.png" alt="OpenWebRX Toolbox — Range tab" width="640">
+</p>
+<p>
+  <strong>Bookmarks</strong> — local / loaded lists, scan bookmarks<br>
+  <img src="screenshots/bookmarks-list.png" alt="OpenWebRX Toolbox — Bookmarks tab" width="640">
+</p>
+<p>
+  <strong>Audio</strong> — clip archive, record busy, volume<br>
+  <img src="screenshots/audio-clips.png" alt="OpenWebRX Toolbox — Audio tab" width="640">
+</p>
+<p>
+  <strong>Skip</strong> — always-skip list and lockouts<br>
+  <img src="screenshots/skip-list.png" alt="OpenWebRX Toolbox — Skip tab" width="640">
+</p>
+<p>
+  <strong>Settings</strong> — visible tabs, appearance, Check install<br>
+  <img src="screenshots/settings-tabs.png" alt="OpenWebRX Toolbox — Settings (tabs and appearance)" width="640">
+</p>
+<p>
+  <strong>Settings</strong> — side dock, data, quiet hours, extras<br>
+  <img src="screenshots/settings-side-dock.png" alt="OpenWebRX Toolbox — Settings (side dock and extras)" width="640">
+</p>
+<p>
+  <strong>Extras</strong> — optional features grouped by tab<br>
+  <img src="screenshots/settings-extras.png" alt="OpenWebRX Toolbox — Settings Extras" width="640">
+</p>
+<p>
+  <strong>Public visitor allowlist</strong> — shared-receiver guest limits<br>
+  <img src="screenshots/settings-public.png" alt="OpenWebRX Toolbox — Public visitor allowlist" width="640">
+</p>
+
+### Example — FM broadcast range survey (88–108 MHz)
 
 <p>
   <strong>Range</strong> — full-span scan with spectrum chart<br>
