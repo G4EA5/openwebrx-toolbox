@@ -1770,7 +1770,7 @@ resolve_htdocs_or_die() {
 Toolbox installs onto the machine that RUNS OpenWebRX+ (usually a Pi or Linux server).
 
   1. SSH to the Pi/server:  ssh user@your-radio-host
-  2. git clone ... && cd owrx-band-survey && ./install.sh
+  2. git clone ... && cd openwebrx-toolbox && ./install.sh
   3. On your Mac browser: open the receiver page, Cmd+Shift+R, click Toolbox
 
 If you really have OpenWebRX htdocs on this Mac:

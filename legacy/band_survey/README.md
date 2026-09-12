@@ -46,8 +46,8 @@ After GitHub **Releases** / **tags** are published for this repo, download a
 specific version from the Releases page, or:
 
 ```bash
-git clone https://github.com/G4EA5/owrx-band-survey.git
-cd owrx-band-survey
+git clone https://github.com/G4EA5/openwebrx-toolbox.git
+cd openwebrx-toolbox
 git checkout <tag-or-commit>   # e.g. a band-survey-v* tag when available
 ```
 
@@ -55,5 +55,5 @@ jsDelivr (pin a commit or tag — do not rely on `@main` for Band Survey after
 Toolbox becomes the default on `main`):
 
 ```text
-https://cdn.jsdelivr.net/gh/G4EA5/owrx-band-survey@<tag>/band_survey.js
+https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@<tag>/band_survey.js
 ```
