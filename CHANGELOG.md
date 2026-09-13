@@ -1,5 +1,10 @@
 # Changelog
 
+## [410] — Honor Open panel on startup
+
+- **Open panel on startup** now controls whether Toolbox opens on load, including when side dock is on (side dock is layout-only).
+- Closed + side dock no longer leaves a blank dock column or force-reopens the panel on boot.
+
 ## [409] — Side-dock reopen fix
 
 - Closing Toolbox with × then reopening from the top-bar icon no longer leaves an empty light column when side dock is on (toggle no longer races `makePanel()` auto-open).
