@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v413)
+# OpenWebRX Toolbox (v418)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -25,7 +25,7 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
 | **Settings** | Toolbox Settings tab is **admin-only**; mute-on-tab-hide, personal defaults, UX feel |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v413** — Explore layout (Wide/Half), public mode via stock admin Settings |
+| **Docs** | README + Help **v418** — Check install (Toolbox/OWRX only); version badge; Explore Wide/Half |
 
 ---
 
@@ -37,9 +37,6 @@ and **Status** (bar-graph icon). That opens the Toolbox panel. If the top bar is
 missing, look for **TB** on the frequency bar (fallback).
 
 <p><em>Click <strong>Toolbox</strong> in the top bar, then Settings → <strong>Check install</strong>.</em></p>
-
-**Does not need** `freq_scanner`, `scan_hunt`, `uikit`, `utils`, or `notify`. Those
-are optional extras if you already load them.
 
 ---
 
@@ -463,7 +460,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v413)** | Tag [`toolbox-v413`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v413) (after publish) or `main` |
+| **This Toolbox build (v418)** | Tag [`toolbox-v418`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v418) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -471,7 +468,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v413 */
+/* Toolbox v418 */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
@@ -483,7 +480,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v413**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v418**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 

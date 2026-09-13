@@ -1786,7 +1786,7 @@ append_load_line() {
   else
     cat >"$tmp" <<'EOF'
 // OpenWebRX+ receiver plugins - created by toolbox/install.sh
-// Toolbox is standalone (no freq_scanner / uikit / notify required).
+// Toolbox is a standalone OpenWebRX+ receiver plugin.
 (async () => {
   try { await Plugins.load("toolbox"); }
   catch (err) { try { console.warn("toolbox load failed", err); } catch (e) {} }
@@ -1800,7 +1800,7 @@ EOF
   cat >>"$tmp" <<'EOF'
 
 // toolbox - added by install.sh (safe extra loader; does not remove your other plugins)
-// Standalone: works with or without freq_scanner / CDN plugins.
+// Loads Toolbox only; leaves any existing Plugins.load lines alone.
 (async () => {
   try { await Plugins.load("toolbox"); }
   catch (err) { try { console.warn("toolbox load failed", err); } catch (e) {} }
