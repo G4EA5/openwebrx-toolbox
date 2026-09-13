@@ -1,6 +1,5 @@
 // OpenWebRX Toolbox (toolbox) — standalone OpenWebRX+ receiver plugin.
 // Needs only OpenWebRX+ itself (SDR profile list + waterfall).
-// Does NOT require freq_scanner / scan_hunt / uikit / notify / utils.
 // Top-bar label: Toolbox (between Help and Status), same icon style as native buttons.
 // Plugin id: toolbox (folder plugins/receiver/toolbox).
 //
@@ -26,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 413;
+  Plugins.toolbox._version = 418;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -300,7 +299,7 @@ Plugins.toolbox.init = function () {
     { id: "digiSurvey", label: "Digi / FT8 survey", where: "Bands", tip: "Digi preset, longer dwell on digi profiles, optional FT8 mode, occupancy scoring for heatmap." },
     { id: "dayNightBands", label: "HF day / night band sets", where: "Bands", tip: "HF day/night tick chips; optional auto-apply before scheduled scans." },
     { id: "occHeatmap", label: "Band × hour heatmap", where: "Peaks", tip: "Occupancy grid from surveys (band vs local hour). Needs surveys with this extra on." },
-    { id: "sendToScanner", label: "Send to OWRX scanner", where: "Bookmarks / Peaks", tip: "Mark qualified/auto bookmarks scannable and start built-in or freq_scanner." },
+    { id: "sendToScanner", label: "Send to OWRX scanner", where: "Bookmarks / Peaks", tip: "Mark qualified/auto bookmarks scannable and start the receiver scanner if available." },
     { id: "shareReport", label: "Share survey report", where: "Peaks", tip: "Download a PNG summary (top peaks + optional heatmap) for posts or notes." },
     /* —— Visibility extras (on by default; untick to declutter) —— */
     { id: "exVfo", label: "Explore · VFO", where: "Explore", tip: "VFO A/B, step/offset, snap, and tune history." },
@@ -3142,9 +3141,9 @@ Plugins.toolbox.init = function () {
     if (!extraOn("sendToScanner")) return;
     var n = markBookmarksScannable(false);
     var ok = startExternalScanner();
-    setStatus((ok ? "Scanner started" : "Could not start scanner (is freq_scanner / OWRX+ scanner available?)") +
+    setStatus((ok ? "Scanner started" : "Could not start scanner (is the OpenWebRX+ scanner available?)") +
       " · scannable bookmarks updated (" + n + " newly marked).");
-    toast(ok ? "Sent to scanner" : "Marked scannable — start scanner from SQ / freq_scanner");
+    toast(ok ? "Sent to scanner" : "Marked scannable — start the scanner from the receiver SQ controls");
   }
   function shareSurveyReport() {
     if (!extraOn("shareReport")) return;
@@ -4631,13 +4630,14 @@ Plugins.toolbox.init = function () {
   function hookTuneApi() {
     if (window._bs_tune_hooked || !window.UI || typeof UI.setFrequency !== "function") return;
     var orig = UI.setFrequency.bind(UI);
-    UI.setFrequency = function (freq) {
+    /* Forward all args — snap=false must reach OpenWebRX (Band Tune ± / exact dial). */
+    UI.setFrequency = function (freq, snap) {
       if (running && S.pauseOnManualTune && !bsInternalTune) {
         stopFlag = true;
         setStatus("Paused — you tuned manually.");
       }
       if (!bsInternalTune && !running && !listenScanRunning) lastManualTuneAt = Date.now();
-      return orig(freq);
+      return orig(freq, snap);
     };
     window._bs_tune_hooked = true;
   }
@@ -7169,10 +7169,7 @@ Plugins.toolbox.init = function () {
       mute: !!(window.UI && typeof UI.setVolume === "function") ||
         !!(window.audioEngine && typeof audioEngine.setVolume === "function"),
       clients: !!$("openwebrx-bar-clients"),
-      notifyPlugin: !!(window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function"),
-      notifyWeb: typeof window.Notification === "function",
-      freqScanner: !!(window.fs_scanner_state || (window.Plugins && Plugins.freq_scanner)),
-      scanHunt: !!(window.Plugins && Plugins.scan_hunt)
+      notifyWeb: typeof window.Notification === "function"
     };
   }
 
@@ -7230,20 +7227,9 @@ Plugins.toolbox.init = function () {
       add("info", "Courtesy / alone check unavailable.",
         "No #openwebrx-bar-clients on this page. “Only if alone” cannot see other listeners, so it will not block. Untick it if you want that clear.");
     }
-    if (!c.notifyPlugin && !c.notifyWeb) {
-      add("info", "Desktop notify not available.",
-        "Plugins.notify / Notification missing — new-peak alerts fall back to a short beep and the status line.");
-    } else if (!c.notifyPlugin) {
-      add("info", "notify plugin not installed (optional).",
-        "Not required. New peaks still beep and show in the status line; browser notifications work if you allow them.");
-    }
-    if (!c.freqScanner) {
-      add("info", "freq_scanner — optional, not installed.",
-        "Toolbox does not need it. Ignore this unless you want the separate scanner plugin.");
-    }
-    if (!c.scanHunt) {
-      add("info", "scan_hunt — optional, not installed.",
-        "Toolbox does not need it (nor uikit). Core needs: profile select, waterfall, local bookmarks APIs.");
+    if (!c.notifyWeb) {
+      add("info", "Desktop notifications not available in this browser.",
+        "New-peak alerts still beep and show in the status line. Allow notifications in the browser if you want desktop pop-ups.");
     }
     try {
       window.localStorage.setItem("owrx_toolbox_ping", "1");
@@ -7325,6 +7311,7 @@ Plugins.toolbox.init = function () {
     var hard = issues.filter(function (x) { return x.level === "error"; }).length;
     var warns = issues.filter(function (x) { return x.level === "warn"; }).length;
     var extras = issues.filter(function (x) { return x.level === "info"; }).length;
+    try { refreshInstallVersionCompare(); } catch (eVer) {}
     if (!hard && !warns) {
       setStatus("Install looks good. Top-bar Toolbox is this plugin (between Help and Status).");
     } else {
@@ -7494,7 +7481,7 @@ Plugins.toolbox.init = function () {
       '<p><button type="button" class="bs-btn-info" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
       '<button type="button" class="bs-btn-util" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
       "<h3>What this is</h3>" +
-      "<p><b>OpenWebRX Toolbox</b> (plugin id <code>toolbox</code>) is a standalone <b>OpenWebRX+ receiver plugin</b>. Formerly <b>Band Survey</b> (<code>band_survey</code>). Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Fully standalone — does <b>not</b> need freq_scanner, scan_hunt, uikit, notify, or utils. Other plugins are optional; Toolbox keeps working if they are missing or fail to load.</p>" +
+      "<p><b>OpenWebRX Toolbox</b> (plugin id <code>toolbox</code>) is a standalone <b>OpenWebRX+ receiver plugin</b>. Formerly <b>Band Survey</b> (<code>band_survey</code>). Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Needs only OpenWebRX+ (profile list, waterfall, local bookmarks).</p>" +
       "<p><b>Do not load Band Survey and Toolbox together</b> — they share the same UI hooks and will clash (duplicate panels / fighting controls). Toolbox includes every Band Survey feature and more. The installer removes or keeps the old folder, but always makes <code>init.js</code> load <b>only</b> Toolbox.</p>" +
       "<h3>Versions &amp; Band Survey download</h3>" +
       "<ul>" +
@@ -14897,6 +14884,91 @@ Plugins.toolbox.init = function () {
     return next();
   }
 
+  /** Probe GitHub (+ radio copy) so Install check can show latest vs running. */
+  function probeLatestToolboxVersion() {
+    var remoteJsUrls = [
+      TOOLBOX_DIST.cdn + "toolbox.js",
+      TOOLBOX_DIST.raw + "toolbox.js"
+    ];
+    var localJs = TOOLBOX_DIST.local + "toolbox.js";
+    return Promise.all([
+      fetchFirstUrl(remoteJsUrls).catch(function () { return null; }),
+      fetchTextUrl(localJs).catch(function () { return null; })
+    ]).then(function (pair) {
+      var remote = pair[0];
+      var local = pair[1];
+      var remoteVer = remote ? parsePluginVersionText(remote.text) : 0;
+      var localVer = local ? parsePluginVersionText(local.text) : 0;
+      var latestVer = Math.max(remoteVer, localVer);
+      var source = "";
+      if (latestVer > 0) {
+        if (remoteVer >= localVer && remoteVer > 0) source = "GitHub";
+        else if (localVer > 0) source = "this radio";
+        else source = "GitHub";
+      }
+      return {
+        remoteVer: remoteVer,
+        localVer: localVer,
+        latestVer: latestVer,
+        source: source
+      };
+    });
+  }
+
+  function updateInstallVersionUi(info) {
+    var el = $("bs-install-ver");
+    var btn = $("bs-dl-latest");
+    var mine = Number(Plugins.toolbox._version) || 0;
+    var mineLab = mine ? ("v" + mine) : "v?";
+    if (!el) return;
+    var latest = info && info.latestVer ? Number(info.latestVer) : 0;
+    var src = (info && info.source) || "";
+    var html = "This install: <b>" + mineLab + "</b>";
+    if (latest > 0) {
+      html += ' · Latest available: <b id="bs-latest-ver">v' + latest + "</b>";
+      if (src) html += " <span class=\"bs-install-src\">(" + src + ")</span>";
+      if (latest > mine) {
+        html += ' <span class="bs-install-outdated">— update available</span>';
+      } else if (latest === mine) {
+        html += ' <span class="bs-install-current">— up to date</span>';
+      } else {
+        html += ' <span class="bs-install-ahead">— newer than published</span>';
+      }
+    } else if (info && info.failed) {
+      html += ' · Latest available: <span class="bs-install-unknown">could not check</span>';
+    } else {
+      html += ' · Latest available: <span class="bs-install-unknown">checking…</span>';
+    }
+    el.innerHTML = html;
+    if (btn) {
+      if (latest > 0) {
+        btn.textContent = "Download latest (v" + latest + ")";
+        btn.title =
+          "Download Toolbox v" + latest +
+          " zip from " + (src || "GitHub / this radio") +
+          ". This page is running " + mineLab + ".";
+      } else {
+        btn.textContent = "Download latest version";
+        btn.title =
+          "Download the newest Toolbox zip (toolbox.js, toolbox.css, install.sh) from GitHub, or from this radio if GitHub is behind. This page is " +
+          mineLab + ".";
+      }
+    }
+  }
+
+  function refreshInstallVersionCompare() {
+    updateInstallVersionUi(null);
+    return probeLatestToolboxVersion()
+      .then(function (info) {
+        updateInstallVersionUi(info);
+        return info;
+      })
+      .catch(function () {
+        updateInstallVersionUi({ failed: true, latestVer: 0 });
+        return null;
+      });
+  }
+
   /** Pick newest Toolbox package: GitHub (toolbox or legacy band_survey) vs this radio's copy. */
   function resolveLatestToolboxSources() {
     var localJs = TOOLBOX_DIST.local + "toolbox.js";
@@ -14976,6 +15048,7 @@ Plugins.toolbox.init = function () {
       setStatus(friendlyError(err, "Download latest"));
     }).then(function () {
       if (btn) btn.disabled = false;
+      try { refreshInstallVersionCompare(); } catch (eVer) {}
     });
   }
 
@@ -19354,6 +19427,9 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-tab" data-tab="settings" role="tab" title="Settings — startup, schedule, notifications.">Settings</button>' +
       "</div>" +
       '<div class="bs-head-actions">' +
+      '<span class="bs-head-ver" id="bs-head-ver" title="This Toolbox build (toolbox.js).">v' +
+      (Plugins.toolbox._version || "?") +
+      "</span>" +
       '<button type="button" class="bs-x bs-help" id="bs-help-tog" title="Help and install guide." aria-pressed="false">?</button>' +
       '<button type="button" class="bs-x bs-side-pct" id="bs-side-pct-reset" title="Side width — click to reset to 35%.">%</button>' +
       '<button type="button" class="bs-x bs-density" id="bs-density-tog" title="Minimal — only the most useful controls on this tab. Click again for Full view.">M</button>' +
@@ -20201,7 +20277,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-btn-util" id="bs-copy" title="Copy the peak table as text.">Copy list</button>' +
       '<button type="button" class="bs-btn-util" data-extra="surveyDiff" hidden id="bs-survey-snap" title="Save current peaks as a snapshot for Δ compare.">Save snapshot</button>' +
       '<button type="button" class="bs-btn-export" data-extra="shareReport" hidden id="bs-share-report" title="Download a PNG summary of top peaks (and heatmap if enabled).">Share report</button>' +
-      '<button type="button" class="bs-btn-util" data-extra="sendToScanner" hidden id="bs-send-scanner-peaks" title="Mark local bookmarks scannable and start OWRX / freq_scanner.">Send to scanner</button>' +
+      '<button type="button" class="bs-btn-util" data-extra="sendToScanner" hidden id="bs-send-scanner-peaks" title="Mark local bookmarks scannable and start the OpenWebRX scanner if available.">Send to scanner</button>' +
       "</div></div>" +
       '<div class="bs-opt-group bs-opt-group-clear">' +
       '<span class="bs-opt-lab">Clear</span>' +
@@ -20304,7 +20380,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-bm-files-group" data-extra="sendToScanner" hidden>' +
       '<span class="bs-bm-files-lab">Scanner</span>' +
       '<div class="bs-row">' +
-      '<button type="button" class="bs-btn-util" id="bs-send-scanner" title="Mark bookmarks scannable and start built-in / freq_scanner.">Send to scanner</button>' +
+      '<button type="button" class="bs-btn-util" id="bs-send-scanner" title="Mark bookmarks scannable and start the OpenWebRX scanner if available.">Send to scanner</button>' +
       "</div></div>" +
       "</div>",
       { wide: true, id: "bs-bm-files-box", extra: "bmFiles", cls: "bs-min-hide",
@@ -20603,13 +20679,16 @@ Plugins.toolbox.init = function () {
         "</div>",
         { id: "bs-factory-box", danger: true }) +
       settingsBoxHtml("Install check",
+        '<p class="bs-hint bs-install-ver" id="bs-install-ver">This install: <b>v' +
+        (Plugins.toolbox._version || "?") +
+        "</b> · Latest available: <span class=\"bs-install-unknown\">checking…</span></p>" +
         '<div class="bs-row" id="bs-settings-check">' +
         '<button type="button" class="bs-btn-info" id="bs-check" title="Check that this page can run Toolbox and show any fix on this tab.">Check install</button>' +
-        '<button type="button" class="bs-btn-export" id="bs-dl-latest" title="Download the newest Toolbox zip (toolbox.js, toolbox.css, install.sh) from GitHub, or from this radio if GitHub is behind.">Download latest version</button>' +
+        '<button type="button" class="bs-btn-export" id="bs-dl-latest" title="Download the newest Toolbox zip from GitHub (or this radio if newer).">Download latest version</button>' +
         '</div>' +
         '<p class="bs-hint">Download is a zip for the radio host — unzip, then <code>./install.sh</code>. Hard-refresh this page after install.</p>' +
         '<div id="bs-health" class="bs-health" hidden></div>',
-        { id: "bs-install-box", extra: "installCheck", cls: "bs-min-hide" }) +
+        { id: "bs-install-box", extra: "installCheck", cls: "bs-min-hide", help: "Running build vs latest available on GitHub / this radio. Download fetches that newer package." }) +
       "</div>" +
       settingsBoxHtml("Visible tabs",
         '<p class="bs-hint">Default: all on except <b>Analyzer</b> (off). Unticked tabs leave the header (restore here or <b>Show all tabs</b>). Or <b>right-click</b> a main header tab → <b>Close tab</b>. Settings stays on. Off extras stay greyed in place. Guest tab limits are under Public visitor allowlist below.</p>' +
@@ -20906,6 +20985,7 @@ Plugins.toolbox.init = function () {
     applyUxFeel();
     bindBoxHelp(panel);
     updateTabLabels();
+    try { refreshInstallVersionCompare(); } catch (eVer0) {}
 
     bindHelpTabActions();
     Array.prototype.forEach.call(document.querySelectorAll("#bs-extras .bs-extra-tog"), function (inp) {
@@ -24723,7 +24803,7 @@ Plugins.toolbox.init = function () {
     }
   }
 
-  /* Standalone boot — no Plugins.utils, no freq_scanner, no CDN. */
+  /* Standalone boot — no CDN dependency. */
   function bootSurvey() {
     try { mountSurveyLink(); } catch (e0) {}
     try { ensureUi(); } catch (e) {

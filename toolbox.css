@@ -179,6 +179,45 @@ body.bs-hide-stock-rx #openwebrx-panel-receiver {
   flex-shrink: 0;
 }
 
+/* Build version — immediately left of Help (?). */
+#bs-panel .bs-head-ver {
+  flex: 0 0 auto;
+  margin: 0 1px 0 0;
+  padding: 0 2px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  line-height: 1;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#bs-panel .bs-install-ver {
+  margin: 0 0 6px;
+}
+#bs-panel .bs-install-ver b {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+#bs-panel .bs-install-src {
+  color: #94a3b8;
+}
+#bs-panel .bs-install-outdated {
+  color: #fbbf24;
+  font-weight: 650;
+}
+#bs-panel .bs-install-current {
+  color: #86efac;
+}
+#bs-panel .bs-install-ahead {
+  color: #7dd3fc;
+}
+#bs-panel .bs-install-unknown {
+  color: #94a3b8;
+}
+
 #bs-panel .bs-side-pct-badge {
   display: none !important;
 }

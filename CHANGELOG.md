@@ -1,5 +1,28 @@
 # Changelog
 
+## [418] — Check install: only Toolbox / OpenWebRX
+
+- Settings → Check install no longer reports other plugins as missing optional extras.
+- Help / README no longer list third-party plugins by name.
+
+## [417] — Version badge left of Help
+
+- Header order: **vNNN** · **?** · **%** · **M** …
+
+## [416] — Install check shows latest available version
+
+- Settings → Install check compares **This install** to **Latest available** (GitHub / radio).
+- Download button label includes the latest version (e.g. Download latest (v416)).
+
+## [415] — Show Toolbox version in header and Install check
+
+- Header: **vNNN** next to Help (**?**), before **%** / **M**.
+- Settings → Install check: shows the running build (e.g. This install: **v415**).
+
+## [414] — Forward setFrequency snap flag
+
+- Toolbox `UI.setFrequency` wrap now passes `snap` through to OpenWebRX (Band Tune ± / exact dial were being force-snapped).
+
 ## [413] — Explore layout: no overlap + Wide/Half
 
 - Restored shortest-column packing so Explore boxes no longer overlap.
