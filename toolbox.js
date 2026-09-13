@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 419;
+  Plugins.toolbox._version = 421;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -1564,8 +1564,8 @@ Plugins.toolbox.init = function () {
 
   function publicAllowsTab(id) {
     if (!id) return true;
-    /* Settings is admin-only (OpenWebRX /settings login), even when not in public mode. */
-    if (id === "settings") return isOwrxAdmin();
+    /* Settings tab is always listed; contents stay admin-gated inside the pane. */
+    if (id === "settings") return true;
     if (!isPublicReceiver()) return true;
     if (id === "help") return true;
     var pol = effectivePublicPolicy();
@@ -4413,7 +4413,7 @@ Plugins.toolbox.init = function () {
 
   /* Stock OpenWebRX General setting toolbox_public_mode (via WS config). null=unknown. */
   var serverPublicMode = null;
-  /* OpenWebRX /settings admin session. null=unknown; fail closed for Settings tab. */
+  /* OpenWebRX /settings admin session. null=unknown; Settings pane stays locked until proven admin. */
   var owrxAdmin = null;
   var owrxAdminProbeAt = 0;
 
@@ -4427,12 +4427,56 @@ Plugins.toolbox.init = function () {
       .then(function (res) {
         var ok = res.status === 200 && res.type !== "opaqueredirect";
         owrxAdmin = ok;
+        try { syncSettingsAdminGate(); } catch (eG) {}
         if (done) done(ok);
       })
       .catch(function () {
         owrxAdmin = false;
+        try { syncSettingsAdminGate(); } catch (eG2) {}
         if (done) done(false);
       });
+  }
+
+  /** Settings tab is always visible; non-admins see how to unlock, not a blank missing tab. */
+  function syncSettingsAdminGate() {
+    var gate = $("bs-settings-admin-gate");
+    var stack = $("bs-settings-stack");
+    var body = $("bs-settings");
+    var admin = isOwrxAdmin();
+    var probing = owrxAdmin === null;
+    if (gate) {
+      gate.hidden = !!admin;
+      gate.classList.toggle("bs-settings-admin-gate-wait", probing && !admin);
+      var title = $("bs-settings-admin-gate-title");
+      var detail = $("bs-settings-admin-gate-detail");
+      if (title) {
+        title.textContent = probing
+          ? "Checking OpenWebRX admin session…"
+          : "Settings needs an OpenWebRX admin login";
+      }
+      if (detail) {
+        detail.innerHTML = probing
+          ? "One moment — confirming whether this browser is logged into OpenWebRX Settings."
+          : "Log into OpenWebRX <b>Settings</b> (admin password) in <b>this</b> browser, then return to the receiver and hard-refresh (<b>Ctrl+Shift+R</b>). " +
+            "Guests can use Help and the other tabs; Toolbox Settings stays locked so visitors cannot change shared options.";
+      }
+    }
+    if (stack) stack.hidden = !admin;
+    if (body) {
+      body.classList.toggle("bs-settings-locked", !admin);
+      Array.prototype.forEach.call(body.querySelectorAll(".bs-settings-admin-only"), function (el) {
+        el.hidden = !admin;
+      });
+    }
+    try {
+      var tabBtn = document.querySelector('#bs-tabs .bs-tab[data-tab="settings"]');
+      if (tabBtn) {
+        tabBtn.title = admin
+          ? (TAB_HOVER_TIPS.settings || "Settings")
+          : "Settings — log into OpenWebRX admin Settings to unlock";
+        tabBtn.classList.toggle("bs-tab-locked", !admin);
+      }
+    } catch (eTab) {}
   }
 
   function applyServerPublicMode(val) {
@@ -4759,8 +4803,14 @@ Plugins.toolbox.init = function () {
 
   function isTabHidden(id) {
     if (!id) return false;
-    /* Toolbox Settings requires OpenWebRX admin session — guests never see it. */
-    if (id === "settings") return !isOwrxAdmin();
+    /* Settings stays in the header for everyone; non-admins see an unlock hint inside. */
+    if (id === "settings") {
+      var roleS = uxFeelActiveRole();
+      if (roleS && UX_ROLE_TABS[roleS]) {
+        return UX_ROLE_TABS[roleS].indexOf(id) < 0;
+      }
+      return false;
+    }
     if (!publicAllowsTab(id)) return true;
     var role = uxFeelActiveRole();
     if (role && UX_ROLE_TABS[role]) {
@@ -4791,11 +4841,11 @@ Plugins.toolbox.init = function () {
       var prefOn = id === "settings" || !(Array.isArray(list) && list.indexOf(id) >= 0);
       inp.checked = prefOn;
       /* Settings tab itself is admin-gated; don't offer guests a visible-tabs tick for it. */
-      inp.disabled = id === "settings" || (pub && !canEditPublicPolicy()) || (id === "settings" && !isOwrxAdmin());
+      inp.disabled = id === "settings" || (pub && !canEditPublicPolicy());
       var lab = inp.closest && inp.closest("label");
       if (lab) {
         lab.classList.toggle("bs-tab-vis-off", !prefOn && id !== "settings");
-        if (id === "settings") lab.hidden = !isOwrxAdmin();
+        if (id === "settings") lab.hidden = false;
       }
     });
   }
@@ -4821,7 +4871,7 @@ Plugins.toolbox.init = function () {
     bookmarks: "Bookmarks — local and loaded frequencies; scan bookmarks.",
     audio: "Audio — record clips, play, and export WAV.",
     skip: "Skip — frequencies always ignored during scans.",
-    settings: "Settings — panel prefs, extras, and startup options.",
+    settings: "Settings — panel prefs (OpenWebRX admin login required to edit).",
     help: "Help — how to install and use Toolbox."
   };
 
@@ -4870,6 +4920,7 @@ Plugins.toolbox.init = function () {
     }
     syncTabHoverTips();
     fillVisibleTabsForm();
+    try { syncSettingsAdminGate(); } catch (eGate) {}
     var cur = currentPanelTab();
     if (!cur || isTabHidden(cur)) switchTab(firstVisibleTab(), true);
   }
@@ -7504,7 +7555,7 @@ Plugins.toolbox.init = function () {
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Interactive installs use a blue-screen wizard (<code>dialog</code> / <code>whiptail</code>; <code>--no-tui</code> for plain text) with <b>Back</b> between steps: welcome → setup type → personal vs public → older Band Survey (only if found) → confirm → install. Use <b>Back</b> to change earlier choices.</p>" +
       "<ul>" +
       "<li><code>./install.sh --personal</code> / <code>--public</code> — owner-only vs shared. <b>--public</b> locks Own radio in the plugin file <em>and</em> sets OpenWebRX <code>toolbox_public_mode</code> in <code>settings.json</code> when that file is writable.</li>" +
-      "<li><b>Day-to-day public on/off (preferred)</b> — log into OpenWebRX <b>Settings</b> (admin password) → <b>General</b> → <b>Toolbox: public / shared receiver mode</b>. That switch applies to <b>all</b> visitors. The Toolbox <b>Settings</b> tab itself is only visible while you are logged in as admin.</li>" +
+      "<li><b>Day-to-day public on/off (preferred)</b> — log into OpenWebRX <b>Settings</b> (admin password) → <b>General</b> → <b>Toolbox: public / shared receiver mode</b>. That switch applies to <b>all</b> visitors. The Toolbox <b>Settings</b> tab is always in the header; editing it needs that same admin login (guests see an unlock hint).</li>" +
       "<li><code>./install.sh --remove-legacy</code> — delete old <code>band_survey</code> (recommended). <code>--keep-legacy</code> keeps the folder on disk for rollback but still loads only Toolbox. <code>--purge-legacy</code> removes Band Survey only.</li>" +
       "<li>Smart checks: <code>./install.sh --check</code> or <code>--report</code> write a log under <code>~/owrx-toolbox-reports/</code>.</li>" +
       "<li>On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</li>" +
@@ -7517,7 +7568,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Explore LCD</b> — hover a digit and scroll the mouse wheel to nudge that place value (Shift ×10).</li>" +
       "</ul>" +
       "<h3>Title bar tabs</h3>" +
-      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> (OpenWebRX <b>admin only</b>). Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Enable Analyzer under Settings → <b>Visible tabs</b>. Drag the title bar to move the panel.</p>" +
+      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> (edit needs OpenWebRX <b>admin</b> login). Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Enable Analyzer under Settings → <b>Visible tabs</b>. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
       "<ul>" +
       "<li><b>Scan bands</b> / <b>Fresh scan</b> / <b>Stop</b> / <b>Jump loudest</b> — boxed <b>Scan bands</b> strip at the top of the Bands tab (same style as Presets / Band list).</li>" +
@@ -7630,13 +7681,13 @@ Plugins.toolbox.init = function () {
       "<li><b>Header tabs</b> — right-click a tab to colour it (inactive only; the tab you are on stays yellow). Shift+right-click → <b>Close tab</b>.</li>" +
       "<li><b>Tab view</b> — <b>Full</b> (default) or <b>Minimal</b> for every tab. Minimal keeps the most useful controls and hides secondary boxes (Explore VFO/IF/…, Range extras, Bookmarks files, Settings extras, etc.). Header <b>M</b> / <b>F</b> (next to S) toggles the current tab; <b>Reset tab overrides</b> clears per-tab choices.</li>" +
       "<li><b>UX feel (optional)</b> — six soft overlays (role presets, lean chrome, simple mode, quieter Explore boxes, task strip, extras grouped by job). Off by default; does not rewrite your Visible tabs or Extras ticks.</li>" +
-      "<li><b>Visible tabs</b> — untick tabs to remove them from the header. <b>Analyzer</b> is off by default; <b>Show all tabs</b> still leaves Analyzer off. <b>Settings</b> is only for OpenWebRX admins (guests never see it). Off extras stay as greyed boxes (no page jump). Guest limits are under Public visitor allowlist.</li>" +
+      "<li><b>Visible tabs</b> — untick tabs to remove them from the header. <b>Analyzer</b> is off by default; <b>Show all tabs</b> still leaves Analyzer off. <b>Settings</b> stays in the header for everyone; editing needs an OpenWebRX admin session (guests see how to unlock). Off extras stay as greyed boxes (no page jump). Guest limits are under Public visitor allowlist.</li>" +
       "<li><b>Check install</b> — verify the plugin and receiver. Result box appears on this tab. Help also has <b>Check install now</b>.</li>" +
       "<li><b>Always hide scan strip</b> — never show the scan strip. Normally it only appears on <b>Bands</b> (Scan bands) and <b>Bookmarks</b> (Scan bookmarks / Hold / Skip), plus <b>Stop</b> and status on any tab while a scan is running. Range has Scan range / Stop on that tab.</li>" +
       "<li><b>Hide stock receiver panel</b> — hide OpenWebRX’s floating receiver controls (modes, volume, squelch). Default off. Use Explore instead when hidden. Clicking top-bar <b>Receiver</b> turns this off again so the stock panel can open.</li>" +
       "<li><b>Mute when changing tab</b> — when on (default, same as stock <code>owrx_hush</code>), receiver audio mutes while this browser tab is in the background and restores when you return. Untick to keep listening in other tabs.</li>" +
       "<li><b>Public mode (admin)</b> — turn on/off in OpenWebRX <b>Settings → General → Toolbox: public / shared receiver mode</b> (admin password). That applies to every visitor. Re-run <code>./install.sh --public</code> / <code>--personal</code> to match the stock switch in <code>settings.json</code> and (for --public) bake a hard Own-radio lock into <code>toolbox.js</code>.</li>" +
-      "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Edit this under Toolbox Settings while logged into OpenWebRX admin. Guests never see Settings. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> if you want a host-fixed allowlist.</li>" +
+      "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Edit this under Toolbox Settings while logged into OpenWebRX admin. Guests see Settings but cannot edit. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> if you want a host-fixed allowlist.</li>" +
       "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 35, range 20–60). Preferred % is clamped to ~280–920&nbsp;px so small and 4K/ultrawide screens stay usable; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> (between Help and Minimal) resets width to 35%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
       "<li><b>Panel layout</b> — Save / Restore / Waterfall default for the whole panel. <b>Reset Explore layout</b> clears Explore box order and Wide/Half sizes (does not move the panel).</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
@@ -13527,6 +13578,7 @@ Plugins.toolbox.init = function () {
       try { renderBookmarkPane(); } catch (eSkip) { updateTabLabels(); }
     }
     if (name === "settings") {
+      try { syncSettingsAdminGate(); } catch (eGateSw) {}
       requestAnimationFrame(function () {
         try { packExtrasMasonry(); } catch (eEx) {}
         try { packSettingsMasonry(); } catch (eSet) {}
@@ -20669,8 +20721,13 @@ Plugins.toolbox.init = function () {
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
-      '<p class="bs-note bs-min-hide">Global panel preferences in related boxes. Scan options stay on Bands / Range; bookmark alerts on Bookmarks; peak limits on Peaks; clip cap on Audio.</p>' +
-      '<div class="bs-settings-stack">' +
+      '<div class="bs-settings-admin-gate" id="bs-settings-admin-gate" hidden>' +
+      '<p class="bs-settings-admin-gate-title" id="bs-settings-admin-gate-title">Settings needs an OpenWebRX admin login</p>' +
+      '<p class="bs-hint" id="bs-settings-admin-gate-detail">Log into OpenWebRX <b>Settings</b> (admin password) in <b>this</b> browser, then return to the receiver and hard-refresh (<b>Ctrl+Shift+R</b>). Guests can use Help and the other tabs; Toolbox Settings stays locked so visitors cannot change shared options.</p>' +
+      '<p class="bs-row"><a class="bs-btn-info" id="bs-settings-admin-link" href="/settings" target="_blank" rel="noopener">Open OpenWebRX Settings</a></p>' +
+      "</div>" +
+      '<p class="bs-note bs-min-hide bs-settings-admin-only">Global panel preferences in related boxes. Scan options stay on Bands / Range; bookmark alerts on Bookmarks; peak limits on Peaks; clip cap on Audio.</p>' +
+      '<div class="bs-settings-stack" id="bs-settings-stack">' +
       '<div class="bs-settings-duo" id="bs-settings-duo">' +
       settingsBoxHtml("Factory reset",
         '<p class="bs-hint bs-factory-hint">Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. Panel layout is kept.</p>' +
@@ -24730,13 +24787,7 @@ Plugins.toolbox.init = function () {
               if (typeof applyHiddenTabs === "function") applyHiddenTabs();
               if (typeof applyPublicPolicyUi === "function") applyPublicPolicyUi();
               if (typeof gatePublicActions === "function") gatePublicActions();
-              try {
-                var panel = $("bs-panel");
-                if (panel && !panel.hidden && !isOwrxAdmin() && S && S.tab === "settings" &&
-                    typeof switchTab === "function") {
-                  switchTab(firstVisibleTab(), true);
-                }
-              } catch (eTab) {}
+              try { syncSettingsAdminGate(); } catch (eGateBoot) {}
             } catch (eAdm) {}
           });
         }

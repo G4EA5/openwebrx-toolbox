@@ -2854,6 +2854,44 @@ body[data-bs-chk-style="switch"] #bs-panel label.bs-chk input[type="checkbox"]:f
   background: #1f2937;
 }
 
+#bs-panel .bs-settings-admin-gate {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #f59e0b;
+  background: #3f2e12;
+  color: #fde68a;
+}
+
+#bs-panel .bs-settings-admin-gate[hidden] {
+  display: none !important;
+}
+
+#bs-panel .bs-settings-admin-gate-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fef3c7;
+}
+
+#bs-panel .bs-settings-admin-gate .bs-hint {
+  color: #fde68a;
+}
+
+#bs-panel .bs-settings-admin-gate a.bs-btn-info {
+  display: inline-block;
+  text-decoration: none;
+  margin-top: 4px;
+}
+
+#bs-panel .bs-tab.bs-tab-locked {
+  opacity: 0.92;
+}
+
+#bs-panel .bs-settings.bs-settings-locked .bs-settings-stack {
+  display: none;
+}
+
 #bs-panel .bs-health p {
   margin: 0 0 6px;
 }
@@ -3458,6 +3496,12 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel .bs-opt-group #bs-dwell,
 #bs-panel .bs-opt-group #bs-range-dwell {
   width: 3.6em;
+}
+
+#bs-panel .bs-opt-group #bs-passes,
+#bs-panel .bs-opt-group #bs-range-passes {
+  width: 5em;
+  min-width: 5em;
 }
 
 #bs-panel .bs-opt-group #bs-digi-mode {
