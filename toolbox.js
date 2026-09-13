@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 409;
+  Plugins.toolbox._version = 410;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -5217,15 +5217,28 @@ Plugins.toolbox.init = function () {
     makePanel();
     var p = $("bs-panel");
     if (!p) return;
+    if (window._bs_user_closed_panel) {
+      applySideDockChrome(false);
+      syncSideDockLayout();
+      applyPanelLayout();
+      return;
+    }
+    /* Do not force-open just because side dock is on — honor "Open panel on startup". */
+    var wantVisible = !!opts.forceOpen || !p.hidden || !!window._bs_startup_open_done;
+    if (!wantVisible) {
+      applySideDockChrome(false);
+      syncSideDockLayout();
+      applyPanelLayout();
+      return;
+    }
     if (isPanelDetached()) dockPanel({ keepHidden: false });
     p.hidden = false;
-    window._bs_user_closed_panel = false;
     setPanelMinimized(false);
     syncSideDockLayout();
     applyPanelLayout();
     if (!opts.noRetry) {
-      setTimeout(function () { restoreSavedPanelPlacement({ noRetry: true }); }, 200);
-      setTimeout(function () { restoreSavedPanelPlacement({ noRetry: true }); }, 800);
+      setTimeout(function () { restoreSavedPanelPlacement({ noRetry: true, forceOpen: true }); }, 200);
+      setTimeout(function () { restoreSavedPanelPlacement({ noRetry: true, forceOpen: true }); }, 800);
     }
   }
 
@@ -7484,7 +7497,7 @@ Plugins.toolbox.init = function () {
       "<p>Panel-wide preferences only. Scan options live on Bands / Range; bookmark scan on Bookmarks; peak limits on Peaks; clip cap on Audio.</p>" +
       "<p><b>Extras</b> — optional features and UI sections, <b>all on by default</b> except <b>Public / shared receiver mode</b> (keeps Factory reset available). Untick to hide; <b>Add all extras</b> turns everything back on. Explore boxes, Bands edit/schedule/packs, Range extras, Bookmarks files, Peak webhook, and Install check are included.</p>" +
       "<p><b>Panel &amp; UI</b></p><ul>" +
-      "<li><b>Open panel on startup</b> — open Toolbox when OpenWebRX loads (waits for band profiles).</li>" +
+      "<li><b>Open panel on startup</b> — open Toolbox when OpenWebRX loads (waits for band profiles). Off by default; side dock does not override this.</li>" +
       "<li><b>Auto-click Start OpenWebRX+</b> — press the main Start play overlay when the page loads (same as Extras → Auto Start OpenWebRX+). Some browsers still require one real click for audio.</li>" +
       "<li><b>Remember last tab</b> — restore the tab you last used.</li>" +
       "<li><b>Default tab</b> — which tab on open (default <b>Explore</b>; or Last used, Bands, Range, Peaks, Bookmarks, Audio, Skip, Settings, Help).</li>" +
@@ -7724,18 +7737,15 @@ Plugins.toolbox.init = function () {
 
   function maintainStartupPanelOpen() {
     if (window._bs_user_closed_panel) return;
-    var p = $("bs-panel");
-    /* Side dock: stay open across boot retries / panel rebuilds unless the user hit ×. */
-    if (S.panelSideDock) {
-      if (!p) {
-        try { makePanel(); } catch (eM) {}
-        p = $("bs-panel");
-      }
-      if (p && p.hidden) showPanel();
-      return;
-    }
+    /* Only re-open during grace after an intentional startup open (auto / welcome).
+       Side dock must not force the panel open — that is what "Open panel on startup" is for. */
     if (!window._bs_startup_open_done) return;
     if (!window._bs_startup_grace_until || Date.now() > window._bs_startup_grace_until) return;
+    var p = $("bs-panel");
+    if (!p) {
+      try { makePanel(); } catch (eM) {}
+      p = $("bs-panel");
+    }
     if (p && p.hidden) showPanel();
   }
 
@@ -7743,8 +7753,8 @@ Plugins.toolbox.init = function () {
     if (window._bs_user_closed_panel) return;
     var wantWelcome = !S.seenHelp && !window._bs_welcomed;
     var wantAuto = !!S.autoOpenPanel;
-    var wantSide = !!S.panelSideDock;
-    if (!wantWelcome && !wantAuto && !wantSide) return;
+    /* Side dock is layout-only; do not treat it as "open on load". */
+    if (!wantWelcome && !wantAuto) return;
     if (window._bs_startup_open_done) {
       maintainStartupPanelOpen();
       return;
@@ -7771,8 +7781,8 @@ Plugins.toolbox.init = function () {
         showPanel();
         switchTab(resolveOpenTab());
       }
-      if (wantSide || S.panelSideDock) {
-        restoreSavedPanelPlacement();
+      if (S.panelSideDock) {
+        restoreSavedPanelPlacement({ forceOpen: true });
       } else {
         applyPanelLayout();
       }
@@ -13598,8 +13608,8 @@ Plugins.toolbox.init = function () {
       return;
     }
     if (S.panelSideDock && p.hidden) {
-      /* Keep OWRX shrunk while the panel node is briefly hidden (rebuild / boot). */
-      if (!window._bs_user_closed_panel) applySideDockChrome(true);
+      /* Closed / mid-rebuild: never leave a blank dock column when the panel is hidden. */
+      applySideDockChrome(false);
       return;
     }
     if (S.panelSideDock && !p.hidden) {
@@ -14783,7 +14793,7 @@ Plugins.toolbox.init = function () {
       var cssName = useLocal || !/band_survey\.js/.test(js.url) ? "toolbox.css" : "band_survey.css";
       return Promise.all([
         Promise.resolve(js),
-        fetchFirstUrl([base + cssName, TOOLBOX_DIST.local + "toolbox.css", TOOLBOX_DIST.cdn + "toolbox.css", TOOLBOX_DIST.cdn + "band_survey.css"]),
+        fetchFirstUrl([base + cssName, TOOLBOX_DIST.local + "toolbox.css", TOOLBOX_DIST.cdn + "toolbox.css", TOOLBOX_DIST.cdn + "legacy/band_survey/band_survey.css"]),
         fetchFirstUrl([base + "install.sh", TOOLBOX_DIST.local + "install.sh", TOOLBOX_DIST.cdn + "install.sh", TOOLBOX_DIST.raw + "install.sh"]),
         fetchFirstUrl([base + "LICENSE", TOOLBOX_DIST.local + "LICENSE", TOOLBOX_DIST.cdn + "LICENSE"]).catch(function () { return null; }),
         fetchFirstUrl([base + "README.md", TOOLBOX_DIST.local + "README.md", TOOLBOX_DIST.cdn + "README.md"]).catch(function () { return null; })
@@ -19031,8 +19041,8 @@ Plugins.toolbox.init = function () {
       try { applyTabDensity(); } catch (eDens) {}
       try { applyChkStyle(); } catch (eChk) {}
       try {
-        if (!window._bs_user_closed_panel && !!S.panelSideDock) {
-          if (existing.hidden) existing.hidden = false;
+        /* Rebuild while already open: keep side-dock layout. Do not unhide solely for side dock. */
+        if (!existing.hidden && !!S.panelSideDock && !window._bs_user_closed_panel) {
           syncSideDockLayout();
           applyPanelLayout();
         } else {
@@ -20348,7 +20358,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-settings-duo" id="bs-settings-prefs">' +
       settingsBoxHtml("Panel startup",
         '<div class="bs-row bs-chk-grid">' +
-        '<label class="bs-chk" title="Open Toolbox panel automatically when OpenWebRX loads."><input type="checkbox" id="bs-autoopen"> Open panel on startup</label>' +
+        '<label class="bs-chk" title="Open Toolbox automatically when OpenWebRX loads. Off = closed until you click Toolbox (side dock only applies once open)."><input type="checkbox" id="bs-autoopen"> Open panel on startup</label>' +
         '<label class="bs-chk" title="Click the main Start OpenWebRX+ play button when the page loads so you do not have to. Some browsers still block audio until you click once."><input type="checkbox" id="bs-autostart-owrx"> Auto-click Start OpenWebRX+</label>' +
         '<label class="bs-chk" title="Remember the last tab you used between sessions."><input type="checkbox" id="bs-remember-tab"> Remember last tab</label>' +
         "</div>" +
@@ -21666,7 +21676,7 @@ Plugins.toolbox.init = function () {
       if (!isBlankPanelDragTarget(ev.target)) return;
       if (panel.classList.contains("bs-minimized")) setPanelMinimized(false);
     });
-    if (wasOpen || (!window._bs_user_closed_panel && !!S.panelSideDock)) {
+    if (wasOpen) {
       panel.hidden = false;
       try {
         syncSideDockLayout();
@@ -24387,8 +24397,8 @@ Plugins.toolbox.init = function () {
         try { applySchedule(); } catch (eA) {}
         try { runStartupPanelOpen(); } catch (eP) {}
         try {
-          if (S.panelSideDock) {
-            setTimeout(function () { restoreSavedPanelPlacement(); }, 50);
+          if (S.panelSideDock && window._bs_startup_open_done) {
+            setTimeout(function () { restoreSavedPanelPlacement({ forceOpen: true }); }, 50);
           }
         } catch (eR) {}
         try { runStartupOwrxStart(); } catch (eO) {}
@@ -24409,7 +24419,10 @@ Plugins.toolbox.init = function () {
             });
             window.addEventListener("pageshow", function () {
               try {
-                if (S.panelSideDock) restoreSavedPanelPlacement({ noRetry: true });
+                if (S.panelSideDock && !window._bs_user_closed_panel) {
+                  var pp = $("bs-panel");
+                  if (pp && !pp.hidden) restoreSavedPanelPlacement({ noRetry: true, forceOpen: true });
+                }
               } catch (ePs) {}
             });
           }
