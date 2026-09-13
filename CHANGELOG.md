@@ -1,5 +1,23 @@
 # Changelog
 
+## [413] — Explore layout: no overlap + Wide/Half
+
+- Restored shortest-column packing so Explore boxes no longer overlap.
+- Replaced the tiny corner grip with a clear **Wide** / **Half** button on each box header.
+- Wide boxes take a full-width row; half boxes snap under neighbours in columns.
+
+## [412] — Explore drag, resize, and snap
+
+- Explore boxes (except pinned Tune) can be drag-reordered and resized by column span (1 / 2 / full).
+- Layout snaps into a dense grid so neighbours fill gaps; prefs persist (`owrx_toolbox_ex_layout_v1`).
+- Wider / full-span boxes grow faders; panel side-% and undock dens still scale content.
+- Settings → Panel layout: **Reset Explore layout**.
+
+## [411] — Wider Explore slider boxes
+
+- Explore layout keeps fewer, wider columns (side dock never 3-up) so boxes with range sliders stay usable.
+- SQL / NR / waterfall / opacity faders use the full box width instead of a squashed inline track.
+
 ## [410] — Honor Open panel on startup
 
 - **Open panel on startup** now controls whether Toolbox opens on load, including when side dock is on (side dock is layout-only).

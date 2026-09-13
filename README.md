@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v410)
+# OpenWebRX Toolbox (v413)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -20,12 +20,12 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | Area | Highlights |
 | --- | --- |
 | **Rename** | **OpenWebRX Toolbox** (`toolbox`) replaces Band Survey; installer migrates safely |
-| **Explore** | Full receiver controls, S-meter, mute/vol, side dock |
+| **Explore** | Drag-reorder boxes; **Wide** / **Half** size; receiver controls, S-meter, side dock |
 | **Audio** | Clip archive, record modes, export for digi tools |
 | **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
 | **Settings** | Toolbox Settings tab is **admin-only**; mute-on-tab-hide, personal defaults, UX feel |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v410** — public mode via stock admin Settings |
+| **Docs** | README + Help **v413** — Explore layout (Wide/Half), public mode via stock admin Settings |
 
 ---
 
@@ -298,6 +298,10 @@ picker (when enabled).
 **Side dock (default on):** Toolbox column on the **left** (~35% width). Title-bar
 **S** toggles dock; **R** hard-refreshes the page.
 
+**Explore boxes:** drag a box title to reorder; click **Wide** / **Half** on the
+header to resize (Wide = full width for sliders). Tune stays pinned. Settings →
+Panel layout → **Reset Explore layout** restores defaults.
+
 ---
 
 ## Toolbar
@@ -329,7 +333,8 @@ map after scan.
 ### Explore
 
 Browse the whole spectrum; receiver controls (modes, SQL, NR, mute/vol), zoom,
-memories, find.
+memories, find. Drag box titles to reorder; **Wide** / **Half** on each header
+resizes boxes (snaps together). Tune stays pinned at the top.
 
 ### Analyzer (experimental)
 
@@ -359,6 +364,7 @@ timed lockouts.
 | **Hide stock receiver panel** | off | Use Explore instead of the floating stock panel |
 | **Always hide scan strip** | off | Never show the Bands/Bookmarks scan strip |
 | **Side dock** | on, left ~35% | Column layout; **S** in title bar; **%** resets width to 35% |
+| **Reset Explore layout** | — | Clear Explore box order and Wide/Half sizes |
 | **Visible tabs** | Analyzer off | Untick tabs to hide from the header |
 | **UX feel** | all off | Optional soft overlays |
 | **Public visitor allowlist** | — | When Public mode / `--public` |
@@ -440,6 +446,7 @@ After install, prefer the **General** checkbox for day-to-day changes (no reinst
 | **Band Survey and Toolbox both loaded** | Edit `init.js` to load only `toolbox`; `./install.sh --remove-legacy` |
 | Audio stays muted after leaving the tab | Update to v403+ (mute restore) / v405 docs; Settings → **Mute when changing tab** (on = mute in background, restores on return) |
 | Explore boxes empty on the right after **%** / side resize | Hard-refresh to **v405+**; Explore re-packs after side width settles |
+| Explore boxes overlap / cannot resize | Hard-refresh to **v413+**; use header **Wide** / **Half** (not a corner grip). Settings → **Reset Explore layout** if needed |
 | Check install yellow/red | Follow the on-screen fix; Help → **Copy diagnostic report** |
 | Docker install vanished | Persist `plugins/receiver` with a volume, or re-run install after recreate |
 
@@ -456,7 +463,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v410)** | Tag [`toolbox-v410`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v410) (after publish) or `main` |
+| **This Toolbox build (v413)** | Tag [`toolbox-v413`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v413) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -464,7 +471,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v410 */
+/* Toolbox v413 */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
@@ -476,7 +483,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v410**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v413**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
