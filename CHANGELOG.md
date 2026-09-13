@@ -1,5 +1,10 @@
 # Changelog
 
+## [419] — Band / Range Passes up to 1000
+
+- **Passes** on Bands and Range accept **1–1000** (was capped at 100).
+- Saved Passes value reloads fine; long runs can add more peaks — use **Max peaks** / **Keep peaks between sessions** if the Peaks tab gets heavy.
+
 ## [418] — Check install: only Toolbox / OpenWebRX
 
 - Settings → Check install no longer reports other plugins as missing optional extras.
