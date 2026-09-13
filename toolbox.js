@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 418;
+  Plugins.toolbox._version = 419;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -97,7 +97,7 @@ Plugins.toolbox.init = function () {
   var LS_REC_MIGRATE_VOICE = "owrx_toolbox_rec_migrate_v54_voicegate";
   var LS_HITS = "owrx_toolbox_hits_v1";
   var SAMPLE_MS = 400;
-  var MAX_PASSES = 100;
+  var MAX_PASSES = 1000;
   var RENDER_HITS_CAP = 400;
   var PEAKS_LOAD_WARN = 800;
   var _panelHeavyTimer = null;
@@ -3447,6 +3447,7 @@ Plugins.toolbox.init = function () {
     d.maxClipSec = Math.max(5, Math.min(600, Number(d.maxClipSec) || 60));
     if (!d.listenScanOrder) d.listenScanOrder = "priority";
     d.listenPasses = Math.max(0, Math.min(999, Number(d.listenPasses) || 0));
+    d.passes = Math.max(1, Math.min(MAX_PASSES, Number(d.passes) || 2));
     if (typeof d.listenAskPasses !== "boolean") d.listenAskPasses = true;
     if (typeof d.digiLongDwell !== "boolean") d.digiLongDwell = false;
     d.digiDwellSec = Math.max(15, Math.min(180, Number(d.digiDwellSec) || 90));
@@ -19468,7 +19469,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-opt-group">' +
       '<span class="bs-opt-lab">Timing</span>' +
       '<div class="bs-row">' +
-      "<label title=\"How many times to walk the ticked bands in one run.\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"100\" step=\"1\"></label>" +
+      "<label title=\"How many times to walk the ticked bands in one run (1–1000).\">Passes <input type=\"number\" id=\"bs-passes\" min=\"1\" max=\"1000\" step=\"1\"></label>" +
       "<label title=\"Seconds to sit on each band while counting peaks.\">Dwell s <input type=\"number\" id=\"bs-dwell\" min=\"0.8\" max=\"15\" step=\"0.1\"></label>" +
       "</div></div>" +
       '<div class="bs-opt-group">' +
@@ -19869,7 +19870,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-opt-group">' +
       '<span class="bs-opt-lab">Timing</span>' +
       '<div class="bs-row">' +
-      '<label title="How many times to walk the range in one run.">Passes <input type="number" id="bs-range-passes" min="1" max="100" step="1"></label>' +
+      '<label title="How many times to walk the range in one run (1–1000).">Passes <input type="number" id="bs-range-passes" min="1" max="1000" step="1"></label>' +
       '<label title="Seconds to sit on each MHz step while counting peaks.">Dwell s <input type="number" id="bs-range-dwell" min="0.8" max="15" step="0.1"></label>' +
       "</div></div>" +
       '<div class="bs-opt-group">' +
