@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v419)
+# OpenWebRX Toolbox (v421)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -23,9 +23,9 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | **Explore** | Drag-reorder boxes; **Wide** / **Half** size; receiver controls, S-meter, side dock |
 | **Audio** | Clip archive, record modes, export for digi tools |
 | **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
-| **Settings** | Toolbox Settings tab is **admin-only**; mute-on-tab-hide, personal defaults, UX feel |
+| **Settings** | Always in the header; editing needs OpenWebRX admin login (guests see unlock hint) |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v419** — Passes 1–1000; Check install (Toolbox/OWRX only); Explore Wide/Half |
+| **Docs** | README + Help **v421** — Passes 1–1000; Check install (Toolbox/OWRX only); Explore Wide/Half |
 
 ---
 
@@ -406,7 +406,9 @@ Nothing is uploaded except optional **Webhook URL** POSTs.
 3. Tick **Toolbox: public / shared receiver mode** → Save.
 4. Hard-refresh the receiver page.
 
-That setting applies to **all** visitors. The Toolbox **Settings** tab (visitor allowlist, extras, factory reset, …) is only visible while you are logged into OpenWebRX admin — guests never see it.
+That setting applies to **all** visitors. The Toolbox **Settings** tab is always
+in the header; **editing** it (visitor allowlist, extras, factory reset, …) needs
+an OpenWebRX admin session — guests see a short unlock hint instead of a missing tab.
 
 | Want | Do this |
 | --- | --- |
@@ -460,7 +462,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v419)** | Tag [`toolbox-v419`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v419) (after publish) or `main` |
+| **This Toolbox build (v421)** | Tag [`toolbox-v421`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v421) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -480,7 +482,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v419**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v421**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 

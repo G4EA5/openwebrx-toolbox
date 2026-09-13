@@ -1,5 +1,14 @@
 # Changelog
 
+## [421] — Settings tab always visible (admin unlock hint)
+
+- **Settings** stays in the Toolbox header for everyone (no more “missing tab”).
+- Without an OpenWebRX admin session, the pane shows how to log in and unlock; editing stays admin-only.
+
+## [420] — Wider Passes field
+
+- Bands / Range **Passes** input is wider so values like **1000** are fully visible.
+
 ## [419] — Band / Range Passes up to 1000
 
 - **Passes** on Bands and Range accept **1–1000** (was capped at 100).
