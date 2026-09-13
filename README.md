@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v409)
+# OpenWebRX Toolbox (v410)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -25,7 +25,7 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
 | **Settings** | Toolbox Settings tab is **admin-only**; mute-on-tab-hide, personal defaults, UX feel |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v409** — public mode via stock admin Settings |
+| **Docs** | README + Help **v410** — public mode via stock admin Settings |
 
 ---
 
@@ -456,7 +456,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v409)** | Tag [`toolbox-v409`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v409) (after publish) or `main` |
+| **This Toolbox build (v410)** | Tag [`toolbox-v410`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v410) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -464,7 +464,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v409 */
+/* Toolbox v410 */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
@@ -476,7 +476,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v409**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v410**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
