@@ -729,24 +729,40 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
 }
 
 #bs-panel .bs-ex-cols {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--bs-ex-gap);
-  align-items: start;
+  align-items: stretch;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
 }
 
-#bs-panel[data-ex-cols="2"] .bs-ex-cols {
+#bs-panel .bs-ex-row {
+  display: grid;
+  gap: var(--bs-ex-gap);
+  align-items: start;
+  min-width: 0;
+  width: 100%;
+}
+
+#bs-panel .bs-ex-row-full {
+  grid-template-columns: 1fr;
+}
+
+#bs-panel .bs-ex-row-masonry {
+  grid-template-columns: 1fr;
+}
+
+#bs-panel[data-ex-cols="2"] .bs-ex-row-masonry {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-#bs-panel[data-ex-cols="3"] .bs-ex-cols {
+#bs-panel[data-ex-cols="3"] .bs-ex-row-masonry {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-#bs-panel[data-ex-cols="1"] .bs-ex-cols {
+#bs-panel[data-ex-cols="1"] .bs-ex-row-masonry {
   grid-template-columns: 1fr;
 }
 
@@ -756,6 +772,13 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
   gap: var(--bs-ex-gap);
   min-width: 0;
   align-items: stretch;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-row-full > .bs-ex-box,
+#bs-panel #bs-tab-explore .bs-ex-box[data-ex-span="full"] {
+  width: 100%;
+  max-width: 100%;
+  grid-column: auto;
 }
 
 /* Short panels may densify Explore, but never clip the deck scrollbar
@@ -840,10 +863,69 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
   max-height: none;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: visible;
+  min-width: 0;
+  overflow: hidden;
   resize: none;
   box-sizing: border-box;
+  position: relative;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box-tune > .bs-ex-box-h {
+  cursor: default;
+  touch-action: auto;
+  user-select: auto;
+}
+
+body.bs-ex-box-dnd {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box.bs-ex-dragging {
+  opacity: 0.55;
+  outline: 1px dashed rgba(148, 163, 184, 0.7);
+  z-index: 6;
+  pointer-events: none;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box.bs-ex-drop-before {
+  box-shadow: inset 0 2px 0 0 #38bdf8;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box.bs-ex-drop-after {
+  box-shadow: inset 0 -2px 0 0 #38bdf8;
+}
+
+/* Header Wide / Half — obvious resize control (replaces tiny SE grip). */
+#bs-panel #bs-tab-explore .bs-ex-box-size {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 1px 6px;
+  font-size: var(--bs-ex-fs-xs);
+  line-height: 1.2;
+  min-height: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box-size[aria-pressed="true"] {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #e0f2fe;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box-resize {
+  display: none !important;
+}
+
+/* Full-width boxes: give slider groups room to grow. */
+#bs-panel #bs-tab-explore .bs-ex-box[data-ex-span="full"] .bs-ex-opt-grid > .bs-opt-group {
+  flex: 1 1 12em;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-box[data-ex-span="full"] .bs-ex-fader-lab input[type="range"] {
+  flex: 1 1 14em;
+  min-width: min(100%, 12em);
 }
 
 #bs-panel #bs-tab-explore .bs-ex-box-slim {
@@ -857,6 +939,9 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
   font-size: var(--bs-ex-head);
   letter-spacing: 0.03em;
   flex: 0 0 auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-box-sub {
@@ -992,19 +1077,37 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
   flex-wrap: wrap;
   min-width: 0;
   max-width: 100%;
+  width: 100%;
+  align-items: stretch;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-fader-lab {
   font-size: var(--bs-ex-fs);
-  gap: calc(var(--bs-ex-gap) * 0.8);
+  gap: calc(var(--bs-ex-gap) * 0.55);
   min-width: 0;
-  flex: 1 1 7em;
+  flex: 1 1 100%;
   max-width: 100%;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-fader-lab input[type="range"] {
-  height: 1.35em;
-  flex: 1 1 auto;
+  height: 1.45em;
+  flex: 1 1 10em;
+  min-width: min(100%, 10em);
+  width: 100%;
+}
+
+/* Boxes that contain sliders need room — full width of their masonry column. */
+#bs-panel #bs-tab-explore .bs-ex-box:has(input[type="range"]) {
+  min-width: 0;
+  width: 100%;
+}
+#bs-panel #bs-tab-explore .bs-ex-box:has(input[type="range"]) .bs-ex-fader,
+#bs-panel #bs-tab-explore .bs-ex-box:has(input[type="range"]) .bs-ex-fader-lab {
+  width: 100%;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-stats {
@@ -4667,7 +4770,7 @@ body.bs-layout-drag.bs-resize-nesw {
   align-items: center;
   gap: 6px;
   flex: 1;
-  min-width: 0;
+  min-width: 10em;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -4676,7 +4779,7 @@ body.bs-layout-drag.bs-resize-nesw {
 
 #bs-panel .bs-ex-fader-lab input[type="range"] {
   flex: 1;
-  min-width: 0;
+  min-width: 8em;
   accent-color: #a78bfa;
   height: 16px;
 }

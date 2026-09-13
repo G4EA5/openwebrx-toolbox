@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 410;
+  Plugins.toolbox._version = 413;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -509,7 +509,7 @@ Plugins.toolbox.init = function () {
     { id: "clearData", label: "Clear peaks / bookmarks / skip", tip: "Destructive clear buttons (not Factory reset)." },
     { id: "importExport", label: "Import / export files", tip: "CSV/JSON import and export, load bookmarks from file. (Audio Import on Audio list / Record is always allowed — files stay in this browser.)" },
     { id: "changeExtras", label: "Change extras", tip: "Visitors may tick Extras on/off (still limited to Allowed extras)." },
-    { id: "changeLayout", label: "Change panel layout", tip: "Side dock size, save/restore layout, hide stock receiver." }
+    { id: "changeLayout", label: "Change panel layout", tip: "Side dock size, save/restore layout, Explore box drag/Wide·Half, hide stock receiver." }
   ];
 
   function publicPolicyDefaults() {
@@ -715,6 +715,12 @@ Plugins.toolbox.init = function () {
   /* Pixel floors/ceilings so 20–60% stays usable on phones/laptops and capped on 4K/ultrawide. */
   var SIDE_PX_MIN = 280;
   var SIDE_PX_MAX = 920;
+  var LS_EX_LAYOUT = "owrx_toolbox_ex_layout_v1";
+  var EX_BOX_DEFAULT_ORDER = [
+    "bs-ex-box-vfo", "bs-ex-box-profile", "bs-ex-box-radio", "bs-ex-box-if", "bs-ex-box-wf",
+    "bs-ex-box-zoom", "bs-ex-box-look", "bs-ex-box-mem",
+    "bs-ex-box-find", "bs-ex-box-actions"
+  ];
 
   function clampSidePct(n) {
     n = Number(n);
@@ -759,8 +765,14 @@ Plugins.toolbox.init = function () {
     var w = r.width || p.clientWidth || 0;
     var h = r.height || p.clientHeight || 0;
     var side = !!(S.panelSideDock && !isPanelDetached());
-    /* Side dock (~35%): prefer 2 columns so boxes stay readable and shorter. */
-    var cols = w < 380 ? 1 : (w < (side ? 700 : 560) ? 2 : 3);
+    /* Prefer wider columns so Explore boxes with sliders stay usable.
+       Side dock: never 3-up (too skinny for SQL / waterfall / opacity faders). */
+    var cols;
+    if (side) {
+      cols = w < 380 ? 1 : 2;
+    } else {
+      cols = w < 420 ? 1 : (w < 720 ? 2 : 3);
+    }
     /* Side dock / narrow panels stay compact — roomy was making Explore boxes overgrow. */
     var dens = (side || w < 480 || h < 740)
       ? "compact"
@@ -950,7 +962,131 @@ Plugins.toolbox.init = function () {
     });
   }
 
-  /** Place Explore boxes into shortest columns so short boxes free space is filled (no row gaps). */
+  function defaultExploreLayout() {
+    return { order: EX_BOX_DEFAULT_ORDER.slice(), spans: {} };
+  }
+
+  function loadExploreLayout() {
+    var out = defaultExploreLayout();
+    try {
+      var raw = window.localStorage.getItem(LS_EX_LAYOUT);
+      if (!raw) return out;
+      var parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.order) && parsed.order.length) {
+        out.order = parsed.order.filter(function (id) { return typeof id === "string" && id; });
+      }
+      if (parsed && parsed.spans && typeof parsed.spans === "object") {
+        out.spans = parsed.spans;
+      }
+    } catch (eLs) {}
+    return out;
+  }
+
+  function saveExploreLayout(layout) {
+    layout = layout || loadExploreLayout();
+    try {
+      window.localStorage.setItem(LS_EX_LAYOUT, JSON.stringify({
+        order: layout.order || [],
+        spans: layout.spans || {}
+      }));
+    } catch (eSave) {}
+  }
+
+  function resetExploreLayout() {
+    try { window.localStorage.removeItem(LS_EX_LAYOUT); } catch (eRm) {}
+    packExploreMasonry(true);
+    fitExplorePack();
+    setStatus("Explore box layout reset (order + sizes).");
+  }
+
+  function normalizeExSpan(span, colsN) {
+    colsN = Math.max(1, Number(colsN) || 1);
+    /* Only two modes in the UI: half (1) vs full deck width. */
+    if (colsN <= 1) return "1";
+    if (span === "full" || span === "2" || span === 2 || span === "3" || Number(span) >= 2) {
+      return "full";
+    }
+    return "1";
+  }
+
+  function syncExploreBoxSizeBtn(box) {
+    if (!box || box.classList.contains("bs-ex-box-tune")) return;
+    var btn = box.querySelector(".bs-ex-box-size");
+    if (!btn) return;
+    var panel = $("bs-panel");
+    var colsN = Math.max(1, Number((panel && panel.getAttribute("data-ex-cols")) || 1) || 1);
+    var span = box.getAttribute("data-ex-span") || "1";
+    var wide = span === "full" || span === "2";
+    if (colsN <= 1) {
+      btn.hidden = true;
+      btn.disabled = true;
+      btn.textContent = "Wide";
+      btn.title = "Widen needs 2+ Explore columns (make the panel wider or undock).";
+      return;
+    }
+    btn.hidden = false;
+    btn.disabled = false;
+    btn.textContent = wide ? "Half" : "Wide";
+    btn.setAttribute("aria-pressed", wide ? "true" : "false");
+    btn.title = wide
+      ? "Shrink this box to half width so neighbours can sit beside it."
+      : "Widen this box across the full Explore width (best for sliders).";
+  }
+
+  function ensureExploreBoxSizeChrome(box) {
+    if (!box || box.classList.contains("bs-ex-box-tune")) return;
+    var head = box.querySelector(".bs-ex-box-h");
+    if (!head) return;
+    var btn = head.querySelector(".bs-ex-box-size");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bs-ex-box-size bs-ex-btn bs-btn-util";
+      btn.textContent = "Wide";
+      btn.setAttribute("aria-label", "Toggle Explore box width");
+      /* Sit after the collapse toggle, before any other chrome. */
+      var tog = head.querySelector(".bs-ex-box-toggle");
+      if (tog && tog.nextSibling) head.insertBefore(btn, tog.nextSibling);
+      else head.appendChild(btn);
+    }
+    /* Remove the old tiny SE grip if present. */
+    Array.prototype.forEach.call(box.querySelectorAll(".bs-ex-box-resize"), function (n) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    });
+    syncExploreBoxSizeBtn(box);
+  }
+
+  function flushExploreMasonryBatch(host, batch, colsN) {
+    if (!batch.length) return;
+    var row = document.createElement("div");
+    row.className = "bs-ex-row bs-ex-row-masonry";
+    host.appendChild(row);
+    var colEls = [];
+    var i;
+    for (i = 0; i < colsN; i++) {
+      var col = document.createElement("div");
+      col.className = "bs-ex-col";
+      row.appendChild(col);
+      colEls.push(col);
+    }
+    batch.forEach(function (box, bi) {
+      var minI = 0;
+      var minH = colEls[0].offsetHeight;
+      var anyH = minH > 0;
+      for (i = 1; i < colEls.length; i++) {
+        var h = colEls[i].offsetHeight;
+        if (h > 0) anyH = true;
+        if (h < minH) {
+          minH = h;
+          minI = i;
+        }
+      }
+      if (!anyH) minI = bi % colEls.length;
+      colEls[minI].appendChild(box);
+    });
+  }
+
+  /** Place Explore boxes: shortest-column snap (no overlap) + full-width rows for Wide. */
   function packExploreMasonry(force) {
     var deck = $("bs-ex-deck");
     var panel = $("bs-panel");
@@ -969,19 +1105,17 @@ Plugins.toolbox.init = function () {
       return !b.classList.contains("bs-ex-box-tune") && !b.hidden;
     });
     if (!boxes.length) return;
-    /* Prefer receiver / IF / waterfall first so short neighbours snap under them. */
-    var order = [
-      "bs-ex-box-vfo", "bs-ex-box-profile", "bs-ex-box-radio", "bs-ex-box-if", "bs-ex-box-wf",
-      "bs-ex-box-zoom", "bs-ex-box-look", "bs-ex-box-mem",
-      "bs-ex-box-find", "bs-ex-box-actions"
-    ];
+    var layout = loadExploreLayout();
+    var order = layout.order && layout.order.length ? layout.order : EX_BOX_DEFAULT_ORDER;
     boxes.sort(function (a, b) {
       function idx(el) {
-        var i;
-        for (i = 0; i < order.length; i++) {
-          if (el.classList.contains(order[i])) return i;
+        var id = el.id || "";
+        var i = order.indexOf(id);
+        if (i >= 0) return i;
+        for (i = 0; i < EX_BOX_DEFAULT_ORDER.length; i++) {
+          if (el.classList.contains(EX_BOX_DEFAULT_ORDER[i]) || el.id === EX_BOX_DEFAULT_ORDER[i]) return 1000 + i;
         }
-        return 100;
+        return 2000;
       }
       return idx(a) - idx(b);
     });
@@ -994,42 +1128,40 @@ Plugins.toolbox.init = function () {
     }
     if (wrap.parentNode !== deck) deck.appendChild(wrap);
 
-    var sig = colsN + "|" + boxes.map(function (b) { return b.id || b.className; }).join(",");
-    var curCols = Array.prototype.filter.call(wrap.children || [], function (c) {
-      return c.classList && c.classList.contains("bs-ex-col");
+    var spanParts = boxes.map(function (b) {
+      var raw = (layout.spans && b.id && layout.spans[b.id]) || b.getAttribute("data-ex-span") || "1";
+      return b.id + ":" + normalizeExSpan(raw, colsN);
     });
-    if (!force && wrap.getAttribute("data-ex-sig") === sig && curCols.length === colsN) {
-      /* Already packed for this set — keep scroll position. */
+    var sig = "v413|" + colsN + "|" + boxes.map(function (b) { return b.id || b.className; }).join(",") + "|" + spanParts.join(",");
+    if (!force && wrap.getAttribute("data-ex-sig") === sig) {
+      boxes.forEach(syncExploreBoxSizeBtn);
       return;
     }
 
     var scrollY = deck.scrollTop;
+    /* Pull every box out before rebuilding rows/columns. */
+    boxes.forEach(function (box) { deck.appendChild(box); });
     while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
-    var colEls = [];
-    var i;
-    for (i = 0; i < colsN; i++) {
-      var col = document.createElement("div");
-      col.className = "bs-ex-col";
-      wrap.appendChild(col);
-      colEls.push(col);
-    }
-    boxes.forEach(function (box, bi) {
-      var minI = 0;
-      var minH = colEls[0].offsetHeight;
-      var anyH = minH > 0;
-      for (i = 1; i < colEls.length; i++) {
-        var h = colEls[i].offsetHeight;
-        if (h > 0) anyH = true;
-        if (h < minH) {
-          minH = h;
-          minI = i;
-        }
+
+    var batch = [];
+    boxes.forEach(function (box) {
+      ensureExploreBoxSizeChrome(box);
+      var raw = (layout.spans && box.id && layout.spans[box.id]) || box.getAttribute("data-ex-span") || "1";
+      var span = normalizeExSpan(raw, colsN);
+      box.setAttribute("data-ex-span", span);
+      syncExploreBoxSizeBtn(box);
+      if (span === "full" && colsN > 1) {
+        flushExploreMasonryBatch(wrap, batch, colsN);
+        batch = [];
+        var fullRow = document.createElement("div");
+        fullRow.className = "bs-ex-row bs-ex-row-full";
+        fullRow.appendChild(box);
+        wrap.appendChild(fullRow);
+      } else {
+        batch.push(box);
       }
-      /* During side-% resize / % reset, columns often still report 0 height —
-         shortest-column then dumps every box into col 0 (empty right half). */
-      if (!anyH) minI = bi % colEls.length;
-      colEls[minI].appendChild(box);
     });
+    flushExploreMasonryBatch(wrap, batch, colsN);
     wrap.setAttribute("data-ex-sig", sig);
     try { deck.scrollTop = scrollY; } catch (eScr) {}
   }
@@ -1730,7 +1862,7 @@ Plugins.toolbox.init = function () {
     "ux feel (optional)": "Soft layout overlays (role presets, lean chrome, simple mode, quieter Explore, task strip, extras by job). All off = classic Toolbox. Does not rewrite Visible tabs or Extras ticks.",
     "visible tabs": "Which main tabs appear in the header. Unticked tabs are removed from the bar (restore here or Show all tabs). Settings cannot be hidden. Guest limits are under Public visitor allowlist.",
     "quiet hours": "One-click quiet-hour presets for scheduled scans (night 22:00–06:00, evening 18:00–08:00, or clear).",
-    "panel layout": "Side dock, size %, and save/restore panel placement.",
+    "panel layout": "Side dock, size %, save/restore panel placement, and Reset Explore layout (box order + Wide/Half).",
     "data & housekeeping": "Export/import settings JSON or reset settings / factory wipe.",
     "homelab": "Optional webhook URL notified when a new peak is counted.",
     "tune": "Type a frequency in MHz and Go, or hover a digit and scroll the wheel to nudge that place. Mute and Vol are in this header.",
@@ -2313,6 +2445,7 @@ Plugins.toolbox.init = function () {
     gate("bs-save-layout", "changeLayout", "Save layout");
     gate("bs-reset-layout", "changeLayout", "Restore layout");
     gate("bs-default-layout", "changeLayout", "Waterfall default");
+    gate("bs-reset-ex-layout", "changeLayout", "Reset Explore layout");
     gate("bs-side-dock-set", "changeLayout", "Side dock");
     gate("bs-side-pct", "changeLayout", "Side size");
     gate("bs-side-pct-range", "changeLayout", "Side size");
@@ -7349,7 +7482,7 @@ Plugins.toolbox.init = function () {
       ? "<li><b>Own radio — fast hops</b> (Bands / Range) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
-      "<h2>OpenWebRX Toolbox — help (v405)</h2>" +
+      "<h2>OpenWebRX Toolbox — help (v" + (Plugins.toolbox._version || "?") + ")</h2>" +
       "<h3>First 30 seconds</h3>" +
       "<ol>" +
       "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
@@ -7428,7 +7561,8 @@ Plugins.toolbox.init = function () {
       "</ul>" +
       "<h3>Explore tab</h3>" +
       "<ul>" +
-      "<li>Tidy boxes: <b>Tune</b>, <b>VFO</b>, <b>Profile</b>, <b>Receiver</b>, <b>IF</b>, <b>Waterfall</b>, <b>Zoom</b>, <b>Look</b>, <b>Memories</b>, <b>Find</b>, <b>Actions</b>. Click a box title to minimize; columns re-pack so neighbours snap into the freed space. Compact so Explore fits without scrolling when possible.</li>" +
+      "<li>Tidy boxes: <b>Tune</b> (pinned), then <b>VFO</b>, <b>Profile</b>, <b>Receiver</b>, <b>IF</b>, <b>Waterfall</b>, <b>Zoom</b>, <b>Look</b>, <b>Memories</b>, <b>Find</b>, <b>Actions</b>. Click a box title to minimize; neighbours snap into the freed space.</li>" +
+      "<li><b>Layout</b> — drag a box <b>title</b> to reorder. Click <b>Wide</b> / <b>Half</b> on the box header to resize (Wide = full Explore width — best for SQL / NR / waterfall sliders). Tune stays pinned. Layout is remembered in this browser; Settings → Panel layout → <b>Reset Explore layout</b> clears it. Needs the <b>Change panel layout</b> permission when public.</li>" +
       "<li><b>Analogue S-meter</b> — needle + S-units from the live relative S-meter (same scale idea as stock).</li>" +
       "<li><b>Audio spectrum</b> — small FFT of demodulated receiver audio between the frequency LCD and the analogue meter.</li>" +
       "<li><b>OWRX step</b> — full stock tuning-step listbox sync + reset. Toolbox <b>Step</b>/<b>Off</b>/<b>Snap</b> still drive Explore wheel/grid.</li>" +
@@ -7516,6 +7650,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Public mode (admin)</b> — turn on/off in OpenWebRX <b>Settings → General → Toolbox: public / shared receiver mode</b> (admin password). That applies to every visitor. Re-run <code>./install.sh --public</code> / <code>--personal</code> to match the stock switch in <code>settings.json</code> and (for --public) bake a hard Own-radio lock into <code>toolbox.js</code>.</li>" +
       "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Edit this under Toolbox Settings while logged into OpenWebRX admin. Guests never see Settings. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> if you want a host-fixed allowlist.</li>" +
       "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 35, range 20–60). Preferred % is clamped to ~280–920&nbsp;px so small and 4K/ultrawide screens stay usable; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> (between Help and Minimal) resets width to 35%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
+      "<li><b>Panel layout</b> — Save / Restore / Waterfall default for the whole panel. <b>Reset Explore layout</b> clears Explore box order and Wide/Half sizes (does not move the panel).</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
       "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, public mode is on (turn it off in OpenWebRX Settings → General).</li>" +
@@ -18514,6 +18649,154 @@ Plugins.toolbox.init = function () {
     });
   }
 
+  function exploreLayoutAllowed() {
+    return typeof publicAllowsFeature !== "function" || publicAllowsFeature("changeLayout");
+  }
+
+  function persistExploreOrderFromDom() {
+    var deck = $("bs-ex-deck");
+    if (!deck) return;
+    var layout = loadExploreLayout();
+    layout.order = Array.prototype.slice.call(deck.querySelectorAll(".bs-ex-box")).filter(function (b) {
+      return !b.classList.contains("bs-ex-box-tune") && !b.hidden && b.id;
+    }).map(function (b) { return b.id; });
+    saveExploreLayout(layout);
+  }
+
+  function setExploreBoxSpan(box, span) {
+    if (!box || !box.id) return;
+    var panel = $("bs-panel");
+    var colsN = Math.max(1, Number((panel && panel.getAttribute("data-ex-cols")) || 1) || 1);
+    var layout = loadExploreLayout();
+    layout.spans = layout.spans || {};
+    var wantFull = span === "full" || span === 2 || span === "2" || span === 3 || span === "3";
+    layout.spans[box.id] = wantFull ? "full" : "1";
+    box.setAttribute("data-ex-span", normalizeExSpan(layout.spans[box.id], colsN));
+    saveExploreLayout(layout);
+    packExploreMasonry(true);
+    fitExplorePack();
+  }
+
+  function cycleExploreBoxSpan(box) {
+    var cur = box.getAttribute("data-ex-span") || "1";
+    setExploreBoxSpan(box, (cur === "full" || cur === "2") ? "1" : "full");
+  }
+
+  /** Explore-only: drag-reorder boxes + header Wide/Half size toggle. */
+  function bindExploreBoxLayout(root) {
+    root = root || $("bs-panel");
+    if (!root || root._bs_ex_layout_bound) return;
+    root._bs_ex_layout_bound = true;
+
+    var dragState = null;
+
+    root.addEventListener("click", function (ev) {
+      if (!exploreLayoutAllowed()) return;
+      var sizeBtn = ev.target && ev.target.closest && ev.target.closest(".bs-ex-box-size");
+      if (!sizeBtn || !root.contains(sizeBtn)) return;
+      var box = sizeBtn.closest(".bs-ex-box");
+      if (!box || box.classList.contains("bs-ex-box-tune")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      cycleExploreBoxSpan(box);
+    });
+
+    root.addEventListener("pointerdown", function (ev) {
+      if (!exploreLayoutAllowed()) return;
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("input, select, textarea, a, .bs-box-help, .bs-ex-box-size, .bs-ex-box-resize")) return;
+
+      var head = t.closest(".bs-ex-box-h");
+      if (!head || !root.contains(head)) return;
+      if (t.closest(".bs-ex-tune-vol, button:not(.bs-ex-box-toggle)")) return;
+      var box = head.closest(".bs-ex-box");
+      if (!box || box.classList.contains("bs-ex-box-tune") || !box.closest("#bs-ex-deck")) return;
+      if (ev.button !== 0) return;
+      dragState = {
+        box: box,
+        pointerId: ev.pointerId,
+        startX: ev.clientX,
+        startY: ev.clientY,
+        active: false,
+        fromToggle: !!(t.closest && t.closest(".bs-ex-box-toggle"))
+      };
+      try { head.setPointerCapture(ev.pointerId); } catch (eCap2) {}
+    });
+
+    root.addEventListener("pointermove", function (ev) {
+      if (!dragState || dragState.pointerId !== ev.pointerId) return;
+      var dx = ev.clientX - dragState.startX;
+      var dy = ev.clientY - dragState.startY;
+      if (!dragState.active) {
+        if (dx * dx + dy * dy < 36) return;
+        dragState.active = true;
+        dragState.box.classList.add("bs-ex-dragging");
+        document.body.classList.add("bs-ex-box-dnd");
+        if (dragState.fromToggle) dragState.suppressClick = true;
+      }
+      ev.preventDefault();
+      var deck = $("bs-ex-deck");
+      if (!deck) return;
+      var el = document.elementFromPoint(ev.clientX, ev.clientY);
+      var over = el && el.closest ? el.closest("#bs-ex-deck .bs-ex-box") : null;
+      Array.prototype.forEach.call(deck.querySelectorAll(".bs-ex-drop-before, .bs-ex-drop-after"), function (n) {
+        n.classList.remove("bs-ex-drop-before", "bs-ex-drop-after");
+      });
+      if (!over || over === dragState.box || over.classList.contains("bs-ex-box-tune")) {
+        dragState.dropTarget = null;
+        return;
+      }
+      var or = over.getBoundingClientRect();
+      var before = ev.clientY < or.top + or.height / 2;
+      over.classList.add(before ? "bs-ex-drop-before" : "bs-ex-drop-after");
+      dragState.dropTarget = over;
+      dragState.dropBefore = before;
+    });
+
+    function endDrag(ev) {
+      if (!dragState || dragState.pointerId !== ev.pointerId) return;
+      var st = dragState;
+      dragState = null;
+      document.body.classList.remove("bs-ex-box-dnd");
+      st.box.classList.remove("bs-ex-dragging");
+      var deck = $("bs-ex-deck");
+      if (deck) {
+        Array.prototype.forEach.call(deck.querySelectorAll(".bs-ex-drop-before, .bs-ex-drop-after"), function (n) {
+          n.classList.remove("bs-ex-drop-before", "bs-ex-drop-after");
+        });
+      }
+      if (!st.active || !st.dropTarget || !deck) return;
+      /* Insert relative to target in document order — pack will rebuild columns. */
+      var target = st.dropTarget;
+      if (st.dropBefore) {
+        if (target.parentNode) target.parentNode.insertBefore(st.box, target);
+      } else if (target.parentNode) {
+        if (target.nextSibling) target.parentNode.insertBefore(st.box, target.nextSibling);
+        else target.parentNode.appendChild(st.box);
+      }
+      /* Flatten into deck so order scan is document-order of boxes. */
+      var ordered = Array.prototype.slice.call(deck.querySelectorAll(".bs-ex-box")).filter(function (b) {
+        return !b.classList.contains("bs-ex-box-tune") && !b.hidden;
+      });
+      ordered.forEach(function (b) { deck.appendChild(b); });
+      persistExploreOrderFromDom();
+      packExploreMasonry(true);
+      fitExplorePack();
+      if (st.suppressClick) {
+        var swallow = function (cev) {
+          cev.preventDefault();
+          cev.stopPropagation();
+          root.removeEventListener("click", swallow, true);
+        };
+        root.addEventListener("click", swallow, true);
+      }
+    }
+
+    root.addEventListener("pointerup", endDrag);
+    root.addEventListener("pointercancel", endDrag);
+  }
+
   function restoreCollapsibleBoxes(root) {
     root = root || $("bs-panel");
     if (!root) return;
@@ -19035,6 +19318,7 @@ Plugins.toolbox.init = function () {
       bindExclusiveTabOpts();
       bindCollapsibleBoxes(existing);
       restoreCollapsibleBoxes(existing);
+      bindExploreBoxLayout(existing);
       bindBoxHelp(existing);
       bindBtnShadePicker(existing);
       applyBtnShades();
@@ -20406,6 +20690,7 @@ Plugins.toolbox.init = function () {
         '<button type="button" class="bs-btn-util" id="bs-save-layout" title="Remember current panel position and size. Factory reset restores this layout.">Save panel layout</button>' +
         '<button type="button" class="bs-btn-util" id="bs-reset-layout" title="Restore the last saved panel layout.">Restore saved layout</button>' +
         '<button type="button" class="bs-btn-util" id="bs-default-layout" title="Place panel inside the waterfall below the frequency bar (full tab width).">Waterfall default</button>' +
+        '<button type="button" class="bs-btn-util" id="bs-reset-ex-layout" title="Reset Explore box order and sizes to defaults (drag/resize layout).">Reset Explore layout</button>' +
         "</div>" +
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="Keep Toolbox beside OpenWebRX on this page (no overlay on the waterfall). Always docks on the left."><input type="checkbox" id="bs-side-dock-set"> Side dock (left)</label>' +
@@ -20418,7 +20703,7 @@ Plugins.toolbox.init = function () {
         '<span class="bs-hint" id="bs-side-pct-lbl">35%</span>' +
         "</label>" +
         "</div>" +
-        '<p class="bs-hint">Or drag the Toolbox right edge while side-docked (same 20–60%). Guest permission: Public visitor allowlist → Panel → Change panel layout.</p>',
+        '<p class="bs-hint">Explore: drag box titles to reorder · click <b>Wide</b>/<b>Half</b> on a box header to resize. Or drag the Toolbox right edge while side-docked (same 20–60%). Guest permission: Public visitor allowlist → Panel → Change panel layout.</p>',
         { id: "bs-panel-layout-box", wide: true }) +
       '<div class="bs-settings-duo" id="bs-settings-data">' +
       settingsBoxHtml("Data &amp; housekeeping",
@@ -20612,8 +20897,9 @@ Plugins.toolbox.init = function () {
     bindExclusiveTabOpts();
     bindCollapsibleBoxes(panel);
     restoreCollapsibleBoxes(panel);
+    bindExploreBoxLayout(panel);
     /* Re-pack after restoring minimized Explore boxes so snap uses real heights. */
-    packExploreMasonry();
+    packExploreMasonry(true);
     fitExplorePack();
     try { packExtrasMasonry(true); } catch (eEx0) {}
     try { packSettingsMasonry(true); } catch (eSet0) {}
@@ -21097,6 +21383,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-reset-btn-shades")) $("bs-reset-btn-shades").onclick = resetBtnShades;
     if ($("bs-save-layout")) $("bs-save-layout").onclick = savePanelLayoutManual;
     if ($("bs-default-layout")) $("bs-default-layout").onclick = applyWaterfallPanelDefault;
+    if ($("bs-reset-ex-layout")) $("bs-reset-ex-layout").onclick = resetExploreLayout;
     if ($("bs-side-dock-set")) $("bs-side-dock-set").onchange = function () {
       setPanelSideDock(!!$("bs-side-dock-set").checked);
     };
