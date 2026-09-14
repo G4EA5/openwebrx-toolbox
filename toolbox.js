@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 438;
+  Plugins.toolbox._version = 439;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -290,7 +290,7 @@ Plugins.toolbox.init = function () {
     { id: "recCaps", label: "Max clip length", where: "Audio", tip: "Cap Record busy clips at N seconds (default 60)." },
     { id: "scanOrder", label: "Bookmark scan order", where: "Bookmarks", tip: "Priority / freq / name / random order for Scan bookmarks." },
     { id: "copyTuneLink", label: "Copy tune link", where: "Peaks / Bookmarks", tip: "Copy MHz + mode text for chat or notes." },
-    { id: "publicMode", label: "Public / shared receiver mode", where: "Settings", tip: "Prefer OpenWebRX Settings → General → “Toolbox: public / shared receiver mode” (admin password). That server switch applies to all visitors. This tick is a legacy/local fallback only when the server key has not arrived yet.", defaultOn: false },
+    { id: "publicMode", label: "Public / shared receiver mode", where: "Settings", tip: "Turns public/shared visitor limits on for this browser when OpenWebRX has no General checkbox (most stock installs). Prefer ./install.sh --public or --personal on the host so all visitors match. If Settings → General already shows “Toolbox: public / shared receiver mode”, that server switch wins and this tick follows it.", defaultOn: false },
     { id: "idlePresets", label: "Quiet-hours presets", where: "Settings", tip: "One-click night / evening quiet-hour presets for scheduled scans." },
     { id: "autoStartOwrx", label: "Auto Start OpenWebRX+", where: "Settings", tip: "Click the main Start OpenWebRX+ play overlay when the page loads (some browsers still block audio without a gesture)." },
     { id: "speechToText", label: "Clip transcribe (browser)", where: "Audio", tip: "Try Web Speech API while a clip plays (Chrome; quality varies)." },
@@ -2414,17 +2414,17 @@ Plugins.toolbox.init = function () {
     var note = $("bs-public-policy-note");
     if (note) {
       if (!isOwrxAdmin()) {
-        note.textContent = "Log in to OpenWebRX Settings (admin) to edit the visitor allowlist. Public on/off is in Settings → General.";
+        note.textContent = "Log in to OpenWebRX Settings (admin) to edit the visitor allowlist. Public on/off: ./install.sh --public/--personal on the host, or the Public tick under Extras when this install has no General checkbox.";
       } else if (!ownerOverrideAllowed()) {
-        note.textContent = "This install is baked --public. Prefer stock Settings → General for on/off; allowlist may still be baked via TOOLBOX_PUBLIC_POLICY.";
+        note.textContent = "This install is baked --public (Own radio locked). Allowlist may still be baked via TOOLBOX_PUBLIC_POLICY. Day-to-day: re-run ./install.sh --personal to leave shared mode.";
       } else if (serverPublicMode === true) {
-        note.textContent = "Public mode is ON in OpenWebRX Settings → General (applies to all visitors). Edit the allowlist below.";
+        note.textContent = "Public mode is ON via OpenWebRX Settings → General (this host has that checkbox). Applies to all visitors. Edit the allowlist below.";
       } else if (serverPublicMode === false) {
-        note.textContent = "Public mode is OFF in OpenWebRX Settings → General. Allowlist is unused until you enable it there.";
+        note.textContent = "Public mode is OFF via OpenWebRX Settings → General. Allowlist is unused until you enable public there, or use ./install.sh --public.";
       } else if (extraOn("publicMode")) {
-        note.textContent = "Waiting for server setting… Local public tick is a temporary fallback. Use Settings → General → Toolbox public mode for all visitors.";
+        note.textContent = "Public mode is ON via the Toolbox tick below. This host has no General checkbox (normal on stock OpenWebRX+). For every visitor on the server, prefer ./install.sh --public on the host.";
       } else {
-        note.textContent = "Switch public mode in OpenWebRX Settings → General (admin password). This allowlist applies when that switch is on.";
+        note.textContent = "Most stock OpenWebRX+ installs have no General → Toolbox public checkbox. Use ./install.sh --public or --personal on the host, or tick Public / shared under Extras (admin). Allowlist below applies when public is on.";
       }
     }
     fillPublicPolicyForm();
@@ -2515,11 +2515,13 @@ Plugins.toolbox.init = function () {
         el.disabled = !canEditPublicPolicy() || serverOwns;
         if (serverOwns) {
           el.checked = !!serverPublicMode;
-          el.title = "Controlled in OpenWebRX Settings → General → Toolbox: public / shared receiver mode (admin).";
+          el.title = "Controlled in OpenWebRX Settings → General → Toolbox: public / shared receiver mode (admin). This host has that checkbox.";
+        } else if (canEditPublicPolicy()) {
+          el.title = "This host has no General checkbox (common on stock OpenWebRX+). Tick here for this browser, or run ./install.sh --public / --personal on the host for all visitors.";
         }
         var row = el.closest && el.closest("[data-extra='publicMode']");
         if (row) {
-          /* Keep visible for admins so they see the pointer to stock Settings; hide from guests. */
+          /* Keep visible for admins so they see how to toggle; hide from guests. */
           row.hidden = !canEditPublicPolicy();
         }
         return;
@@ -7645,8 +7647,8 @@ Plugins.toolbox.init = function () {
       "<h3>Install</h3>" +
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Interactive installs use a blue-screen wizard (<code>dialog</code> / <code>whiptail</code>; <code>--no-tui</code> for plain text) with <b>Back</b> between steps: welcome → setup type → personal vs public → older Band Survey (only if found) → confirm → install. Use <b>Back</b> to change earlier choices.</p>" +
       "<ul>" +
-      "<li><code>./install.sh --personal</code> / <code>--public</code> — owner-only vs shared. <b>--public</b> locks Own radio in the plugin file <em>and</em> sets OpenWebRX <code>toolbox_public_mode</code> in <code>settings.json</code> when that file is writable.</li>" +
-      "<li><b>Day-to-day public on/off (preferred)</b> — log into OpenWebRX <b>Settings</b> (admin password) → <b>General</b> → <b>Toolbox: public / shared receiver mode</b>. That switch applies to <b>all</b> visitors. The Toolbox <b>Settings</b> tab is always in the header; editing it needs that same admin login (guests see an unlock hint).</li>" +
+      "<li><code>./install.sh --personal</code> / <code>--public</code> — owner-only vs shared. <b>--public</b> locks Own radio in the plugin file <em>and</em> sets OpenWebRX <code>toolbox_public_mode</code> in <code>settings.json</code> when that file is writable. This is the reliable way on stock OpenWebRX+ (no General checkbox).</li>" +
+      "<li><b>Day-to-day public on/off</b> — preferred: re-run <code>./install.sh --public</code> / <code>--personal</code>. If logged into Settings as admin, Toolbox Extras → <b>Public / shared</b> works when the host has no General row. Only some patched hosts show <b>Settings → General → Toolbox: public / shared receiver mode</b>; if you do not see it, that is normal. The Toolbox <b>Settings</b> tab is always in the header; editing needs that same admin login (guests see an unlock hint).</li>" +
       "<li><code>./install.sh --remove-legacy</code> — delete old <code>band_survey</code> (recommended). <code>--keep-legacy</code> keeps the folder on disk for rollback but still loads only Toolbox. <code>--purge-legacy</code> removes Band Survey only.</li>" +
       "<li>Smart checks: <code>./install.sh --check</code> or <code>--report</code> write a log under <code>~/owrx-toolbox-reports/</code>.</li>" +
       "<li>On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</li>" +
@@ -7778,13 +7780,13 @@ Plugins.toolbox.init = function () {
       "<li><b>Always hide scan strip</b> — never show the scan strip. Normally it only appears on <b>Bands</b> (Scan bands) and <b>Bookmarks</b> (Scan bookmarks / Hold / Skip), plus <b>Stop</b> and status on any tab while a scan is running. Range has Scan range / Stop on that tab.</li>" +
       "<li><b>Hide stock receiver panel</b> — hide OpenWebRX’s floating receiver controls (modes, volume, squelch). Default off. Use Explore instead when hidden. Clicking top-bar <b>Receiver</b> turns this off again so the stock panel can open.</li>" +
       "<li><b>Mute when changing tab</b> — when on (default, same as stock <code>owrx_hush</code>), receiver audio mutes while this browser tab is in the background and restores when you return. Untick to keep listening in other tabs.</li>" +
-      "<li><b>Public mode (admin)</b> — turn on/off in OpenWebRX <b>Settings → General → Toolbox: public / shared receiver mode</b> (admin password). That applies to every visitor. Re-run <code>./install.sh --public</code> / <code>--personal</code> to match the stock switch in <code>settings.json</code> and (for --public) bake a hard Own-radio lock into <code>toolbox.js</code>.</li>" +
+      "<li><b>Public mode (admin)</b> — most stock OpenWebRX+ installs <b>do not</b> show a General → Toolbox public checkbox. Use <code>./install.sh --public</code> (shared) or <code>--personal</code> (owner-only) on the host so <code>settings.json</code> and (for --public) the Own-radio bake match for every visitor. While logged into Settings as admin you can also tick <b>Public / shared receiver mode</b> under Toolbox Extras when that General row is missing. If your host <em>does</em> show <b>Settings → General → Toolbox: public / shared receiver mode</b>, that server switch wins for everyone.</li>" +
       "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), and <b>extras</b> visitors may use. Edit this under Toolbox Settings while logged into OpenWebRX admin. Guests see Settings but cannot edit. Use <b>Copy policy for install</b> to bake the same rules into <code>toolbox.js</code> if you want a host-fixed allowlist.</li>" +
       "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 35, range 20–60). Preferred % is clamped to ~280–920&nbsp;px so small and 4K/ultrawide screens stay usable; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> (between Help and Minimal) resets width to 35%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
       "<li><b>Panel layout</b> — Save / Restore / Waterfall default for the whole panel. <b>Reset Explore layout</b> clears Explore box order and Wide/Half sizes (does not move the panel).</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
-      "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, public mode is on (turn it off in OpenWebRX Settings → General).</li>" +
+      "<li><b>Factory reset</b> — red button at the <b>top of Settings</b> and again under Data &amp; housekeeping. Wipes peaks, bookmarks, audio, skip list, Explore, and settings in this browser. If the button is greyed out, public mode is on (turn it off with <code>./install.sh --personal</code>, the Toolbox Public tick, or Settings → General when that checkbox exists).</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
       "<li><b>Save as my defaults</b> — store the settings currently shown as personal defaults in this browser. <b>Reset settings</b> and <b>Factory reset</b> restore them afterwards (Factory reset still clears peaks, bookmarks, and audio). <b>Clear my defaults</b> returns to built-in Toolbox defaults.</li>" +
       "</ul><p><b>Webhook</b></p><ul>" +

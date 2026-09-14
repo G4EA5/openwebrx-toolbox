@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v438)
+# OpenWebRX Toolbox (v439)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -23,10 +23,10 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | **Explore** | Drag-reorder boxes; **Wide** / **Half** size; receiver controls, S-meter, side dock |
 | **Hardware gain** | Explore → Receiver RF / IF (or RTL tuner) for common SDRs; Auto by default; needs Settings admin login |
 | **Audio** | Clip archive, record modes, export for digi tools |
-| **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
+| **Public** | `./install.sh --public` / `--personal`; Toolbox tick when no General checkbox |
 | **Settings** | Always in the header; editing needs OpenWebRX admin login (guests see unlock hint) |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v438** — hardware gain, admin login note, Passes 1–1000, Explore layout |
+| **Docs** | README + Help **v439** — public mode without General checkbox; hardware gain |
 
 ---
 
@@ -413,40 +413,46 @@ Nothing is uploaded except optional **Webhook URL** POSTs.
 
 ## Public vs own radio
 
-### Preferred: stock OpenWebRX admin switch
+Stock OpenWebRX+ usually **does not** show a General → Toolbox public checkbox.
+That is normal. Use the installer (or the Toolbox tick) instead.
 
-1. Log into OpenWebRX **Settings** (admin password).
-2. Open **General**.
-3. Tick **Toolbox: public / shared receiver mode** → Save.
-4. Hard-refresh the receiver page.
-
-That setting applies to **all** visitors. The Toolbox **Settings** tab is always
-in the header; **editing** it (visitor allowlist, extras, factory reset, …) needs
-an OpenWebRX admin session — guests see a short unlock hint instead of a missing tab.
+### Preferred: installer on the host
 
 | Want | Do this |
 | --- | --- |
-| **Turn public on/off day to day** | Settings → General → **Toolbox: public / shared receiver mode** |
-| **Edit visitor allowlist** | Open Toolbox while logged in as admin → Settings → Public visitor allowlist |
-| **First-time shared install** | `./install.sh --public` (see below) |
-
-### Installer
-
-`./install.sh --public` / `--personal` **does** handle public mode:
+| **Shared / public receiver** | `./install.sh --public` |
+| **Personal / owner-only** | `./install.sh --personal` (or plain `./install.sh`) |
+| **Edit visitor allowlist** | Log into OpenWebRX Settings as admin → open Toolbox → Settings → Public visitor allowlist |
 
 | Flag | What it does |
 | --- | --- |
 | **`--public`** | Bakes Own-radio lock into `toolbox.js` **and** sets `toolbox_public_mode: true` in `/var/lib/openwebrx/settings.json` when writable |
 | **`--personal`** | Leaves Own-radio available **and** sets `toolbox_public_mode: false` in `settings.json` when writable |
 
-After install, prefer the **General** checkbox for day-to-day changes (no reinstall). Re-run `--public` / `--personal` if you want the installer to re-sync the bake flag and `settings.json` together.
+### Without reinstalling
 
-> **Note:** The General checkbox appears on hosts where OpenWebRX was patched to expose `toolbox_public_mode` (homelab / updated packages). The installer still writes the key into `settings.json` either way; without the UI checkbox you can edit that key by hand or use `--public` / `--personal`.
+1. Log into OpenWebRX **Settings** (admin password) in the same browser.
+2. Open Toolbox → **Settings** → Extras → tick **Public / shared receiver mode**.
+3. Hard-refresh the receiver page.
+
+That tick is the day-to-day control when there is no General checkbox. For **all**
+visitors on the server to match, prefer `--public` / `--personal` on the host
+(writes `settings.json` for everyone).
+
+### Optional: General checkbox (patched hosts only)
+
+Some custom / homelab OpenWebRX builds add **Settings → General → Toolbox: public /
+shared receiver mode**. If you see that row, it applies to all visitors and
+overrides the Toolbox tick. If you do **not** see it, nothing is wrong — use the
+installer or the Toolbox tick above.
+
+You can also set `"toolbox_public_mode": true` or `false` by hand in
+`/var/lib/openwebrx/settings.json` when the file is writable.
 
 ### Summary
 
-- **Personal install** (`./install.sh` / `--personal`): Own radio / fast hops available unless the stock public switch is on.
-- **Public install** (`./install.sh --public`): hard Own-radio lock + stock public switch on.
+- **Personal install**: Own radio / fast hops available unless public mode is on.
+- **Public install** (`--public`): hard Own-radio lock + public mode on.
 - Visitor allowlist: Toolbox Settings (admin session only), when public mode is on.
 
 ---
@@ -461,7 +467,7 @@ After install, prefer the **General** checkbox for day-to-day changes (no reinst
 | Explore boxes empty on the right after **%** / side resize | Hard-refresh to **v405+**; Explore re-packs after side width settles |
 | Explore boxes overlap / cannot resize | Hard-refresh to **v413+**; use header **Wide** / **Half** (not a corner grip). Settings → **Reset Explore layout** if needed |
 | Check install yellow/red | Follow the on-screen fix; Help → **Copy diagnostic report** |
-| Docker install vanished | Persist `plugins/receiver` with a volume, or re-run install after recreate |
+| No **Toolbox: public** in Settings → General | Normal on stock OpenWebRX+. Use `./install.sh --public` / `--personal`, or Toolbox Extras → Public / shared while Settings-admin |
 
 More detail: in-panel **Help**, or `./install.sh --report`.
 
@@ -476,7 +482,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v438)** | Tag [`toolbox-v438`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v438) (after publish) or `main` |
+| **This Toolbox build (v439)** | Tag [`toolbox-v439`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v439) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -484,8 +490,8 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v438 */
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-v438/toolbox.js");
+/* Toolbox v439 */
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-v439/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-survey-v110/band_survey.js");
@@ -496,7 +502,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v438**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v439**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
