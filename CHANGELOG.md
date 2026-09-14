@@ -1,5 +1,63 @@
 # Changelog
 
+## [438] — Restore prior gain if Auto save fails mid-step
+
+Two-step gain writes (mid → target / manual-0 → Auto) now keep the pre-save profile
+and restore it if the second POST fails, so a stick is not left at 0 dB. README and
+in-panel Help document Explore hardware gain + Settings admin login.
+
+## [437] — Default hardware gain to Auto
+
+Explore gain mode falls back to **Auto** (AGC) for every SDR family when a profile
+has no explicit mode. Preview UI also starts on Auto. Homelab `settings.json` /
+`reporting-ready` / `ft8-ready` profiles are all `rf_gain: "auto"`.
+
+## [436] — No waterfall jump on gain change
+
+Stopped hopping to another band profile after gain save (that was retuning the
+waterfall). Live apply still uses the mid→target gain write on the active profile.
+
+## [435] — Gain save rejected: Hz × kHz exponent
+
+Profile POSTs sent absolute Hz with a non-zero unit exponent (e.g. `samp_rate=2400000`
++ `samp_rate-exponent=3`), so OpenWebRX rejected the form and never stored gain.
+Sanitize exponents to `0` (and drop literal `None`) before every profile save.
+
+## [434] — Hide dead RTL RF slider; stop fake gain saves
+
+CSS `display:flex` on fader labels overrode HTML `hidden`, so an RF slider stayed
+visible on RTL even though it does nothing. Gain POSTs now follow redirects and
+treat a bounce to `/login` as failure (settings were never updating).
+
+## [433] — Gain “save” was a fake success
+
+POST redirects to `/login` were treated as OK, so Explore looked fine while
+`settings.json` never changed and `rtl_connector` stayed at `-g 29`. Now login
+redirects fail loudly, stored gain is verified after save, then a profile hop
+applies it live.
+
+## [432] — Explore gain controls were HTML-disabled
+
+Admin probe used `redirect:manual` (opaque-redirect → always “not admin”) and gated
+before loading the profile form, so Tuner / dB / RF controls never accepted clicks.
+Now the profile form is the unlock check; Settings scrape follows redirects; Open Settings
++ Retry sit under the gain status. Page/Basic auth alone is not Settings admin.
+
+## [431] — RTL gain: discrete steps + forced live apply
+
+RTL sticks only accept specific dB steps. Explore now uses that list, verifies admin
+via real Settings HTML, and writes an intermediate gain then the target so
+`rtl_connector` always gets an `rf_gain` control update.
+
+## [430] — RTL Explore gain actually applies
+
+RTL has one tuner gain (not RF+IF). Preview sliders stay locked without admin.
+Saves verify redirect/errors, then hop profile away/back so `rtl_connector` picks up `-g`.
+
+## [429] — Closed panel leaves stock dial alone
+
+Explore readout / gain sync only runs while the Toolbox panel is open.
+
 ## [428] — Hardware gain Extra on by default
 
 - Settings → Extras → **Explore · hardware gain (always show)** defaults **on** (and one-time promote for existing installs).

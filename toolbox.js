@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 428;
+  Plugins.toolbox._version = 438;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -4474,27 +4474,56 @@ Plugins.toolbox.init = function () {
     return owrxAdmin === true;
   }
 
+  function htmlLooksLikeOwrxLogin(html) {
+    var s = String(html || "");
+    if (!s) return false;
+    /* Login form fields — not a bare "Log in" string (settings pages can mention that). */
+    if (/name=["']password["']/i.test(s) && /name=["']user["']/i.test(s)) return true;
+    if (/id=["']login["']|class=["'][^"']*login-form/i.test(s) && /name=["']password["']/i.test(s)) return true;
+    return false;
+  }
+
+  function htmlLooksLikeOwrxSettings(html) {
+    var s = String(html || "");
+    if (!s || htmlLooksLikeOwrxLogin(s)) return false;
+    return /settings-body|settings-section|SdrDeviceList|receiver_name|settings\/sdr\//i.test(s);
+  }
+
   function refreshOwrxAdmin(done) {
     owrxAdminProbeAt = Date.now();
-    fetch("/settings", { credentials: "same-origin", cache: "no-store", redirect: "manual" })
+    /* Follow redirects. redirect:manual often yields opaque-redirect (status 0) and
+       falsely locked Explore gain even when Settings is logged in. */
+    fetch("/settings", { credentials: "same-origin", cache: "no-store", redirect: "follow" })
       .then(function (res) {
-        var ok = res.status === 200 && res.type !== "opaqueredirect";
-        owrxAdmin = ok;
+        if (res.status === 401 || res.status === 403) {
+          owrxAdmin = false;
+          try { syncSettingsAdminGate(); } catch (eG0) {}
+          try { exGain.stale = true; exploreGainMaybeLoad(); } catch (e0) {}
+          if (done) done(false);
+          return null;
+        }
+        if (!res.ok) throw new Error("http");
+        return res.text();
+      })
+      .then(function (html) {
+        if (html == null) return;
+        var ok = htmlLooksLikeOwrxSettings(html);
+        owrxAdmin = !!ok;
         try { syncSettingsAdminGate(); } catch (eG) {}
         try {
           exGain.stale = true;
           exploreGainMaybeLoad();
         } catch (eGainAdm) {}
-        if (done) done(ok);
+        if (done) done(!!ok);
       })
       .catch(function () {
-        owrxAdmin = false;
+        /* Unknown — leave prior owrxAdmin; Explore gain will probe the profile form. */
         try { syncSettingsAdminGate(); } catch (eG2) {}
         try {
           exGain.stale = true;
           exploreGainMaybeLoad();
         } catch (eGainAdm2) {}
-        if (done) done(false);
+        if (done) done(!!owrxAdmin);
       });
   }
 
@@ -7611,6 +7640,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Presets</b> (Air, FM, …) match common profile id/name patterns. Custom names still work — tick bands manually.</li>" +
       "<li><b>Analyzer</b> is experimental and only as good as the live OWRX waterfall (relative dB). It is <b>not</b> a standalone <code>hackrf_sweep</code> console.</li>" +
       "<li>Requires <b>OpenWebRX+</b> (plugin loader). Vanilla OpenWebRX cannot load this plugin.</li>" +
+      "<li><b>Hardware gain</b> — Explore → Receiver can adjust profile gain (RTL / SDRplay / HackRF / Airspy / Lime, …). Needs OpenWebRX <b>Settings</b> admin login in this browser. Default is Auto when the profile has no manual value.</li>" +
       "</ul>" +
       "<h3>Install</h3>" +
       "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Interactive installs use a blue-screen wizard (<code>dialog</code> / <code>whiptail</code>; <code>--no-tui</code> for plain text) with <b>Back</b> between steps: welcome → setup type → personal vs public → older Band Survey (only if found) → confirm → install. Use <b>Back</b> to change earlier choices.</p>" +
@@ -7667,6 +7697,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Audio spectrum</b> — small FFT of demodulated receiver audio between the frequency LCD and the analogue meter.</li>" +
       "<li><b>OWRX step</b> — full stock tuning-step listbox sync + reset. Toolbox <b>Step</b>/<b>Off</b>/<b>Snap</b> still drive Explore wheel/grid.</li>" +
       "<li><b>Receiver</b> — modes / DIGI / <b>SQL auto</b> (sets squelch from S-meter, then toggles the stock squelch scanner — click again to stop) / NR / <b>REC</b> (Audio tab) / Spectrum / Nest scan. Mute and Vol are on the Tune header.</li>" +
+      "<li><b>Hardware gain</b> — RF / IF (or RTL tuner) from the active OpenWebRX profile. Auto-shows when Toolbox detects your SDR (RTL, SDRplay/RSP, HackRF, Airspy, Lime, …). Default mode is <b>Auto</b> (AGC) when the profile has no manual value. <b>Changing gain needs OpenWebRX Settings admin login in this browser</b> (page / Basic auth is not enough): open <b>Settings</b>, sign in, hard-refresh, then use Explore → Receiver. Guests see a locked preview.</li>" +
       "<li><b>IF</b> — passband width·shift + CW pitch. <b>Waterfall</b> — min/max, auto, continuous (Shift+click Auto), default.</li>" +
       "<li><b>Look</b> — UI/WF theme, opacity, bandplan, wheel-to-tune. <b>Memories</b> — 8 slots. <b>Find</b> — search / nearest / copy tune link / Digi panel.</li>" +
       "<li><b>Tune</b> — type MHz in the LCD (top left) and press <b>Go</b> or Enter to jump (switches profile if needed). Hover a digit and scroll the mouse wheel to nudge that place (Shift ×10). <b>Mute / Vol</b> sit in the Tune header (always visible). <b>VFO</b> — A/B · A=B · Swap · lock tune · lock profile · stock step / Snap / history.</li>" +
@@ -15845,7 +15876,32 @@ Plugins.toolbox.init = function () {
       }
       params.append(name, el.value);
     });
+    return sanitizeAdminProfileParams(params);
+  }
+
+  /* OpenWebRX ExponentialInput stores absolute Hz in the number box but the unit
+     dropdown may still say kHz/MHz. Posting both multiplies again (e.g. 2400000×10³)
+     and the save is rejected — gain never changes. Force exponent 0 for those fields.
+     Also drop literal "None" from disabled optional placeholders. */
+  function sanitizeAdminProfileParams(params) {
+    if (!params) return params;
+    var expBases = ["center_freq", "samp_rate", "start_freq", "lfo_offset"];
+    expBases.forEach(function (id) {
+      if (params.has(id) || params.has(id + "-exponent")) {
+        params.set(id + "-exponent", "0");
+      }
+    });
+    var drop = [];
+    params.forEach(function (v, k) {
+      if (String(v) === "None") drop.push(k);
+    });
+    drop.forEach(function (k) { params.delete(k); });
     return params;
+  }
+
+  function sanitizeAdminProfileBody(body) {
+    var params = new URLSearchParams(typeof body === "string" ? body : String(body || ""));
+    return sanitizeAdminProfileParams(params).toString();
   }
 
   function fetchProfileAdminForm(value, done) {
@@ -15861,9 +15917,15 @@ Plugins.toolbox.init = function () {
       if (!res.ok) throw new Error("http-" + res.status);
       return res.text();
     }).then(function (html) {
+      if (htmlLooksLikeOwrxLogin(html)) throw new Error("admin");
       var doc = new DOMParser().parseFromString(html, "text/html");
-      var form = doc.querySelector("form.settings-body") || doc.querySelector("form");
+      var form = doc.querySelector("form.settings-body") ||
+        doc.querySelector("form[action*='profile']") ||
+        doc.querySelector("form");
       if (!form) throw new Error("noform");
+      if (form.querySelector('input[name="password"]') && form.querySelector('input[name="user"]')) {
+        throw new Error("admin");
+      }
       var params = collectAdminFormParams(form);
       if (!params.get("name") && !params.get("center_freq")) throw new Error("empty");
       done(null, { params: params, form: form });
@@ -16298,6 +16360,11 @@ Plugins.toolbox.init = function () {
       return;
     }
     var url = settingsSdrUrl(parts.device, "profile/" + encodeURIComponent(parts.profileId));
+    var safeBody = sanitizeAdminProfileBody(
+      typeof body === "string" ? body : String(body || "")
+    );
+    /* Follow redirects so a bounce to /login is visible in res.url / HTML.
+       redirect:manual previously treated login 303 as success (gain never saved). */
     fetch(url, {
       method: "POST",
       credentials: "same-origin",
@@ -16305,16 +16372,23 @@ Plugins.toolbox.init = function () {
         "Content-Type": "application/x-www-form-urlencoded",
         "X-Requested-With": "XMLHttpRequest"
       },
-      body: typeof body === "string" ? body : String(body || ""),
-      redirect: "manual"
+      body: safeBody,
+      redirect: "follow"
     }).then(function (res) {
-      if (res.status === 403) throw new Error("admin");
+      if (res.status === 401 || res.status === 403) throw new Error("admin");
       if (res.status === 404) throw new Error("notfound");
-      if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400) || res.ok) {
+      return res.text().then(function (html) {
+        var finalUrl = "";
+        try { finalUrl = String(res.url || ""); } catch (eU) {}
+        if (/\/login(?:\?|$)/i.test(finalUrl) || htmlLooksLikeOwrxLogin(html || "")) {
+          throw new Error("admin");
+        }
+        if (!res.ok) throw new Error("http-" + res.status);
+        if (/bg-danger|Your settings could not be saved|class="invalid-feedback"/i.test(html || "")) {
+          throw new Error("rejected");
+        }
         done(null);
-        return;
-      }
-      throw new Error("http-" + res.status);
+      });
     }).catch(function (err) {
       done(err || new Error("fail"));
     });
@@ -20227,7 +20301,12 @@ Plugins.toolbox.init = function () {
       '<span id="bs-ex-if-gain-val">Auto</span></label>' +
       "</div>" +
       '<div class="bs-ex-gain-stages" id="bs-ex-gain-stages" hidden></div>' +
+      '<div class="bs-ex-gain-foot">' +
       '<p class="bs-ex-tip" id="bs-ex-gain-status">—</p>' +
+      '<div class="bs-row bs-ex-gain-actions">' +
+      '<a class="bs-ex-btn bs-btn-util" id="bs-ex-gain-settings" href="/settings" target="_blank" rel="noopener" title="Open OpenWebRX Settings (admin login) in a new tab.">Open Settings</a>' +
+      '<button type="button" class="bs-ex-btn bs-btn-util" id="bs-ex-gain-retry" title="Re-check admin session and reload profile gain.">Retry</button>' +
+      "</div></div>" +
       "</div></div></section>" +
       /* —— IF / passband —— */
       '<section class="bs-box bs-ex-box bs-ex-box-collapse bs-ex-box-if" id="bs-ex-box-if" data-extra="exIf" aria-label="IF passband">' +
@@ -22890,6 +22969,8 @@ Plugins.toolbox.init = function () {
 
   function exploreGainApplyEnabled() {
     var edit = !!exGain.canEdit;
+    var grp = $("bs-ex-gain-group");
+    if (grp) grp.classList.toggle("bs-ex-gain-locked", !edit);
     ["bs-ex-rf-gain", "bs-ex-rf-gain-sel", "bs-ex-if-gain-mode"].forEach(function (id) {
       var el = $(id);
       if (el) el.disabled = !edit;
@@ -22900,6 +22981,8 @@ Plugins.toolbox.init = function () {
     var stages = modeVal === "stages";
     var agc = modeVal === "auto";
     if (ifRange) ifRange.disabled = !edit || agc || stages;
+    var rtlSel = $("bs-ex-rtl-gain-sel");
+    if (rtlSel) rtlSel.disabled = !edit || !!agc || !!stages;
     var host = $("bs-ex-gain-stages");
     if (host) {
       Array.prototype.forEach.call(host.querySelectorAll("input"), function (inp) {
@@ -22917,6 +23000,23 @@ Plugins.toolbox.init = function () {
     var rfRange = $("bs-ex-rf-gain");
     var rfSel = $("bs-ex-rf-gain-sel");
     var rfVal = $("bs-ex-rf-gain-val");
+    var rfWrap = $("bs-ex-gain-rf-wrap");
+    /* RTL (and any non-RF device): never show the RF fader — CSS display:flex was
+       overriding the HTML hidden attribute and left a dead RF slider on screen. */
+    if (!exGain.hasRf) {
+      if (rfWrap) {
+        rfWrap.hidden = true;
+        rfWrap.setAttribute("hidden", "");
+      }
+      if (rfRange) rfRange.hidden = true;
+      if (rfSel) rfSel.hidden = true;
+      exploreGainApplyEnabled();
+      return;
+    }
+    if (rfWrap) {
+      rfWrap.hidden = false;
+      rfWrap.removeAttribute("hidden");
+    }
     var v = exGain.rfSelect && rfSel ? rfSel.value : (rfRange ? rfRange.value : "");
     if (rfVal) rfVal.textContent = v === "" ? "—" : String(v);
     if (rfRange && rfSel && exGain.rfSelect) {
@@ -22930,21 +23030,64 @@ Plugins.toolbox.init = function () {
     exploreGainApplyEnabled();
   }
 
+  function exploreGainEnsureRtlSelect() {
+    var ifRange = $("bs-ex-if-gain");
+    if (!ifRange) return;
+    var sel = $("bs-ex-rtl-gain-sel");
+    if (!sel) {
+      sel = document.createElement("select");
+      sel.id = "bs-ex-rtl-gain-sel";
+      sel.className = "bs-ex-gain-sel";
+      sel.title = "RTL-SDR only accepts these tuner gain steps (librtlsdr).";
+      ifRange.parentNode.insertBefore(sel, ifRange);
+      sel.addEventListener("change", function () {
+        ifRange.value = this.value;
+        exploreGainSyncIfUi();
+        exploreGainScheduleSave();
+      });
+    }
+    if (exGain.family === "rtl") {
+      var cur = exploreGainSnapRtlDb(ifRange.value);
+      var html = "";
+      RTL_TUNER_GAINS_DB.forEach(function (g) {
+        html += '<option value="' + g + '"' + (g === cur ? " selected" : "") + ">" + g + " dB</option>";
+      });
+      sel.innerHTML = html;
+      sel.value = String(cur);
+      ifRange.value = String(cur);
+      ifRange.hidden = true;
+      sel.hidden = false;
+      sel.disabled = !!ifRange.disabled;
+    } else {
+      sel.hidden = true;
+      ifRange.hidden = false;
+    }
+  }
+
   function exploreGainSyncIfUi() {
     var mode = $("bs-ex-if-gain-mode");
     var ifRange = $("bs-ex-if-gain");
     var ifVal = $("bs-ex-if-gain-val");
     var host = $("bs-ex-gain-stages");
-    var modeVal = mode ? String(mode.value || "manual") : "manual";
+    var modeVal = mode ? String(mode.value || "auto") : "auto";
     var agc = modeVal === "auto";
     var stages = modeVal === "stages";
     exGain.ifAgc = agc;
-    if (ifRange) ifRange.hidden = !!stages;
+    if (exGain.family === "rtl" && ifRange && !agc) {
+      ifRange.value = String(exploreGainSnapRtlDb(ifRange.value));
+    }
+    exploreGainEnsureRtlSelect();
+    var rtlSel = $("bs-ex-rtl-gain-sel");
+    if (ifRange) ifRange.hidden = !!stages || (exGain.family === "rtl" && !agc);
+    if (rtlSel) {
+      rtlSel.hidden = exGain.family !== "rtl" || !!agc || !!stages;
+      rtlSel.disabled = !exGain.canEdit || !!agc;
+    }
     if (host) host.hidden = !stages || !(exGain.stages && exGain.stages.length);
     if (ifVal) {
       if (agc) ifVal.textContent = "Auto";
       else if (stages) ifVal.textContent = "Stages";
-      else ifVal.textContent = ifRange ? String(ifRange.value) : "—";
+      else ifVal.textContent = ifRange ? String(ifRange.value) + " dB" : "—";
     }
     exploreGainApplyEnabled();
   }
@@ -23049,7 +23192,7 @@ Plugins.toolbox.init = function () {
       }
     }
     exGain.modeOptions = opts;
-    fillToolboxSelect(mode, opts, modeWant || "manual", { includeUnset: false });
+    fillToolboxSelect(mode, opts, modeWant || "auto", { includeUnset: false });
   }
 
   function exploreGainPopulateFromResult(form, params) {
@@ -23126,7 +23269,8 @@ Plugins.toolbox.init = function () {
       ifRange.max = String(exGain.ifMax);
       ifRange.step = "1";
     }
-    var modeWant = "manual";
+    /* Prefer Auto when the profile has no explicit gain mode (better default for all SDRs). */
+    var modeWant = "auto";
     if (gainSel && gainSel.value) modeWant = String(gainSel.value);
     else if (params.get("rf_gain-select")) modeWant = String(params.get("rf_gain-select"));
     else if (soapy.string && !soapy.rf && !soapy.ifg && stageInfo.names.length) modeWant = "stages";
@@ -23142,8 +23286,11 @@ Plugins.toolbox.init = function () {
     if (ifWant == null && params.get("rf_gain") != null && isFinite(Number(params.get("rf_gain")))) {
       ifWant = String(params.get("rf_gain"));
     }
-    if (ifRange && ifWant != null && modeWant === "manual") ifRange.value = ifWant;
+    if (ifRange && ifWant != null && modeWant === "manual") {
+      ifRange.value = exGain.family === "rtl" ? String(exploreGainSnapRtlDb(ifWant)) : ifWant;
+    }
     exploreGainRenderStages();
+    exploreGainEnsureRtlSelect();
     exploreGainSyncRfUi();
     exploreGainSyncIfUi();
   }
@@ -23156,7 +23303,7 @@ Plugins.toolbox.init = function () {
     var ifRange = $("bs-ex-if-gain");
     var rfVal = exGain.rfSelect && rfSel ? String(rfSel.value || "") :
       (rfRange ? String(rfRange.value || "") : "");
-    var modeVal = ifMode ? String(ifMode.value || "manual") : "manual";
+    var modeVal = ifMode ? String(ifMode.value || "auto") : "auto";
     var ifVal = ifRange ? String(ifRange.value || "") : "";
     var baseRf = params.get("rf_gain");
     var soapy = parseSoapyGainString(baseRf);
@@ -23229,8 +23376,10 @@ Plugins.toolbox.init = function () {
     var rfName = $("bs-ex-gain-rf-name");
     var ifName = $("bs-ex-gain-if-name");
     var ifMode = $("bs-ex-if-gain-mode");
+    var grp = $("bs-ex-gain-group");
+    if (grp) grp.setAttribute("data-family", family || "generic");
     var titles = {
-      rtl: ["RTL gain", "RTL-SDR tuner gain (Auto AGC or manual).", "Gain"],
+      rtl: ["RTL tuner gain", "RTL-SDR has one tuner gain (not separate RF/IF). Auto = AGC; Manual = dB. Needs admin Settings login; saves into the active profile and re-applies it.", "Tuner"],
       sdrplay: ["RSP gain", "SDRplay RF / IF gain reduction (higher = less signal).", "IF"],
       hackrf: ["HackRF gain", "HackRF overall gain or LNA / AMP / VGA stages.", "Gain"],
       airspy: ["Airspy gain", "Airspy overall gain or LNA / MIX / VGA stages.", "Gain"],
@@ -23245,20 +23394,112 @@ Plugins.toolbox.init = function () {
     if (rfName) rfName.textContent = "RF";
     if (ifName) ifName.textContent = t[2];
     if (ifMode) {
-      ifMode.title = "Auto = hardware AGC (if available); Manual = overall gain; Stages = per-stage where supported.";
+      ifMode.title = family === "rtl"
+        ? "Auto = RTL hardware AGC; Manual = tuner gain in dB (typical useful range ~20–45)."
+        : "Auto = hardware AGC (if available); Manual = overall gain; Stages = per-stage where supported.";
     }
+    if (family === "rtl") {
+      exGain.hasRf = false;
+      exploreGainSyncRfUi();
+    }
+  }
+
+  /* R820T / RTL-SDR supported tuner gains (dB). librtlsdr rejects other values. */
+  var RTL_TUNER_GAINS_DB = [
+    0.0, 0.9, 1.4, 2.7, 3.7, 7.7, 8.7, 12.5, 14.4, 15.7, 16.6, 19.7, 20.7, 22.9,
+    25.4, 28.0, 29.7, 32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5,
+    48.0, 49.6
+  ];
+
+  function exploreGainSnapRtlDb(db) {
+    db = Number(db);
+    if (!isFinite(db)) return 29.7;
+    var best = RTL_TUNER_GAINS_DB[0];
+    var bestD = Math.abs(db - best);
+    var i;
+    for (i = 1; i < RTL_TUNER_GAINS_DB.length; i++) {
+      var d = Math.abs(db - RTL_TUNER_GAINS_DB[i]);
+      if (d < bestD) {
+        best = RTL_TUNER_GAINS_DB[i];
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function exploreGainBuildParams(gainDb, modeVal) {
+    var params = new URLSearchParams(exGain.baseline.toString());
+    exploreGainApplyToParams(params);
+    modeVal = modeVal || ($("bs-ex-if-gain-mode") && $("bs-ex-if-gain-mode").value) || "auto";
+    if (exGain.family === "rtl" || exGain.hasIf) {
+      if (modeVal === "auto") {
+        params.set("rf_gain-select", "auto");
+        params.delete("rf_gain-manual");
+      } else {
+        params.set("rf_gain-select", "manual");
+        var g = gainDb != null ? gainDb : ($("bs-ex-if-gain") && $("bs-ex-if-gain").value);
+        if (exGain.family === "rtl") g = exploreGainSnapRtlDb(g);
+        params.set("rf_gain-manual", String(g));
+      }
+    }
+    return params;
+  }
+
+  function exploreGainPostParams(params, done) {
+    var prof = currentProfileValue();
+    updateOpenwebrxProfile(prof, params.toString(), function (err) {
+      if (err && err.message === "admin") {
+        owrxAdmin = false;
+        try { syncSettingsAdminGate(); } catch (eG) {}
+        exGain.canSave = false;
+        exploreGainControlsEnabled(false);
+        done(err);
+        return;
+      }
+      if (!err) exGain.baseline = params;
+      done(err);
+    });
+  }
+
+  function exploreGainKickLive(done) {
+    /* Do NOT hop profiles — that retunes the waterfall. Live apply comes from the
+       two-step rf_gain write (mid → target) which already sends a property delta
+       to rtl_connector / Soapy over the control socket when settings store. */
+    if (done) done(true);
+  }
+
+  function exploreGainVerifyStored(wantMode, wantDb, done) {
+    var prof = currentProfileValue();
+    fetchProfileAdminForm(prof, function (err, result) {
+      if (err) {
+        done(err);
+        return;
+      }
+      if (!result || !result.params) {
+        done(new Error("verify"));
+        return;
+      }
+      var p = result.params;
+      var gotSel = p.get("rf_gain-select");
+      var gotMan = p.get("rf_gain-manual");
+      var gotRaw = p.get("rf_gain");
+      if (wantMode === "auto") {
+        done(null, gotSel === "auto" || gotRaw === "auto", "AGC");
+        return;
+      }
+      var got = gotMan != null && gotMan !== "" ? Number(gotMan) : Number(gotRaw);
+      var ok = isFinite(got) && Math.abs(got - Number(wantDb)) < 0.08;
+      done(null, ok, isFinite(got) ? got : (gotMan || gotRaw || "?"));
+    });
   }
 
   function exploreGainSaveNow() {
     if (!exploreGainWanted() || !exGain.supported || exGain.saving) return;
     if (!exGain.canSave || !exGain.baseline) {
       exploreGainSetStatus(
-        "Preview only — changes are not saved here. Open an SDR profile as admin to write gain."
+        "Not connected to an admin profile — Open Settings, log in, then Retry (Toolbox v" +
+        (Plugins.toolbox._version || "?") + ")."
       );
-      return;
-    }
-    if (!isOwrxAdmin()) {
-      exploreGainSetStatus("Admin login required — log into OpenWebRX Settings, then retry.");
       return;
     }
     var prof = currentProfileValue();
@@ -23267,28 +23508,97 @@ Plugins.toolbox.init = function () {
       exploreGainMaybeLoad();
       return;
     }
-    var params = new URLSearchParams(exGain.baseline.toString());
-    exploreGainApplyToParams(params);
+    var mode = $("bs-ex-if-gain-mode");
+    var modeVal = mode ? String(mode.value || "auto") : "auto";
+    var ifRange = $("bs-ex-if-gain");
+    var target = modeVal === "auto" ? null : Number(ifRange && ifRange.value);
+    if (exGain.family === "rtl" && modeVal === "manual") {
+      target = exploreGainSnapRtlDb(target);
+      if (ifRange) ifRange.value = String(target);
+      exploreGainSyncIfUi();
+    }
     exGain.saving = true;
-    exploreGainSetStatus("Saving gain to profile…");
-    updateOpenwebrxProfile(prof, params.toString(), function (err) {
+    exploreGainSetStatus("Saving gain…");
+
+    function fail(err) {
       exGain.saving = false;
-      if (err && err.message === "admin") {
+      var msg = (err && err.message) || "error";
+      if (msg === "admin") {
         owrxAdmin = false;
-        try { syncSettingsAdminGate(); } catch (eG) {}
-        exGain.canSave = false;
         exploreGainControlsEnabled(false);
-        exploreGainSetStatus("Admin login required — open /settings in this browser.");
-        return;
+        exploreGainSetStatus(
+          "Settings login expired — Open Settings, log in, then Retry. (Toolbox v" +
+          (Plugins.toolbox._version || "?") + ")"
+        );
+      } else if (msg === "nostick") {
+        exploreGainSetStatus(
+          "Save did not stick in OpenWebRX — Open Settings, log in, Retry. (v" +
+          (Plugins.toolbox._version || "?") + ")"
+        );
+      } else {
+        exploreGainSetStatus("Save failed (" + msg + ").");
       }
-      if (err) {
-        exploreGainSetStatus("Save failed — open OpenWebRX Settings and retry.");
-        try { toast("Hardware gain save failed."); } catch (eT) {}
-        return;
-      }
-      exGain.baseline = params;
-      exploreGainSetStatus("Saved to profile — switch band away and back if gain does not update.");
-      try { toast("Hardware gain saved."); } catch (eT2) {}
+      try { toast("Hardware gain save failed."); } catch (eT) {}
+    }
+
+    function afterVerified(wantMode, wantDb) {
+      exploreGainVerifyStored(wantMode, wantDb, function (err, ok, got) {
+        if (err && err.message === "admin") return fail(err);
+        if (err || !ok) return fail(new Error("nostick"));
+        exploreGainKickLive(function () {
+          exGain.saving = false;
+          var label = wantMode === "auto" ? "AGC" : (String(got) + " dB");
+          var msg = (exGain.family === "rtl" ? "RTL tuner " : "Gain ") +
+            label + " stored · applied live";
+          exploreGainSetStatus(msg + " · Toolbox v" + (Plugins.toolbox._version || "?"));
+          try { toast(msg); } catch (eT2) {}
+        });
+      });
+    }
+
+    /* Two-step write so the running connector always sees a gain delta.
+       Keep a copy of the pre-save profile so a failed second step can restore it
+       (otherwise Auto mid-step can leave the stick at manual 0 dB). */
+    var priorBaseline = exGain.baseline
+      ? new URLSearchParams(exGain.baseline.toString())
+      : null;
+    var mid = 0.0;
+    if (exGain.family === "rtl" && modeVal === "manual") {
+      mid = (target === 0.0) ? 49.6 : 0.0;
+    } else if (modeVal === "manual") {
+      mid = (Number(target) === 0) ? 20 : 0;
+    }
+
+    function restorePriorThenFail(err) {
+      if (!priorBaseline) return fail(err);
+      exploreGainPostParams(priorBaseline, function () {
+        fail(err);
+      });
+    }
+
+    var first = exploreGainBuildParams(
+      modeVal === "auto" ? 0 : mid,
+      modeVal === "auto" ? "manual" : modeVal
+    );
+    if (modeVal === "auto") {
+      exploreGainPostParams(first, function (err1) {
+        if (err1) return fail(err1);
+        var second = exploreGainBuildParams(null, "auto");
+        exploreGainPostParams(second, function (err2) {
+          if (err2) return restorePriorThenFail(err2);
+          afterVerified("auto", null);
+        });
+      });
+      return;
+    }
+
+    exploreGainPostParams(first, function (err1) {
+      if (err1) return fail(err1);
+      var second = exploreGainBuildParams(target, "manual");
+      exploreGainPostParams(second, function (err2) {
+        if (err2) return restorePriorThenFail(err2);
+        afterVerified("manual", target);
+      });
     });
   }
 
@@ -23330,7 +23640,7 @@ Plugins.toolbox.init = function () {
         ifRange.max = "49";
         if (!ifRange.value) ifRange.value = "29";
       }
-      exploreGainFillModeSelect(null, "manual");
+      exploreGainFillModeSelect(null, "auto");
     } else if (family === "sdrplay") {
       exGain.hasRf = true;
       exGain.hasIf = true;
@@ -23352,7 +23662,7 @@ Plugins.toolbox.init = function () {
         ifRange.max = "59";
         if (!ifRange.value) ifRange.value = "20";
       }
-      exploreGainFillModeSelect(null, "manual");
+      exploreGainFillModeSelect(null, "auto");
     } else {
       exGain.hasRf = false;
       exGain.hasIf = true;
@@ -23367,19 +23677,23 @@ Plugins.toolbox.init = function () {
       }
       exploreGainFillModeSelect({
         options: [
+          { value: "auto", label: "Auto" },
           { value: "manual", label: "Manual" },
           { value: "stages", label: "Stages" }
-        ].concat(family === "airspy" ? [{ value: "auto", label: "Auto" }] : [])
-      }, exGain.stages.length ? "stages" : "manual");
+        ]
+      }, "auto");
     }
     if (grp) grp.hidden = false;
     exploreGainRenderStages();
-    exploreGainControlsEnabled(true);
+    /* Preview must not feel like live hardware — keep controls locked. */
+    exploreGainControlsEnabled(false);
     exploreGainSyncRfUi();
     exploreGainSyncIfUi();
     var kind = detectSdrKind();
     exploreGainSetStatus(
-      "Preview for “" + kind + "” / " + family + " — controls move freely; nothing saved until admin profile load succeeds."
+      "Locked preview (“" + kind + "” / " + family +
+      "). Page password ≠ Settings admin — use Open Settings, log in, then Retry (Toolbox v" +
+      (Plugins.toolbox._version || "?") + ")."
     );
   }
 
@@ -23396,20 +23710,11 @@ Plugins.toolbox.init = function () {
     }
     exploreGainSetLabels(family);
     var grp = $("bs-ex-gain-group");
-    if (!isOwrxAdmin()) {
-      exGain.profile = profileValue;
-      exGain.supported = true;
-      exGain.baseline = null;
-      exGain.canSave = false;
-      exGain.stale = false;
-      if (grp) grp.hidden = false;
-      exploreGainShowPreview();
-      exploreGainControlsEnabled(false);
-      exploreGainSetStatus("Log into OpenWebRX Settings (admin) in this browser to adjust hardware gain.");
-      return;
-    }
+    /* Always try the profile form — do not trust the /settings scrape alone.
+       A false “not admin” probe used to leave every control HTML-disabled. */
     if (exGain.loading) return;
     exGain.loading = true;
+    if (grp) grp.hidden = false;
     exploreGainSetStatus("Loading profile gain…");
     fetchProfileAdminForm(profileValue, function (err, result) {
       exGain.loading = false;
@@ -23421,18 +23726,25 @@ Plugins.toolbox.init = function () {
         exGain.baseline = null;
         exGain.canSave = false;
         exGain.stale = false;
-        if (grp) grp.hidden = false;
-        exploreGainControlsEnabled(false);
-        exploreGainSetStatus("Admin login required — open /settings in this browser.");
+        exploreGainShowPreview();
+        exploreGainSetStatus(
+          "Settings admin login required in this browser (page/Basic auth is not enough). " +
+          "Open Settings → log in → Retry. Toolbox v" + (Plugins.toolbox._version || "?") + "."
+        );
         return;
       }
       var params = result && result.params;
       var form = result && result.form;
       if (err || !params || !form) {
         exploreGainShowPreview();
-        exploreGainSetStatus("Could not load profile gain fields — showing preview.");
+        exploreGainSetStatus(
+          "Could not load profile gain (“" + ((err && err.message) || "error") +
+          "”) — Open Settings, confirm admin login, then Retry."
+        );
         return;
       }
+      owrxAdmin = true;
+      try { syncSettingsAdminGate(); } catch (eOk) {}
       exploreGainSetLabels(family);
       exploreGainPopulateFromResult(form, params);
       if (!exGain.supported) {
@@ -23447,7 +23759,10 @@ Plugins.toolbox.init = function () {
       if (grp) grp.hidden = false;
       exploreGainControlsEnabled(true);
       if (family === "rtl") {
-        exploreGainSetStatus("RTL tuner gain · Auto = AGC · Manual = dB · saves into this profile.");
+        exploreGainSetStatus(
+          "RTL tuner (Toolbox v" + (Plugins.toolbox._version || "?") +
+          ") — pick a listed dB step or Auto. Saves apply live (two-step write)."
+        );
       } else if (family === "sdrplay") {
         exploreGainSetStatus(
           "Higher reduction = less signal · saves into this profile. " +
@@ -24751,6 +25066,18 @@ Plugins.toolbox.init = function () {
         exploreGainScheduleSave();
       };
     }
+    if ($("bs-ex-gain-retry")) {
+      $("bs-ex-gain-retry").onclick = function () {
+        owrxAdmin = null;
+        owrxAdminProbeAt = 0;
+        exGain.stale = true;
+        exGain.profile = "";
+        exploreGainSetStatus("Re-checking Settings admin…");
+        refreshOwrxAdmin(function () {
+          exploreGainMaybeLoad();
+        });
+      };
+    }
     exploreFillModes();
     exploreSyncRadioUi();
     bindExploreExtras();
@@ -25541,6 +25868,9 @@ Plugins.toolbox.init = function () {
     exploreFillProfiles();
     exploreSyncRadioUi();
     setInterval(function () {
+      /* Panel closed → leave stock alone (no gain fetch / radio sync / dial mirror). */
+      var panel = $("bs-panel");
+      if (!panel || panel.hidden) return;
       if (!exploreCanvas() || !exploreCanvas()._bs_ex_handlers) exploreInstallHandlers();
       exploreRefreshReadout();
     }, 500);
