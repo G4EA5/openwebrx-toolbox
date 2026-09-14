@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 421;
+  Plugins.toolbox._version = 422;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -1331,6 +1331,23 @@ Plugins.toolbox.init = function () {
     needleAng: null,
     mouseHz: null,
     scopeRaf: 0
+  };
+  var exGain = {
+    profile: "",
+    baseline: null,
+    loading: false,
+    saving: false,
+    saveTimer: null,
+    supported: false,
+    hasRf: false,
+    hasIf: false,
+    rfSelect: false,
+    ifAgc: true,
+    rfMin: 0,
+    rfMax: 27,
+    ifMin: 0,
+    ifMax: 59,
+    stale: true
   };
   var bsInternalTune = false;
   var lastManualTuneAt = 0;
@@ -4428,11 +4445,19 @@ Plugins.toolbox.init = function () {
         var ok = res.status === 200 && res.type !== "opaqueredirect";
         owrxAdmin = ok;
         try { syncSettingsAdminGate(); } catch (eG) {}
+        try {
+          exGain.stale = true;
+          exploreGainMaybeLoad();
+        } catch (eGainAdm) {}
         if (done) done(ok);
       })
       .catch(function () {
         owrxAdmin = false;
         try { syncSettingsAdminGate(); } catch (eG2) {}
+        try {
+          exGain.stale = true;
+          exploreGainMaybeLoad();
+        } catch (eGainAdm2) {}
         if (done) done(false);
       });
   }
@@ -20118,7 +20143,7 @@ Plugins.toolbox.init = function () {
       "</div></div></section>" +
       /* —— Receiver —— */
       '<section class="bs-box bs-ex-box bs-ex-box-collapse bs-ex-box-radio" id="bs-ex-box-radio" aria-label="Receiver">' +
-      exBoxHeadHtml("Receiver", "mode · squelch · REC") +
+      exBoxHeadHtml("Receiver", "mode · squelch · gain · REC") +
       '<div class="bs-ex-radio" id="bs-ex-radio">' +
       '<div class="bs-opt-grid bs-ex-opt-grid" id="bs-ex-radio-grid">' +
       '<div class="bs-opt-group bs-opt-group-wide">' +
@@ -20152,6 +20177,20 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-ex-btn bs-btn-util" id="bs-ex-nest" title="Channel-grid nest scan: step while SQL closed, pause while open.">Nest scan</button>' +
       '<span class="bs-count" id="bs-ex-rec-lab"></span>' +
       "</div></div>" +
+      '<div class="bs-opt-group bs-opt-group-wide bs-ex-gain-group" id="bs-ex-gain-group" hidden>' +
+      '<span class="bs-opt-lab" title="SDRplay RSP — RF and IF gain reduction (higher = less signal). Saves into the active OpenWebRX profile.">RSP gain</span>' +
+      '<div class="bs-row bs-ex-gain-row">' +
+      '<label class="bs-ex-fader-lab bs-ex-gain-rf" id="bs-ex-gain-rf-wrap" hidden>RF ' +
+      '<select id="bs-ex-rf-gain-sel" class="bs-ex-gain-sel" hidden></select>' +
+      '<input type="range" id="bs-ex-rf-gain" min="0" max="27" step="1" value="0">' +
+      '<span id="bs-ex-rf-gain-val">0</span></label>' +
+      '<label class="bs-ex-fader-lab bs-ex-gain-if" id="bs-ex-gain-if-wrap" hidden>IF ' +
+      '<select id="bs-ex-if-gain-mode" class="bs-ex-gain-sel" title="IF gain — AGC or manual reduction.">' +
+      '<option value="auto">AGC</option><option value="manual">Manual</option></select>' +
+      '<input type="range" id="bs-ex-if-gain" min="0" max="59" step="1" value="0">' +
+      '<span id="bs-ex-if-gain-val">AGC</span></label>' +
+      "</div>" +
+      '<p class="bs-ex-tip" id="bs-ex-gain-status">—</p>' +
       "</div></div></section>" +
       /* —— IF / passband —— */
       '<section class="bs-box bs-ex-box bs-ex-box-collapse bs-ex-box-if" id="bs-ex-box-if" data-extra="exIf" aria-label="IF passband">' +
@@ -22748,6 +22787,329 @@ Plugins.toolbox.init = function () {
     if ($("bs-ex-nr-val")) $("bs-ex-nr-val").textContent = v + " dB";
   }
 
+  function parseSoapyGainString(raw) {
+    var out = { rf: null, ifg: null, string: false };
+    if (raw == null || raw === "") return out;
+    var s = String(raw);
+    if (!/RFGR|IFGR/i.test(s)) return out;
+    out.string = true;
+    s.split(/[,;]/).forEach(function (part) {
+      var m = part.trim().match(/^RFGR\s*=\s*(\d+)/i);
+      if (m) out.rf = Number(m[1]);
+      m = part.trim().match(/^IFGR\s*=\s*(\d+)/i);
+      if (m) out.ifg = Number(m[1]);
+    });
+    return out;
+  }
+
+  function adminFormFieldMeta(form, name) {
+    if (!form || !name) return null;
+    var esc = name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    var sel = form.querySelector('select[name="' + esc + '"]:not([disabled])');
+    if (sel) {
+      return {
+        kind: "select",
+        value: sel.value,
+        options: Array.prototype.map.call(sel.options || [], function (o) {
+          return { value: o.value, label: String(o.textContent || "").replace(/\s+/g, " ").trim() };
+        })
+      };
+    }
+    var num = form.querySelector('input[name="' + esc + '"]:not([disabled])');
+    if (num) {
+      return {
+        kind: "number",
+        value: num.value,
+        min: num.min !== "" && isFinite(Number(num.min)) ? Number(num.min) : 0,
+        max: num.max !== "" && isFinite(Number(num.max)) ? Number(num.max) : 100,
+        step: num.step !== "" && isFinite(Number(num.step)) ? Number(num.step) : 1
+      };
+    }
+    return null;
+  }
+
+  function exploreGainSetStatus(msg) {
+    var el = $("bs-ex-gain-status");
+    if (el) el.textContent = msg || "—";
+  }
+
+  function exploreGainHide() {
+    exGain.supported = false;
+    exGain.profile = "";
+    exGain.baseline = null;
+    var grp = $("bs-ex-gain-group");
+    if (grp) grp.hidden = true;
+  }
+
+  function exploreGainControlsEnabled(on) {
+    ["bs-ex-rf-gain", "bs-ex-rf-gain-sel", "bs-ex-if-gain", "bs-ex-if-gain-mode"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !on;
+    });
+  }
+
+  function exploreGainSyncRfUi() {
+    var rfRange = $("bs-ex-rf-gain");
+    var rfSel = $("bs-ex-rf-gain-sel");
+    var rfVal = $("bs-ex-rf-gain-val");
+    var v = exGain.rfSelect && rfSel ? rfSel.value : (rfRange ? rfRange.value : "");
+    if (rfVal) rfVal.textContent = v === "" ? "—" : String(v);
+    if (rfRange && rfSel && exGain.rfSelect) {
+      rfRange.value = v;
+      rfRange.hidden = true;
+      rfSel.hidden = false;
+    } else if (rfRange) {
+      rfRange.hidden = false;
+      if (rfSel) rfSel.hidden = true;
+    }
+  }
+
+  function exploreGainSyncIfUi() {
+    var mode = $("bs-ex-if-gain-mode");
+    var ifRange = $("bs-ex-if-gain");
+    var ifVal = $("bs-ex-if-gain-val");
+    var agc = !!(mode && mode.value === "auto");
+    exGain.ifAgc = agc;
+    if (ifRange) ifRange.disabled = agc || !isOwrxAdmin();
+    if (ifVal) {
+      ifVal.textContent = agc ? "AGC" : (ifRange ? String(ifRange.value) : "—");
+    }
+  }
+
+  function exploreGainPopulateFromResult(form, params) {
+    var soapy = parseSoapyGainString(params.get("rf_gain"));
+    var rfMeta = adminFormFieldMeta(form, "rfgain_sel");
+    var gainSel = adminFormSelectInfo(form, "rf_gain-select");
+    var gainManualMeta = adminFormFieldMeta(form, "rf_gain-manual");
+    exGain.hasRf = !!(rfMeta || params.has("rfgain_sel") || soapy.rf != null);
+    exGain.hasIf = !!(gainSel || gainManualMeta || params.has("rf_gain-select") ||
+      params.has("rf_gain-manual") || soapy.ifg != null || soapy.string);
+    exGain.supported = exGain.hasRf || exGain.hasIf;
+    exGain.rfSelect = !!(rfMeta && rfMeta.kind === "select");
+    if (rfMeta && rfMeta.kind === "number") {
+      exGain.rfMin = rfMeta.min;
+      exGain.rfMax = rfMeta.max;
+    } else if (rfMeta && rfMeta.kind === "select" && rfMeta.options.length) {
+      exGain.rfMin = 0;
+      exGain.rfMax = Math.max(0, rfMeta.options.length - 1);
+    } else {
+      exGain.rfMin = 0;
+      exGain.rfMax = 27;
+    }
+    if (gainManualMeta && gainManualMeta.kind === "number") {
+      exGain.ifMin = gainManualMeta.min;
+      exGain.ifMax = gainManualMeta.max;
+    } else {
+      exGain.ifMin = 0;
+      exGain.ifMax = 59;
+    }
+    var rfWrap = $("bs-ex-gain-rf-wrap");
+    var ifWrap = $("bs-ex-gain-if-wrap");
+    if (rfWrap) rfWrap.hidden = !exGain.hasRf;
+    if (ifWrap) ifWrap.hidden = !exGain.hasIf;
+    var rfRange = $("bs-ex-rf-gain");
+    var rfSel = $("bs-ex-rf-gain-sel");
+    if (rfRange) {
+      rfRange.min = String(exGain.rfMin);
+      rfRange.max = String(exGain.rfMax);
+      rfRange.step = "1";
+    }
+    var rfWant = params.get("rfgain_sel");
+    if (rfWant == null && soapy.rf != null) rfWant = String(soapy.rf);
+    if (rfWant == null && rfMeta && rfMeta.value != null) rfWant = String(rfMeta.value);
+    if (exGain.rfSelect && rfSel && rfMeta && rfMeta.options) {
+      fillToolboxSelect(rfSel, rfMeta.options, rfWant, { includeUnset: false });
+    } else if (rfRange && rfWant != null) {
+      rfRange.value = rfWant;
+    }
+    var ifRange = $("bs-ex-if-gain");
+    if (ifRange) {
+      ifRange.min = String(exGain.ifMin);
+      ifRange.max = String(exGain.ifMax);
+      ifRange.step = "1";
+    }
+    var ifMode = $("bs-ex-if-gain-mode");
+    var agc = true;
+    if (gainSel && gainSel.value) {
+      agc = String(gainSel.value) === "auto";
+    } else if (params.get("rf_gain-select")) {
+      agc = String(params.get("rf_gain-select")) === "auto";
+    } else if (soapy.ifg != null) {
+      agc = false;
+    } else if (params.get("rf_gain") != null && !soapy.string && !isFinite(Number(params.get("rf_gain")))) {
+      agc = String(params.get("rf_gain")) === "auto";
+    }
+    if (ifMode) ifMode.value = agc ? "auto" : "manual";
+    var ifWant = params.get("rf_gain-manual");
+    if (ifWant == null && soapy.ifg != null) ifWant = String(soapy.ifg);
+    if (ifWant == null && gainManualMeta && gainManualMeta.value != null) ifWant = String(gainManualMeta.value);
+    if (ifWant == null && params.get("rf_gain") != null && isFinite(Number(params.get("rf_gain")))) {
+      ifWant = String(params.get("rf_gain"));
+      agc = false;
+      if (ifMode) ifMode.value = "manual";
+    }
+    if (ifRange && ifWant != null && !agc) ifRange.value = ifWant;
+    exploreGainSyncRfUi();
+    exploreGainSyncIfUi();
+  }
+
+  function exploreGainApplyToParams(params) {
+    if (!params) return;
+    var rfRange = $("bs-ex-rf-gain");
+    var rfSel = $("bs-ex-rf-gain-sel");
+    var ifMode = $("bs-ex-if-gain-mode");
+    var ifRange = $("bs-ex-if-gain");
+    var rfVal = exGain.rfSelect && rfSel ? String(rfSel.value || "") :
+      (rfRange ? String(rfRange.value || "") : "");
+    var agc = !!(ifMode && ifMode.value === "auto");
+    var ifVal = ifRange ? String(ifRange.value || "") : "";
+    var baseRf = params.get("rf_gain");
+    var soapy = parseSoapyGainString(baseRf);
+    if (soapy.string || (exGain.hasRf && exGain.hasIf && /RFGR|IFGR/i.test(String(baseRf || "")))) {
+      var parts = [];
+      if (exGain.hasRf && rfVal !== "") parts.push("RFGR=" + rfVal);
+      if (exGain.hasIf && !agc && ifVal !== "") parts.push("IFGR=" + ifVal);
+      if (parts.length) {
+        params.set("rf_gain", parts.join(","));
+        params.delete("rf_gain-select");
+        params.delete("rf_gain-manual");
+      }
+      if (exGain.hasRf && rfVal !== "" && params.has("rfgain_sel")) params.set("rfgain_sel", rfVal);
+      return;
+    }
+    if (exGain.hasRf && rfVal !== "") params.set("rfgain_sel", rfVal);
+    if (exGain.hasIf) {
+      if (agc) {
+        params.set("rf_gain-select", "auto");
+        params.delete("rf_gain-manual");
+      } else {
+        params.set("rf_gain-select", "manual");
+        if (ifVal !== "") params.set("rf_gain-manual", ifVal);
+      }
+    }
+  }
+
+  function exploreGainSaveNow() {
+    if (!exGain.supported || !exGain.baseline || exGain.saving) return;
+    if (!isOwrxAdmin()) {
+      exploreGainSetStatus("Admin login required — log into OpenWebRX Settings, then retry.");
+      return;
+    }
+    var prof = currentProfileValue();
+    if (!prof || prof !== exGain.profile) {
+      exGain.stale = true;
+      exploreGainMaybeLoad();
+      return;
+    }
+    var params = new URLSearchParams(exGain.baseline.toString());
+    exploreGainApplyToParams(params);
+    exGain.saving = true;
+    exploreGainSetStatus("Saving gain to profile…");
+    updateOpenwebrxProfile(prof, params.toString(), function (err) {
+      exGain.saving = false;
+      if (err && err.message === "admin") {
+        owrxAdmin = false;
+        try { syncSettingsAdminGate(); } catch (eG) {}
+        exploreGainControlsEnabled(false);
+        exploreGainSetStatus("Admin login required — open /settings in this browser.");
+        return;
+      }
+      if (err) {
+        exploreGainSetStatus("Save failed — open OpenWebRX Settings and retry.");
+        try { toast("RSP gain save failed."); } catch (eT) {}
+        return;
+      }
+      exGain.baseline = params;
+      exploreGainSetStatus("Saved to profile — switch band away and back if gain does not update.");
+      try { toast("RSP gain saved."); } catch (eT2) {}
+    });
+  }
+
+  function exploreGainScheduleSave() {
+    if (exGain.saveTimer) clearTimeout(exGain.saveTimer);
+    exGain.saveTimer = setTimeout(function () {
+      exGain.saveTimer = null;
+      exploreGainSaveNow();
+    }, 450);
+  }
+
+  function exploreGainLoad(profileValue) {
+    profileValue = String(profileValue || "");
+    if (!profileValue || detectSdrKind() !== "sdrplay") {
+      exploreGainHide();
+      return;
+    }
+    var grp = $("bs-ex-gain-group");
+    if (!isOwrxAdmin()) {
+      exGain.profile = profileValue;
+      exGain.supported = true;
+      exGain.baseline = null;
+      exGain.stale = false;
+      if (grp) grp.hidden = false;
+      exploreGainControlsEnabled(false);
+      exploreGainSetStatus("Log into OpenWebRX Settings (admin) in this browser to adjust RSP gain.");
+      return;
+    }
+    if (exGain.loading) return;
+    exGain.loading = true;
+    exploreGainSetStatus("Loading profile gain…");
+    fetchProfileAdminForm(profileValue, function (err, result) {
+      exGain.loading = false;
+      if (err && err.message === "admin") {
+        owrxAdmin = false;
+        try { syncSettingsAdminGate(); } catch (eG) {}
+        exGain.profile = profileValue;
+        exGain.supported = true;
+        exGain.baseline = null;
+        exGain.stale = false;
+        if (grp) grp.hidden = false;
+        exploreGainControlsEnabled(false);
+        exploreGainSetStatus("Admin login required — open /settings in this browser.");
+        return;
+      }
+      var params = result && result.params;
+      var form = result && result.form;
+      if (err || !params || !form) {
+        exploreGainHide();
+        return;
+      }
+      exploreGainPopulateFromResult(form, params);
+      if (!exGain.supported) {
+        exploreGainHide();
+        return;
+      }
+      exGain.profile = profileValue;
+      exGain.baseline = params;
+      exGain.stale = false;
+      if (grp) grp.hidden = false;
+      exploreGainControlsEnabled(true);
+      exploreGainSetStatus("Higher reduction = less signal · saves into this profile.");
+    });
+  }
+
+  function exploreGainMaybeLoad() {
+    if (detectSdrKind() !== "sdrplay") {
+      exploreGainHide();
+      return;
+    }
+    var prof = currentProfileValue();
+    if (!prof) {
+      exploreGainHide();
+      return;
+    }
+    if (prof === exGain.profile && exGain.baseline && !exGain.stale && !exGain.loading) return;
+    if (prof !== exGain.profile) exGain.stale = true;
+    exploreGainLoad(prof);
+  }
+
+  function exploreSyncGainUi() {
+    exploreGainMaybeLoad();
+    if (!exGain.supported) return;
+    var active = document.activeElement && document.activeElement.id;
+    if (active !== "bs-ex-rf-gain" && active !== "bs-ex-rf-gain-sel") exploreGainSyncRfUi();
+    if (active !== "bs-ex-if-gain" && active !== "bs-ex-if-gain-mode") exploreGainSyncIfUi();
+  }
+
   function exploreSyncRadioUi() {
     exploreFillModes();
     var active = document.activeElement && document.activeElement.id;
@@ -22819,6 +23181,7 @@ Plugins.toolbox.init = function () {
     exploreUpdateSmeter();
     exploreSyncExtrasUi();
     try { exploreSyncSqlAutoUi(); } catch (eSql) {}
+    try { exploreSyncGainUi(); } catch (eGain) {}
   }
 
   /* —— Explore extras: S-meter, OWRX controls, VFO A/B, memories —— */
@@ -23967,6 +24330,44 @@ Plugins.toolbox.init = function () {
     if ($("bs-ex-nr-lvl")) {
       $("bs-ex-nr-lvl").oninput = function () { exploreSetNr(this.value); };
       $("bs-ex-nr-lvl").onchange = function () { exploreSetNr(this.value); };
+    }
+    if ($("bs-ex-rf-gain")) {
+      $("bs-ex-rf-gain").oninput = function () {
+        var sel = $("bs-ex-rf-gain-sel");
+        if (sel && exGain.rfSelect) sel.value = this.value;
+        exploreGainSyncRfUi();
+        exploreGainScheduleSave();
+      };
+      $("bs-ex-rf-gain").onchange = function () {
+        var sel = $("bs-ex-rf-gain-sel");
+        if (sel && exGain.rfSelect) sel.value = this.value;
+        exploreGainSyncRfUi();
+        exploreGainScheduleSave();
+      };
+    }
+    if ($("bs-ex-rf-gain-sel")) {
+      $("bs-ex-rf-gain-sel").onchange = function () {
+        var rng = $("bs-ex-rf-gain");
+        if (rng) rng.value = this.value;
+        exploreGainSyncRfUi();
+        exploreGainScheduleSave();
+      };
+    }
+    if ($("bs-ex-if-gain-mode")) {
+      $("bs-ex-if-gain-mode").onchange = function () {
+        exploreGainSyncIfUi();
+        exploreGainScheduleSave();
+      };
+    }
+    if ($("bs-ex-if-gain")) {
+      $("bs-ex-if-gain").oninput = function () {
+        exploreGainSyncIfUi();
+        exploreGainScheduleSave();
+      };
+      $("bs-ex-if-gain").onchange = function () {
+        exploreGainSyncIfUi();
+        exploreGainScheduleSave();
+      };
     }
     exploreFillModes();
     exploreSyncRadioUi();

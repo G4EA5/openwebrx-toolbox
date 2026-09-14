@@ -1,5 +1,11 @@
 # Changelog
 
+## [422] — Explore: RSP RF / IF gain (SDRplay)
+
+- **Explore → Receiver** shows **RSP gain** when the active SDR is SDRplay / RSP (device id or ~8 MHz+ span heuristic).
+- **RF gain reduction** and **IF gain** (AGC or manual) load from the OpenWebRX profile admin form and save back on change (admin login required).
+- Matches OpenWebRX field names (`rfgain_sel`, `rf_gain-select` / `rf_gain-manual`, or `RFGR=` / `IFGR=` Soapy strings).
+
 ## [421] — Settings tab always visible (admin unlock hint)
 
 - **Settings** stays in the Toolbox header for everyone (no more “missing tab”).

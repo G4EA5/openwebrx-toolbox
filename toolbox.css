@@ -1149,6 +1149,27 @@ body.bs-ex-box-dnd {
   width: 100%;
 }
 
+#bs-panel #bs-tab-explore .bs-ex-gain-row {
+  flex-wrap: wrap;
+  gap: calc(var(--bs-ex-gap) * 0.75);
+  align-items: flex-start;
+  margin-top: calc(var(--bs-ex-gap) * 0.35);
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-row .bs-ex-fader-lab {
+  flex: 1 1 12em;
+  min-width: min(100%, 12em);
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-sel {
+  font-size: var(--bs-ex-fs-sm);
+  max-width: 6.5em;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-group .bs-ex-tip {
+  margin: calc(var(--bs-ex-gap) * 0.35) 0 0;
+}
+
 #bs-panel #bs-tab-explore .bs-ex-stats {
   gap: calc(var(--bs-ex-gap) * 0.7);
   margin-top: calc(var(--bs-ex-gap) * 0.8);
