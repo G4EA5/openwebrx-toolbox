@@ -1,5 +1,11 @@
 # Changelog
 
+## [439] — Public mode docs match stock OpenWebRX+
+
+Most installs have no Settings → General Toolbox checkbox. README, Help, installer
+messages, and Settings notes now lead with `./install.sh --public` / `--personal`
+and the Toolbox Public tick. Behaviour unchanged for existing installs.
+
 ## [438] — Restore prior gain if Auto save fails mid-step
 
 Two-step gain writes (mid → target / manual-0 → Auto) now keep the pre-save profile

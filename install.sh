@@ -162,7 +162,7 @@ PY
   else
     say "Updated $settings → toolbox_public_mode=false"
   fi
-  say "  Day-to-day on/off: OpenWebRX Settings → General → Toolbox: public / shared receiver mode"
+  say "  Day-to-day: ./install.sh --public / --personal (or Toolbox Extras → Public if no General checkbox)"
 }
 
 ensure_sudo() {
@@ -1342,8 +1342,8 @@ PY
 )"
     case "$tb_pub" in
       true) r_ok "settings.json toolbox_public_mode=true (stock General switch / all visitors)" ;;
-      false) r_info "settings.json toolbox_public_mode=false — turn on in Settings → General when sharing" ;;
-      missing) r_info "settings.json has no toolbox_public_mode yet — run ./install.sh --public/--personal or add the General checkbox patch" ;;
+      false) r_info "settings.json toolbox_public_mode=false — run ./install.sh --public to share" ;;
+      missing) r_info "settings.json has no toolbox_public_mode yet — run ./install.sh --public/--personal" ;;
       *) r_info "settings.json toolbox_public_mode=$tb_pub" ;;
     esac
   fi
@@ -2188,12 +2188,13 @@ run_install() {
   if [[ "$PUBLIC" == 1 ]]; then
     say "  Public:  on (--public bake + settings.json when writable)"
   else
-    say "  Public:  off (Settings → General to enable for all visitors)"
+    say "  Public:  off (use ./install.sh --public later, or Toolbox Extras → Public while Settings-admin)"
   fi
   show_report_path
   show_install_success "$DEST" "$PROFILE"
   say ""
-  say "Public on/off: OpenWebRX Settings → General → Toolbox: public / shared receiver mode"
+  say "Public on/off: ./install.sh --public or --personal (stock OpenWebRX+ has no General checkbox)."
+  say "  If Settings → General shows Toolbox public mode, that row is a patched-host bonus."
   say "Verify later:  ./install.sh --check"
   say "Report only:   ./install.sh --report"
 }
@@ -2212,8 +2213,9 @@ usage() {
   say "  ./install.sh --purge-legacy     Remove old band_survey only (backup first)"
   say "  ./install.sh --profile TYPE     pi | debian | docker | mac-browser | auto"
   say ""
-  say "Public mode day-to-day: OpenWebRX Settings → General → Toolbox: public / shared"
-  say "  (--public/--personal also write toolbox_public_mode into settings.json when writable)."
+  say "Public mode: ./install.sh --public or --personal (writes settings.json when writable)."
+  say "  Stock OpenWebRX+ usually has no General checkbox; that is normal."
+  say "  Patched hosts may also show Settings → General → Toolbox: public / shared."
   say ""
   say "Recommended: Toolbox only. It includes every Band Survey feature and many more."
   say "Do not load band_survey and toolbox together - they clash in the browser."
