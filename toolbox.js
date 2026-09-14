@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 427;
+  Plugins.toolbox._version = 428;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -309,7 +309,7 @@ Plugins.toolbox.init = function () {
     { id: "exLook", label: "Explore · Look", where: "Explore", tip: "Theme, bandplan, opacity, and wheel swap." },
     { id: "exMemories", label: "Explore · Memories", where: "Explore", tip: "Eight memory slots (freq + mode)." },
     { id: "exFind", label: "Explore · Find", where: "Explore", tip: "Search bookmarks, nearest, and copy tune link." },
-    { id: "exHwGain", label: "Explore · hardware gain (always show)", where: "Explore", tip: "Hardware gain already appears in Explore → Receiver for any detected SDR (RTL, SDRplay, HackRF, Airspy, Lime, …). Tick this to force the panel when no device/profile is detected yet (preview). Default off.", defaultOn: false },
+    { id: "exHwGain", label: "Explore · hardware gain (always show)", where: "Explore", tip: "Hardware gain appears in Explore → Receiver for any detected SDR (RTL, SDRplay, HackRF, Airspy, Lime, …). On by default. Untick to hide the force-show override (auto-detect for a live SDR still shows the panel).", defaultOn: true },
     { id: "jumpLoudest", label: "Jump loudest", where: "Bands / Peaks / Explore", tip: "Retune to the strongest peak on the current waterfall tile (skips DC spike and birdies)." },
     { id: "bandEdit", label: "Bands edit", where: "Bands", tip: "Edit OpenWebRX name / centre / mode (admin), plus local alias, hide, note, order." },
     { id: "bandEditAdvanced", label: "Bands edit · full admin fields", where: "Bands", tip: "Shows stock Profile settings (sample rate, initial freq, step) plus Additional optional settings (Add/Remove) like OpenWebRX admin: gain, PPM, Bias-Tee, Direct Sampling, waterfall, etc." },
@@ -1698,6 +1698,21 @@ Plugins.toolbox.init = function () {
       if (e.id === "publicMode") return;
       S.extras[e.id] = true;
     });
+    saveSettings();
+    try { fillExtrasForm(); } catch (eF) {}
+    try { applyExtrasUi(); } catch (eA) {}
+  }
+
+  /** One-time: hardware gain Extra used to default off — turn it on. */
+  function maybePromoteExHwGainOnV428() {
+    try {
+      if (window.localStorage.getItem("owrx_toolbox_ex_hw_gain_on_v428") === "1") return;
+      window.localStorage.setItem("owrx_toolbox_ex_hw_gain_on_v428", "1");
+    } catch (e) {
+      return;
+    }
+    if (!S.extras) S.extras = extrasDefaults();
+    S.extras.exHwGain = true;
     saveSettings();
     try { fillExtrasForm(); } catch (eF) {}
     try { applyExtrasUi(); } catch (eA) {}
@@ -21090,6 +21105,7 @@ Plugins.toolbox.init = function () {
     applyExtrasUi();
     maybePromoteExtrasDefaultAll();
     maybePromoteExtrasAllOnV316();
+    maybePromoteExHwGainOnV428();
     maybePromotePublicExtrasDefaultAll();
     bindExtrasKeyboard();
     bindExclusiveTabOpts();

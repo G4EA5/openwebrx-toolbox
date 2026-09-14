@@ -1,5 +1,9 @@
 # Changelog
 
+## [428] — Hardware gain Extra on by default
+
+- Settings → Extras → **Explore · hardware gain (always show)** defaults **on** (and one-time promote for existing installs).
+
 ## [427] — Hardware gain auto for all SDRs
 
 - Explore → Receiver **hardware gain** auto-shows for any detected SDR (RTL, SDRplay/RSP, HackRF, Airspy, Lime, Soapy, …), not only RTL/RSP.
