@@ -1,5 +1,33 @@
 # Changelog
 
+## [427] — Hardware gain auto for all SDRs
+
+- Explore → Receiver **hardware gain** auto-shows for any detected SDR (RTL, SDRplay/RSP, HackRF, Airspy, Lime, Soapy, …), not only RTL/RSP.
+- HackRF / Airspy / Lime: **Manual** overall gain plus **Stages** (LNA/VGA/…) when OpenWebRX exposes them.
+- Extra **Explore · hardware gain (always show)** only forces a preview when no device/profile is detected.
+
+## [426] — RTL hardware gain in Explore (same as RSP)
+
+- **RTL-SDR** (and RTL Soapy / rtl_tcp): **RTL gain** Auto/Manual appears automatically in Explore → Receiver.
+- Extra renamed to **Explore · hardware gain (always show)** (old RSP tick still migrates). Force-shows preview on other SDRs.
+- SDRplay still auto-shows **RSP gain** (RF + IF).
+
+## [425] — Auto-show RSP gain on SDRplay
+
+- **Explore → Receiver → RSP gain** appears automatically when the active SDR is detected as SDRplay / RSP.
+- Settings Extra **Explore · RSP gain (always show)** (default off) forces the block on other SDRs for preview.
+
+## [424] — RSP gain preview: RF slider + IF Auto
+
+- Preview mode (non‑SDRplay) lets you move **RF** and switch IF **Auto / Manual**; changes are not saved.
+- IF mode label is **Auto** (hardware AGC). RF has no Auto — OpenWebRX only exposes RF gain reduction.
+- Fixed a bug where preview disabled RF while still enabling the IF slider for admins.
+
+## [423] — Settings toggle for Explore RSP gain
+
+- New Extra **Explore · RSP gain** (default **off**) under Settings → Extras → Listening.
+- When on, **Explore → Receiver** shows the **RSP gain** block (RF / IF). On non‑SDRplay SDRs it is a preview; on RSP + admin it loads/saves the profile.
+
 ## [422] — Explore: RSP RF / IF gain (SDRplay)
 
 - **Explore → Receiver** shows **RSP gain** when the active SDR is SDRplay / RSP (device id or ~8 MHz+ span heuristic).

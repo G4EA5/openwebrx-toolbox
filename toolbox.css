@@ -1170,6 +1170,19 @@ body.bs-ex-box-dnd {
   margin: calc(var(--bs-ex-gap) * 0.35) 0 0;
 }
 
+#bs-panel #bs-tab-explore .bs-ex-gain-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--bs-ex-gap) * 0.65);
+  margin-top: calc(var(--bs-ex-gap) * 0.45);
+  width: 100%;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-stage {
+  flex: 1 1 9em;
+  min-width: min(100%, 9em);
+}
+
 #bs-panel #bs-tab-explore .bs-ex-stats {
   gap: calc(var(--bs-ex-gap) * 0.7);
   margin-top: calc(var(--bs-ex-gap) * 0.8);

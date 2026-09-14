@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 422;
+  Plugins.toolbox._version = 427;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -309,6 +309,7 @@ Plugins.toolbox.init = function () {
     { id: "exLook", label: "Explore · Look", where: "Explore", tip: "Theme, bandplan, opacity, and wheel swap." },
     { id: "exMemories", label: "Explore · Memories", where: "Explore", tip: "Eight memory slots (freq + mode)." },
     { id: "exFind", label: "Explore · Find", where: "Explore", tip: "Search bookmarks, nearest, and copy tune link." },
+    { id: "exHwGain", label: "Explore · hardware gain (always show)", where: "Explore", tip: "Hardware gain already appears in Explore → Receiver for any detected SDR (RTL, SDRplay, HackRF, Airspy, Lime, …). Tick this to force the panel when no device/profile is detected yet (preview). Default off.", defaultOn: false },
     { id: "jumpLoudest", label: "Jump loudest", where: "Bands / Peaks / Explore", tip: "Retune to the strongest peak on the current waterfall tile (skips DC spike and birdies)." },
     { id: "bandEdit", label: "Bands edit", where: "Bands", tip: "Edit OpenWebRX name / centre / mode (admin), plus local alias, hide, note, order." },
     { id: "bandEditAdvanced", label: "Bands edit · full admin fields", where: "Bands", tip: "Shows stock Profile settings (sample rate, initial freq, step) plus Additional optional settings (Add/Remove) like OpenWebRX admin: gain, PPM, Bias-Tee, Direct Sampling, waterfall, etc." },
@@ -329,7 +330,7 @@ Plugins.toolbox.init = function () {
   /* —— Optional UX feel layers (Settings → UX feel). Off = classic Toolbox. —— */
   var UX_LEAN_HIDE_TABS = ["range", "analyzer", "skip", "help"];
   var UX_SIMPLE_SOFT_OFF = [
-    "exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind",
+    "exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind", "exHwGain",
     "digiSurvey", "bandPacks", "spectrumHistory", "occHeatmap", "surveyDiff",
     "speechToText", "nearbyTraffic", "homelabWebhook", "bandEditAdvanced",
     "rangePresets", "rangeModeLock", "rangeAutoBm", "rangeRepeat", "rangeCoverage", "rangeSpecDiff", "rangeHopCap"
@@ -351,7 +352,7 @@ Plugins.toolbox.init = function () {
     power: "Power user"
   };
   var EXTRAS_JOB_GROUPS = [
-    { id: "listening", label: "Listening", ids: ["exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind", "keyboard", "jumpLoudest"] },
+    { id: "listening", label: "Listening", ids: ["exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind", "exHwGain", "keyboard", "jumpLoudest"] },
     { id: "survey", label: "Survey & peaks", ids: ["digiSurvey", "dayNightBands", "whatsNew", "surveyDiff", "occHeatmap", "shareReport", "nearbyTraffic", "peakNativeBm", "spectrumHistory", "sendToScanner", "rangePresets", "rangeModeLock", "rangeAutoBm", "rangeRepeat", "rangeCoverage", "rangeSpecDiff", "rangeHopCap"] },
     { id: "bookmarks", label: "Bookmarks", ids: ["bmFiles", "watchlist", "sessionLog", "scanOrder", "freqNotes", "copyTuneLink", "userBmShortcuts"] },
     { id: "recording", label: "Recording & audio", ids: ["clipMeta", "recCaps", "speechToText"] },
@@ -1347,7 +1348,13 @@ Plugins.toolbox.init = function () {
     rfMax: 27,
     ifMin: 0,
     ifMax: 59,
-    stale: true
+    stale: true,
+    canEdit: false,
+    canSave: false,
+    family: "",
+    stages: [],
+    stageValues: {},
+    modeOptions: null
   };
   var bsInternalTune = false;
   var lastManualTuneAt = 0;
@@ -1623,6 +1630,10 @@ Plugins.toolbox.init = function () {
     EXTRAS_DEFS.forEach(function (e) {
       if (typeof raw[e.id] === "boolean") d[e.id] = raw[e.id];
     });
+    /* Renamed Explore · RSP gain → hardware gain (always show). */
+    if (typeof raw.exHwGain !== "boolean" && typeof raw.exRspGain === "boolean") {
+      d.exHwGain = !!raw.exRspGain;
+    }
     /* Old mistaken "auto scan bands" extra → Start OpenWebRX+ auto-click.
        Do NOT touch S here — sanitizeExtras runs during loadSettings() before S exists. */
     if (raw.autoStartSurvey) d.autoStartOwrx = true;
@@ -2204,6 +2215,10 @@ Plugins.toolbox.init = function () {
       var hideWhenOff = id.indexOf("range") === 0 ||
         (el.classList && el.classList.contains("bs-range-extra-row")) ||
         !!(el.closest && el.closest("#bs-tab-range") && id.indexOf("range") === 0);
+      /* exHwGain: visibility is auto (RSP / RTL) or forced by Extra — handled in exploreGainMaybeLoad. */
+      if (id === "exHwGain" || id === "exRspGain") {
+        return;
+      }
       if (hideWhenOff) {
         el.hidden = !on;
         el.classList.remove("bs-extra-off");
@@ -2286,6 +2301,12 @@ Plugins.toolbox.init = function () {
       if (typeof fitExplorePack === "function") fitExplorePack();
       /* Do not packSettingsMasonry / packExtrasMasonry here — ticking extras must not reshuffle Settings. */
     } catch (eEx) {}
+    try {
+      if (typeof exploreGainMaybeLoad === "function") {
+        exGain.stale = true;
+        exploreGainMaybeLoad();
+      }
+    } catch (eGainEx) {}
   }
 
   function applyPublicModeExtra() {
@@ -20177,19 +20198,20 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-ex-btn bs-btn-util" id="bs-ex-nest" title="Channel-grid nest scan: step while SQL closed, pause while open.">Nest scan</button>' +
       '<span class="bs-count" id="bs-ex-rec-lab"></span>' +
       "</div></div>" +
-      '<div class="bs-opt-group bs-opt-group-wide bs-ex-gain-group" id="bs-ex-gain-group" hidden>' +
-      '<span class="bs-opt-lab" title="SDRplay RSP — RF and IF gain reduction (higher = less signal). Saves into the active OpenWebRX profile.">RSP gain</span>' +
+      '<div class="bs-opt-group bs-opt-group-wide bs-ex-gain-group" id="bs-ex-gain-group" data-extra="exHwGain" hidden>' +
+      '<span class="bs-opt-lab" id="bs-ex-gain-lab" title="Hardware gain from the OpenWebRX profile. Auto-shown for any detected SDR. Settings → Extras → Explore · hardware gain (always show) forces a preview when needed.">Hardware gain</span>' +
       '<div class="bs-row bs-ex-gain-row">' +
-      '<label class="bs-ex-fader-lab bs-ex-gain-rf" id="bs-ex-gain-rf-wrap" hidden>RF ' +
+      '<label class="bs-ex-fader-lab bs-ex-gain-rf" id="bs-ex-gain-rf-wrap" hidden><span id="bs-ex-gain-rf-name">RF</span> ' +
       '<select id="bs-ex-rf-gain-sel" class="bs-ex-gain-sel" hidden></select>' +
       '<input type="range" id="bs-ex-rf-gain" min="0" max="27" step="1" value="0">' +
       '<span id="bs-ex-rf-gain-val">0</span></label>' +
-      '<label class="bs-ex-fader-lab bs-ex-gain-if" id="bs-ex-gain-if-wrap" hidden>IF ' +
-      '<select id="bs-ex-if-gain-mode" class="bs-ex-gain-sel" title="IF gain — AGC or manual reduction.">' +
-      '<option value="auto">AGC</option><option value="manual">Manual</option></select>' +
+      '<label class="bs-ex-fader-lab bs-ex-gain-if" id="bs-ex-gain-if-wrap" hidden><span id="bs-ex-gain-if-name">Gain</span> ' +
+      '<select id="bs-ex-if-gain-mode" class="bs-ex-gain-sel" title="Auto = hardware AGC; Manual = overall gain; Stages = per-stage (HackRF / Airspy / Lime).">' +
+      '<option value="auto">Auto</option><option value="manual">Manual</option><option value="stages">Stages</option></select>' +
       '<input type="range" id="bs-ex-if-gain" min="0" max="59" step="1" value="0">' +
-      '<span id="bs-ex-if-gain-val">AGC</span></label>' +
+      '<span id="bs-ex-if-gain-val">Auto</span></label>' +
       "</div>" +
+      '<div class="bs-ex-gain-stages" id="bs-ex-gain-stages" hidden></div>' +
       '<p class="bs-ex-tip" id="bs-ex-gain-status">—</p>' +
       "</div></div></section>" +
       /* —— IF / passband —— */
@@ -22837,15 +22859,42 @@ Plugins.toolbox.init = function () {
     exGain.supported = false;
     exGain.profile = "";
     exGain.baseline = null;
+    exGain.canEdit = false;
+    exGain.canSave = false;
+    exGain.stages = [];
+    exGain.stageValues = {};
     var grp = $("bs-ex-gain-group");
     if (grp) grp.hidden = true;
+    var host = $("bs-ex-gain-stages");
+    if (host) {
+      host.innerHTML = "";
+      host.hidden = true;
+    }
+  }
+
+  function exploreGainApplyEnabled() {
+    var edit = !!exGain.canEdit;
+    ["bs-ex-rf-gain", "bs-ex-rf-gain-sel", "bs-ex-if-gain-mode"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !edit;
+    });
+    var mode = $("bs-ex-if-gain-mode");
+    var modeVal = mode ? String(mode.value || "") : "";
+    var ifRange = $("bs-ex-if-gain");
+    var stages = modeVal === "stages";
+    var agc = modeVal === "auto";
+    if (ifRange) ifRange.disabled = !edit || agc || stages;
+    var host = $("bs-ex-gain-stages");
+    if (host) {
+      Array.prototype.forEach.call(host.querySelectorAll("input"), function (inp) {
+        inp.disabled = !edit || !stages;
+      });
+    }
   }
 
   function exploreGainControlsEnabled(on) {
-    ["bs-ex-rf-gain", "bs-ex-rf-gain-sel", "bs-ex-if-gain", "bs-ex-if-gain-mode"].forEach(function (id) {
-      var el = $(id);
-      if (el) el.disabled = !on;
-    });
+    exGain.canEdit = !!on;
+    exploreGainApplyEnabled();
   }
 
   function exploreGainSyncRfUi() {
@@ -22862,29 +22911,156 @@ Plugins.toolbox.init = function () {
       rfRange.hidden = false;
       if (rfSel) rfSel.hidden = true;
     }
+    exploreGainApplyEnabled();
   }
 
   function exploreGainSyncIfUi() {
     var mode = $("bs-ex-if-gain-mode");
     var ifRange = $("bs-ex-if-gain");
     var ifVal = $("bs-ex-if-gain-val");
-    var agc = !!(mode && mode.value === "auto");
+    var host = $("bs-ex-gain-stages");
+    var modeVal = mode ? String(mode.value || "manual") : "manual";
+    var agc = modeVal === "auto";
+    var stages = modeVal === "stages";
     exGain.ifAgc = agc;
-    if (ifRange) ifRange.disabled = agc || !isOwrxAdmin();
+    if (ifRange) ifRange.hidden = !!stages;
+    if (host) host.hidden = !stages || !(exGain.stages && exGain.stages.length);
     if (ifVal) {
-      ifVal.textContent = agc ? "AGC" : (ifRange ? String(ifRange.value) : "—");
+      if (agc) ifVal.textContent = "Auto";
+      else if (stages) ifVal.textContent = "Stages";
+      else ifVal.textContent = ifRange ? String(ifRange.value) : "—";
+    }
+    exploreGainApplyEnabled();
+  }
+
+  function exploreGainDefaultStages(family) {
+    if (family === "hackrf") return ["LNA", "AMP", "VGA"];
+    if (family === "airspy") return ["LNA", "MIX", "VGA"];
+    if (family === "lime") return ["TIA", "LNA", "PGA"];
+    return [];
+  }
+
+  function parseSoapyStageMap(raw) {
+    var out = {};
+    if (raw == null || raw === "") return out;
+    String(raw).split(/[,;]/).forEach(function (part) {
+      var m = part.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)$/);
+      if (m) out[m[1]] = String(m[2]).trim();
+    });
+    return out;
+  }
+
+  function exploreGainCollectStages(form, params, family) {
+    var names = [];
+    var values = {};
+    function add(name, val) {
+      if (!name || name === "manual" || name === "select") return;
+      if (/^RFGR$/i.test(name) || /^IFGR$/i.test(name)) return;
+      if (names.indexOf(name) < 0) names.push(name);
+      if (val != null && val !== "" && values[name] == null) values[name] = String(val);
+    }
+    if (form) {
+      Array.prototype.forEach.call(form.querySelectorAll('input[name^="rf_gain-"]'), function (inp) {
+        add(String(inp.name || "").replace(/^rf_gain-/, ""), inp.value);
+      });
+    }
+    var map = parseSoapyStageMap(params && params.get("rf_gain"));
+    Object.keys(map).forEach(function (k) { add(k, map[k]); });
+    if (!names.length) {
+      exploreGainDefaultStages(family).forEach(function (n) { add(n, ""); });
+    }
+    return { names: names, values: values };
+  }
+
+  function exploreGainRenderStages() {
+    var host = $("bs-ex-gain-stages");
+    if (!host) return;
+    var names = exGain.stages || [];
+    if (!names.length) {
+      host.innerHTML = "";
+      host.hidden = true;
+      return;
+    }
+    var html = "";
+    names.forEach(function (name) {
+      var v = exGain.stageValues && exGain.stageValues[name] != null ? exGain.stageValues[name] : "0";
+      html += '<label class="bs-ex-fader-lab bs-ex-gain-stage">' + escapeHtml(name) +
+        ' <input type="range" data-ex-gain-stage="' + escapeHtml(name) +
+        '" min="0" max="62" step="1" value="' + escapeHtml(String(v)) +
+        '"><span class="bs-ex-gain-stage-val">' + escapeHtml(String(v)) + "</span></label>";
+    });
+    host.innerHTML = html;
+    if (!host._bs_gain_stages) {
+      host._bs_gain_stages = true;
+      host.addEventListener("input", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute || !t.getAttribute("data-ex-gain-stage")) return;
+        var name = t.getAttribute("data-ex-gain-stage");
+        if (!exGain.stageValues) exGain.stageValues = {};
+        exGain.stageValues[name] = t.value;
+        var lab = t.parentNode && t.parentNode.querySelector(".bs-ex-gain-stage-val");
+        if (lab) lab.textContent = t.value;
+        exploreGainScheduleSave();
+      });
+      host.addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute || !t.getAttribute("data-ex-gain-stage")) return;
+        exploreGainScheduleSave();
+      });
     }
   }
 
+  function exploreGainFillModeSelect(gainSel, modeWant) {
+    var mode = $("bs-ex-if-gain-mode");
+    if (!mode) return;
+    var opts = [];
+    if (gainSel && gainSel.options && gainSel.options.length) {
+      gainSel.options.forEach(function (o) {
+        var v = String(o.value || "");
+        var label = v === "auto" ? "Auto" : v === "manual" ? "Manual" : v === "stages" ? "Stages" :
+          (o.label || v);
+        opts.push({ value: v, label: label });
+      });
+    }
+    if (!opts.length) {
+      opts = [
+        { value: "auto", label: "Auto" },
+        { value: "manual", label: "Manual" }
+      ];
+      if ((exGain.stages && exGain.stages.length) ||
+          exploreGainDefaultStages(exGain.family).length) {
+        opts.push({ value: "stages", label: "Stages" });
+      }
+    }
+    exGain.modeOptions = opts;
+    fillToolboxSelect(mode, opts, modeWant || "manual", { includeUnset: false });
+  }
+
   function exploreGainPopulateFromResult(form, params) {
+    var family = exGain.family || exploreGainAutoFamily();
     var soapy = parseSoapyGainString(params.get("rf_gain"));
     var rfMeta = adminFormFieldMeta(form, "rfgain_sel");
     var gainSel = adminFormSelectInfo(form, "rf_gain-select");
     var gainManualMeta = adminFormFieldMeta(form, "rf_gain-manual");
+    var stageInfo = exploreGainCollectStages(form, params, family);
+    exGain.stages = stageInfo.names;
+    exGain.stageValues = stageInfo.values;
     exGain.hasRf = !!(rfMeta || params.has("rfgain_sel") || soapy.rf != null);
     exGain.hasIf = !!(gainSel || gainManualMeta || params.has("rf_gain-select") ||
-      params.has("rf_gain-manual") || soapy.ifg != null || soapy.string);
-    exGain.supported = exGain.hasRf || exGain.hasIf;
+      params.has("rf_gain-manual") || soapy.ifg != null || soapy.string ||
+      (stageInfo.names && stageInfo.names.length) ||
+      (params.get("rf_gain") != null && (isFinite(Number(params.get("rf_gain"))) ||
+        String(params.get("rf_gain")) === "auto")));
+    if (family === "rtl") {
+      exGain.hasRf = false;
+      if (!exGain.hasIf) exGain.hasIf = true;
+    }
+    if (family === "sdrplay") {
+      /* RF reduction + IF gain */
+    } else if (family !== "rtl" && !exGain.hasRf && exGain.hasIf) {
+      /* HackRF / Airspy / Lime / Soapy: single GainInput */
+    }
+    exGain.supported = exGain.hasRf || exGain.hasIf || !!(exGain.stages && exGain.stages.length);
     exGain.rfSelect = !!(rfMeta && rfMeta.kind === "select");
     if (rfMeta && rfMeta.kind === "number") {
       exGain.rfMin = rfMeta.min;
@@ -22897,16 +23073,22 @@ Plugins.toolbox.init = function () {
       exGain.rfMax = 27;
     }
     if (gainManualMeta && gainManualMeta.kind === "number") {
-      exGain.ifMin = gainManualMeta.min;
-      exGain.ifMax = gainManualMeta.max;
+      exGain.ifMin = gainManualMeta.min != null ? gainManualMeta.min : 0;
+      exGain.ifMax = gainManualMeta.max != null ? gainManualMeta.max : 62;
+    } else if (family === "rtl") {
+      exGain.ifMin = 0;
+      exGain.ifMax = 49;
     } else {
       exGain.ifMin = 0;
-      exGain.ifMax = 59;
+      exGain.ifMax = 62;
     }
     var rfWrap = $("bs-ex-gain-rf-wrap");
     var ifWrap = $("bs-ex-gain-if-wrap");
     if (rfWrap) rfWrap.hidden = !exGain.hasRf;
-    if (ifWrap) ifWrap.hidden = !exGain.hasIf;
+    if (ifWrap) ifWrap.hidden = !exGain.hasIf && !(exGain.stages && exGain.stages.length);
+    if (exGain.hasIf || (exGain.stages && exGain.stages.length)) {
+      if (ifWrap) ifWrap.hidden = false;
+    }
     var rfRange = $("bs-ex-rf-gain");
     var rfSel = $("bs-ex-rf-gain-sel");
     if (rfRange) {
@@ -22928,27 +23110,24 @@ Plugins.toolbox.init = function () {
       ifRange.max = String(exGain.ifMax);
       ifRange.step = "1";
     }
-    var ifMode = $("bs-ex-if-gain-mode");
-    var agc = true;
-    if (gainSel && gainSel.value) {
-      agc = String(gainSel.value) === "auto";
-    } else if (params.get("rf_gain-select")) {
-      agc = String(params.get("rf_gain-select")) === "auto";
-    } else if (soapy.ifg != null) {
-      agc = false;
-    } else if (params.get("rf_gain") != null && !soapy.string && !isFinite(Number(params.get("rf_gain")))) {
-      agc = String(params.get("rf_gain")) === "auto";
-    }
-    if (ifMode) ifMode.value = agc ? "auto" : "manual";
+    var modeWant = "manual";
+    if (gainSel && gainSel.value) modeWant = String(gainSel.value);
+    else if (params.get("rf_gain-select")) modeWant = String(params.get("rf_gain-select"));
+    else if (soapy.string && !soapy.rf && !soapy.ifg && stageInfo.names.length) modeWant = "stages";
+    else if (params.get("rf_gain") != null && !soapy.string && !isFinite(Number(params.get("rf_gain")))) {
+      modeWant = String(params.get("rf_gain")) === "auto" ? "auto" : "stages";
+    } else if (params.get("rf_gain") != null && isFinite(Number(params.get("rf_gain")))) {
+      modeWant = "manual";
+    } else if (soapy.ifg != null) modeWant = "manual";
+    exploreGainFillModeSelect(gainSel, modeWant);
     var ifWant = params.get("rf_gain-manual");
     if (ifWant == null && soapy.ifg != null) ifWant = String(soapy.ifg);
     if (ifWant == null && gainManualMeta && gainManualMeta.value != null) ifWant = String(gainManualMeta.value);
     if (ifWant == null && params.get("rf_gain") != null && isFinite(Number(params.get("rf_gain")))) {
       ifWant = String(params.get("rf_gain"));
-      agc = false;
-      if (ifMode) ifMode.value = "manual";
     }
-    if (ifRange && ifWant != null && !agc) ifRange.value = ifWant;
+    if (ifRange && ifWant != null && modeWant === "manual") ifRange.value = ifWant;
+    exploreGainRenderStages();
     exploreGainSyncRfUi();
     exploreGainSyncIfUi();
   }
@@ -22961,14 +23140,14 @@ Plugins.toolbox.init = function () {
     var ifRange = $("bs-ex-if-gain");
     var rfVal = exGain.rfSelect && rfSel ? String(rfSel.value || "") :
       (rfRange ? String(rfRange.value || "") : "");
-    var agc = !!(ifMode && ifMode.value === "auto");
+    var modeVal = ifMode ? String(ifMode.value || "manual") : "manual";
     var ifVal = ifRange ? String(ifRange.value || "") : "";
     var baseRf = params.get("rf_gain");
     var soapy = parseSoapyGainString(baseRf);
     if (soapy.string || (exGain.hasRf && exGain.hasIf && /RFGR|IFGR/i.test(String(baseRf || "")))) {
       var parts = [];
       if (exGain.hasRf && rfVal !== "") parts.push("RFGR=" + rfVal);
-      if (exGain.hasIf && !agc && ifVal !== "") parts.push("IFGR=" + ifVal);
+      if (exGain.hasIf && modeVal === "manual" && ifVal !== "") parts.push("IFGR=" + ifVal);
       if (parts.length) {
         params.set("rf_gain", parts.join(","));
         params.delete("rf_gain-select");
@@ -22978,19 +23157,90 @@ Plugins.toolbox.init = function () {
       return;
     }
     if (exGain.hasRf && rfVal !== "") params.set("rfgain_sel", rfVal);
-    if (exGain.hasIf) {
-      if (agc) {
+    if (exGain.hasIf || (exGain.stages && exGain.stages.length)) {
+      if (modeVal === "auto") {
         params.set("rf_gain-select", "auto");
         params.delete("rf_gain-manual");
+        (exGain.stages || []).forEach(function (n) { params.delete("rf_gain-" + n); });
+      } else if (modeVal === "stages") {
+        params.set("rf_gain-select", "stages");
+        params.delete("rf_gain-manual");
+        var enc = [];
+        (exGain.stages || []).forEach(function (n) {
+          var v = exGain.stageValues && exGain.stageValues[n] != null
+            ? String(exGain.stageValues[n]) : "";
+          var inp = document.querySelector('#bs-ex-gain-stages input[data-ex-gain-stage="' + n + '"]');
+          if (inp) v = String(inp.value || v);
+          if (v !== "") {
+            params.set("rf_gain-" + n, v);
+            enc.push(n + "=" + v);
+          } else {
+            params.delete("rf_gain-" + n);
+          }
+        });
+        if (enc.length) params.set("rf_gain", enc.join(","));
       } else {
         params.set("rf_gain-select", "manual");
         if (ifVal !== "") params.set("rf_gain-manual", ifVal);
+        (exGain.stages || []).forEach(function (n) { params.delete("rf_gain-" + n); });
       }
     }
   }
 
+  function exploreGainAutoFamily() {
+    var k = detectSdrKind() || "";
+    if (k === "sdrplay") return "sdrplay";
+    if (/^rtl/.test(k)) return "rtl";
+    if (k === "hackrf") return "hackrf";
+    if (k === "airspy" || k === "airspyhf") return "airspy";
+    if (/lime/.test(k)) return "lime";
+    if (k) return k;
+    return "generic";
+  }
+
+  function exploreGainForceShow() {
+    return extraOn("exHwGain") || extraOn("exRspGain");
+  }
+
+  function exploreGainWanted() {
+    if (exploreGainForceShow()) return true;
+    return !!(currentProfileValue() || currentSdrDeviceId());
+  }
+
+  function exploreGainSetLabels(family) {
+    exGain.family = family || "";
+    var lab = $("bs-ex-gain-lab");
+    var rfName = $("bs-ex-gain-rf-name");
+    var ifName = $("bs-ex-gain-if-name");
+    var ifMode = $("bs-ex-if-gain-mode");
+    var titles = {
+      rtl: ["RTL gain", "RTL-SDR tuner gain (Auto AGC or manual).", "Gain"],
+      sdrplay: ["RSP gain", "SDRplay RF / IF gain reduction (higher = less signal).", "IF"],
+      hackrf: ["HackRF gain", "HackRF overall gain or LNA / AMP / VGA stages.", "Gain"],
+      airspy: ["Airspy gain", "Airspy overall gain or LNA / MIX / VGA stages.", "Gain"],
+      lime: ["LimeSDR gain", "LimeSDR overall gain or TIA / LNA / PGA stages.", "Gain"],
+      generic: ["Hardware gain", "Device gain from the OpenWebRX profile.", "Gain"]
+    };
+    var t = titles[family] || titles.generic;
+    if (lab) {
+      lab.textContent = t[0];
+      lab.title = t[1];
+    }
+    if (rfName) rfName.textContent = "RF";
+    if (ifName) ifName.textContent = t[2];
+    if (ifMode) {
+      ifMode.title = "Auto = hardware AGC (if available); Manual = overall gain; Stages = per-stage where supported.";
+    }
+  }
+
   function exploreGainSaveNow() {
-    if (!exGain.supported || !exGain.baseline || exGain.saving) return;
+    if (!exploreGainWanted() || !exGain.supported || exGain.saving) return;
+    if (!exGain.canSave || !exGain.baseline) {
+      exploreGainSetStatus(
+        "Preview only — changes are not saved here. Open an SDR profile as admin to write gain."
+      );
+      return;
+    }
     if (!isOwrxAdmin()) {
       exploreGainSetStatus("Admin login required — log into OpenWebRX Settings, then retry.");
       return;
@@ -23010,18 +23260,19 @@ Plugins.toolbox.init = function () {
       if (err && err.message === "admin") {
         owrxAdmin = false;
         try { syncSettingsAdminGate(); } catch (eG) {}
+        exGain.canSave = false;
         exploreGainControlsEnabled(false);
         exploreGainSetStatus("Admin login required — open /settings in this browser.");
         return;
       }
       if (err) {
         exploreGainSetStatus("Save failed — open OpenWebRX Settings and retry.");
-        try { toast("RSP gain save failed."); } catch (eT) {}
+        try { toast("Hardware gain save failed."); } catch (eT) {}
         return;
       }
       exGain.baseline = params;
       exploreGainSetStatus("Saved to profile — switch band away and back if gain does not update.");
-      try { toast("RSP gain saved."); } catch (eT2) {}
+      try { toast("Hardware gain saved."); } catch (eT2) {}
     });
   }
 
@@ -23033,21 +23284,112 @@ Plugins.toolbox.init = function () {
     }, 450);
   }
 
+  function exploreGainShowPreview() {
+    var grp = $("bs-ex-gain-group");
+    var family = exploreGainAutoFamily();
+    exploreGainSetLabels(family);
+    exGain.supported = true;
+    exGain.baseline = null;
+    exGain.canSave = false;
+    exGain.profile = currentProfileValue() || "";
+    exGain.stale = false;
+    exGain.rfSelect = false;
+    exGain.stages = exploreGainDefaultStages(family);
+    exGain.stageValues = {};
+    var rfWrap = $("bs-ex-gain-rf-wrap");
+    var ifWrap = $("bs-ex-gain-if-wrap");
+    var rfRange = $("bs-ex-rf-gain");
+    var rfSel = $("bs-ex-rf-gain-sel");
+    var ifMode = $("bs-ex-if-gain-mode");
+    var ifRange = $("bs-ex-if-gain");
+    if (family === "rtl") {
+      exGain.hasRf = false;
+      exGain.hasIf = true;
+      exGain.ifMin = 0;
+      exGain.ifMax = 49;
+      if (rfWrap) rfWrap.hidden = true;
+      if (ifWrap) ifWrap.hidden = false;
+      if (ifRange) {
+        ifRange.min = "0";
+        ifRange.max = "49";
+        if (!ifRange.value) ifRange.value = "29";
+      }
+      exploreGainFillModeSelect(null, "manual");
+    } else if (family === "sdrplay") {
+      exGain.hasRf = true;
+      exGain.hasIf = true;
+      exGain.rfMin = 0;
+      exGain.rfMax = 27;
+      exGain.ifMin = 0;
+      exGain.ifMax = 59;
+      if (rfWrap) rfWrap.hidden = false;
+      if (ifWrap) ifWrap.hidden = false;
+      if (rfRange) {
+        rfRange.min = "0";
+        rfRange.max = "27";
+        if (!rfRange.value) rfRange.value = "4";
+        rfRange.hidden = false;
+      }
+      if (rfSel) rfSel.hidden = true;
+      if (ifRange) {
+        ifRange.min = "0";
+        ifRange.max = "59";
+        if (!ifRange.value) ifRange.value = "20";
+      }
+      exploreGainFillModeSelect(null, "manual");
+    } else {
+      exGain.hasRf = false;
+      exGain.hasIf = true;
+      exGain.ifMin = 0;
+      exGain.ifMax = 62;
+      if (rfWrap) rfWrap.hidden = true;
+      if (ifWrap) ifWrap.hidden = false;
+      if (ifRange) {
+        ifRange.min = "0";
+        ifRange.max = "62";
+        if (!ifRange.value) ifRange.value = "20";
+      }
+      exploreGainFillModeSelect({
+        options: [
+          { value: "manual", label: "Manual" },
+          { value: "stages", label: "Stages" }
+        ].concat(family === "airspy" ? [{ value: "auto", label: "Auto" }] : [])
+      }, exGain.stages.length ? "stages" : "manual");
+    }
+    if (grp) grp.hidden = false;
+    exploreGainRenderStages();
+    exploreGainControlsEnabled(true);
+    exploreGainSyncRfUi();
+    exploreGainSyncIfUi();
+    var kind = detectSdrKind();
+    exploreGainSetStatus(
+      "Preview for “" + kind + "” / " + family + " — controls move freely; nothing saved until admin profile load succeeds."
+    );
+  }
+
   function exploreGainLoad(profileValue) {
     profileValue = String(profileValue || "");
-    if (!profileValue || detectSdrKind() !== "sdrplay") {
+    if (!exploreGainWanted()) {
       exploreGainHide();
       return;
     }
+    var family = exploreGainAutoFamily();
+    if (!profileValue) {
+      exploreGainShowPreview();
+      return;
+    }
+    exploreGainSetLabels(family);
     var grp = $("bs-ex-gain-group");
     if (!isOwrxAdmin()) {
       exGain.profile = profileValue;
       exGain.supported = true;
       exGain.baseline = null;
+      exGain.canSave = false;
       exGain.stale = false;
       if (grp) grp.hidden = false;
+      exploreGainShowPreview();
       exploreGainControlsEnabled(false);
-      exploreGainSetStatus("Log into OpenWebRX Settings (admin) in this browser to adjust RSP gain.");
+      exploreGainSetStatus("Log into OpenWebRX Settings (admin) in this browser to adjust hardware gain.");
       return;
     }
     if (exGain.loading) return;
@@ -23061,6 +23403,7 @@ Plugins.toolbox.init = function () {
         exGain.profile = profileValue;
         exGain.supported = true;
         exGain.baseline = null;
+        exGain.canSave = false;
         exGain.stale = false;
         if (grp) grp.hidden = false;
         exploreGainControlsEnabled(false);
@@ -23070,39 +23413,62 @@ Plugins.toolbox.init = function () {
       var params = result && result.params;
       var form = result && result.form;
       if (err || !params || !form) {
-        exploreGainHide();
+        exploreGainShowPreview();
+        exploreGainSetStatus("Could not load profile gain fields — showing preview.");
         return;
       }
+      exploreGainSetLabels(family);
       exploreGainPopulateFromResult(form, params);
       if (!exGain.supported) {
-        exploreGainHide();
+        exploreGainShowPreview();
+        exploreGainSetStatus("This profile has no gain fields — showing preview.");
         return;
       }
       exGain.profile = profileValue;
       exGain.baseline = params;
+      exGain.canSave = true;
       exGain.stale = false;
       if (grp) grp.hidden = false;
       exploreGainControlsEnabled(true);
-      exploreGainSetStatus("Higher reduction = less signal · saves into this profile.");
+      if (family === "rtl") {
+        exploreGainSetStatus("RTL tuner gain · Auto = AGC · Manual = dB · saves into this profile.");
+      } else if (family === "sdrplay") {
+        exploreGainSetStatus(
+          "Higher reduction = less signal · saves into this profile. " +
+          "RF has no Auto (RF gain reduction only). IF Auto = hardware AGC."
+        );
+      } else if (family === "hackrf" || family === "airspy" || family === "lime") {
+        exploreGainSetStatus(
+          "Overall Manual gain, or Stages (LNA/VGA/…) when available · saves into this profile."
+        );
+      } else {
+        exploreGainSetStatus("Hardware gain · saves into this profile (device-dependent).");
+      }
     });
   }
 
   function exploreGainMaybeLoad() {
-    if (detectSdrKind() !== "sdrplay") {
+    if (!exploreGainWanted()) {
       exploreGainHide();
       return;
     }
     var prof = currentProfileValue();
+    var family = exploreGainAutoFamily();
     if (!prof) {
-      exploreGainHide();
+      exploreGainShowPreview();
       return;
     }
-    if (prof === exGain.profile && exGain.baseline && !exGain.stale && !exGain.loading) return;
-    if (prof !== exGain.profile) exGain.stale = true;
+    if (prof === exGain.profile && exGain.baseline && !exGain.stale && !exGain.loading &&
+        exGain.family === family) return;
+    if (prof !== exGain.profile || exGain.family !== family) exGain.stale = true;
     exploreGainLoad(prof);
   }
 
   function exploreSyncGainUi() {
+    if (!exploreGainWanted()) {
+      exploreGainHide();
+      return;
+    }
     exploreGainMaybeLoad();
     if (!exGain.supported) return;
     var active = document.activeElement && document.activeElement.id;
