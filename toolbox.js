@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 439;
+  Plugins.toolbox._version = 440;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -3358,8 +3358,11 @@ Plugins.toolbox.init = function () {
       var k = (ev.key || "").toLowerCase();
       if (k === "s") {
         ev.preventDefault();
-        if ($("bs-stop") && !$("bs-stop").hidden) $("bs-stop").click();
+        if (running || listenScanRunning || surveyRunning) {
+          stopSurvey();
+        } else if ($("bs-stop") && !$("bs-stop").hidden) $("bs-stop").click();
         else if ($("bs-stop-bm") && !$("bs-stop-bm").hidden) $("bs-stop-bm").click();
+        else if ($("bs-range-stop") && !$("bs-range-stop").hidden) $("bs-range-stop").click();
       }
       else if (k === "b") { ev.preventDefault(); if ($("bs-listen-top")) $("bs-listen-top").click(); }
       else if (k === "h") { ev.preventDefault(); if ($("bs-hold")) $("bs-hold").click(); }
@@ -4653,8 +4656,12 @@ Plugins.toolbox.init = function () {
     var waitMore = profileGapMs() - (Date.now() - lastProfileSwitchAt);
     if (waitMore > 0) {
       var why = ownerHopsOn() ? "fast hops (own radio)" : "anti-ban, profile change";
-      setStatus((label || "waiting") + " " + Math.ceil(waitMore / 1000) + "s (" + why + ")");
-      await sleep(waitMore);
+      var end = Date.now() + waitMore;
+      while (Date.now() < end && !stopFlag) {
+        var left = end - Date.now();
+        setStatus((label || "waiting") + " " + Math.ceil(left / 1000) + "s (" + why + ")");
+        await sleep(Math.min(250, Math.max(40, left)));
+      }
     }
   }
 
@@ -5281,12 +5288,15 @@ Plugins.toolbox.init = function () {
     var survey = !!(running || surveyRunning);
     var listen = !!listenScanRunning;
     var busy = survey || listen;
-    if (p) p.classList.toggle("bs-hide-toolbar", hidePref);
+    /* While a scan is running, always show Stop + status — even if “Always hide
+       scan strip” is ticked. Otherwise Stop vanishes and looks dead. */
+    var hideChrome = hidePref && !busy;
+    if (p) p.classList.toggle("bs-hide-toolbar", hideChrome);
 
-    var showBand = !hidePref && tab === "bands";
-    var showBm = !hidePref && (tab === "bookmarks" || listen);
-    var showBusyStop = !hidePref && busy && !showBand && !showBm;
-    var showStatus = !hidePref && (showBand || showBm || showBusyStop || busy);
+    var showBand = !hideChrome && tab === "bands";
+    var showBm = !hideChrome && (tab === "bookmarks" || listen);
+    var showBusyStop = !hideChrome && busy && !showBand && !showBm;
+    var showStatus = !hideChrome && (showBand || showBm || showBusyStop || busy);
     var showAny = showBand || showBm || showBusyStop || showStatus;
 
     setElHidden($("bs-tb-bands-note"), !showBand);
@@ -5302,7 +5312,7 @@ Plugins.toolbox.init = function () {
     setElHidden($("bs-status"), !showStatus);
     setElHidden($("bs-tb-progress"), !showStatus);
     if (tb) {
-      tb.hidden = hidePref || !showAny;
+      tb.hidden = hideChrome || !showAny;
       tb.classList.toggle("bs-tb-bands-on", !!showBand);
       tb.classList.toggle("bs-tb-busy-on", !!showBusyStop && !showBand);
     }
@@ -17438,6 +17448,10 @@ Plugins.toolbox.init = function () {
     var t0 = Date.now();
     return new Promise(function (resolve) {
       (function tick() {
+        if (stopFlag) {
+          resolve(false);
+          return;
+        }
         var nowSel = $("openwebrx-sdr-profiles-listbox");
         var ok = nowSel && nowSel.value === value;
         var data = wf();
@@ -17993,16 +18007,20 @@ Plugins.toolbox.init = function () {
         for (var i = 0; i < S.selected.length && !stopFlag; i++) {
           var value = S.selected[i];
           var p = profileByValue(value) || { id: value, label: value };
-          setStatus("Pass " + pass + "/" + S.passes + " · " + p.label);
+          var passLab = "Pass " + pass + "/" + S.passes + " · band " + (i + 1) + "/" +
+            S.selected.length + " · " + p.label;
+          setStatus(passLab);
           setProgress(step / total);
           var needSwitch = currentProfileValue() !== value;
           if (needSwitch) {
-            await waitProfileGap("Pass " + pass + "/" + S.passes + " · " + p.label + " · waiting");
+            await waitProfileGap(passLab + " · waiting");
             if (stopFlag) break;
             await switchProfile(value);
+            if (stopFlag) break;
             lastProfileSwitchAt = Date.now();
           } else {
             await switchProfile(value);
+            if (stopFlag) break;
           }
           applyDigiModeIfNeeded(p.id, p.label);
           var peaksBefore = hits.length;
@@ -18020,7 +18038,7 @@ Plugins.toolbox.init = function () {
                 lastNoise += " · dwell " + Math.round(dwellSec) + "s";
               }
             }
-            setStatus("Pass " + pass + "/" + S.passes + " · " + p.label + lastNoise);
+            setStatus(passLab + lastNoise);
             renderHits();
             await sleep(SAMPLE_MS);
           }
@@ -18062,7 +18080,9 @@ Plugins.toolbox.init = function () {
   function stopSurvey() {
     stopFlag = true;
     try { cancelRangeRepeat(); } catch (eStopRep) {}
+    try { applyToolbarVisibility(); } catch (eVis) {}
     setStatus("Stopping…");
+    try { toast("Stopping scan…"); } catch (eT) {}
   }
 
   function tuneTo(freq, pid) {
@@ -20964,7 +20984,7 @@ Plugins.toolbox.init = function () {
         "</div>" +
         '<p class="bs-hint">Minimal hides secondary boxes. Use the header <b>M</b> / <b>F</b> button (next to S) for the current tab.</p>' +
         '<div class="bs-row bs-chk-grid">' +
-        '<label class="bs-chk" title="Never show the scan strip. By default it only appears on Bands and Bookmarks, and on any tab while a scan is running."><input type="checkbox" id="bs-hide-toolbar"> Always hide scan strip</label>' +
+        '<label class="bs-chk" title="Hide the scan strip when idle. Stop and status still appear while a scan is running."><input type="checkbox" id="bs-hide-toolbar"> Always hide scan strip</label>' +
         '<label class="bs-chk" title="Hide OpenWebRX\u2019s floating receiver panel (modes, volume, squelch, etc.). Audio stays on — use Explore for those controls. Default off."><input type="checkbox" id="bs-hide-stock-rx"> Hide stock receiver panel</label>' +
         "</div>" +
         '<div class="bs-row bs-chk-grid">' +

@@ -1,5 +1,12 @@
 # Changelog
 
+## [440] — Scan Stop works during waits; strip stays visible while busy
+
+Stop was easy to miss (Always hide scan strip hid it mid-scan) and could sit
+ignored through the ~11s profile-gap sleep or profile-switch wait. Gap/switch
+now abort on Stop, the strip stays up while scanning, status shows band i/n,
+and keyboard **S** always calls Stop when a scan is running.
+
 ## [439] — Public mode docs match stock OpenWebRX+
 
 Most installs have no Settings → General Toolbox checkbox. README, Help, installer
