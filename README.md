@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v421)
+# OpenWebRX Toolbox (v422)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -470,7 +470,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v419 */
+/* Toolbox v421 */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
