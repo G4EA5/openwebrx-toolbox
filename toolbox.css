@@ -1161,6 +1161,14 @@ body.bs-ex-box-dnd {
   min-width: min(100%, 12em);
 }
 
+/* display:flex on .bs-ex-fader-lab otherwise overrides HTML [hidden] and leaves
+   a dead RF slider visible on RTL. */
+#bs-panel #bs-tab-explore .bs-ex-gain-row .bs-ex-fader-lab[hidden],
+#bs-panel #bs-tab-explore .bs-ex-gain-group[data-family="rtl"] #bs-ex-gain-rf-wrap,
+#bs-panel #bs-tab-explore #bs-ex-gain-rf-wrap[hidden] {
+  display: none !important;
+}
+
 #bs-panel #bs-tab-explore .bs-ex-gain-sel {
   font-size: var(--bs-ex-fs-sm);
   max-width: 6.5em;
@@ -1168,6 +1176,25 @@ body.bs-ex-box-dnd {
 
 #bs-panel #bs-tab-explore .bs-ex-gain-group .bs-ex-tip {
   margin: calc(var(--bs-ex-gap) * 0.35) 0 0;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-foot {
+  margin-top: calc(var(--bs-ex-gap) * 0.35);
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-actions {
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-actions .bs-ex-btn {
+  text-decoration: none;
+}
+
+#bs-panel #bs-tab-explore .bs-ex-gain-group.bs-ex-gain-locked .bs-ex-gain-row,
+#bs-panel #bs-tab-explore .bs-ex-gain-group.bs-ex-gain-locked .bs-ex-gain-stages {
+  opacity: 0.55;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-gain-stages {

@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v428)
+# OpenWebRX Toolbox (v438)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, peaks, bookmarks,
 audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is now
@@ -11,7 +11,7 @@ audio clips, and more. Formerly **Band Survey** (`band_survey`). Plugin id is no
 Standalone plugin. Walks the bands you tick (or a custom MHz range), counts real
 waterfall peaks, ranks the busiest, and can bookmark them in **this browser**.
 
-**Works with any SDR OpenWebRX+ supports** (HackRF, RTL-SDR, Airspy, Lime, …) —
+**Works with any SDR OpenWebRX+ supports** (HackRF, RTL-SDR, Airspy, Lime, SDRplay, …) —
 the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
@@ -21,11 +21,12 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 | --- | --- |
 | **Rename** | **OpenWebRX Toolbox** (`toolbox`) replaces Band Survey; installer migrates safely |
 | **Explore** | Drag-reorder boxes; **Wide** / **Half** size; receiver controls, S-meter, side dock |
+| **Hardware gain** | Explore → Receiver RF / IF (or RTL tuner) for common SDRs; Auto by default; needs Settings admin login |
 | **Audio** | Clip archive, record modes, export for digi tools |
 | **Public** | Admin switch in OpenWebRX **Settings → General**; visitor allowlist for guests |
 | **Settings** | Always in the header; editing needs OpenWebRX admin login (guests see unlock hint) |
 | **Legacy** | Band Survey **v127** under [`legacy/band_survey/`](legacy/band_survey/) |
-| **Docs** | README + Help **v421** — Passes 1–1000; Check install (Toolbox/OWRX only); Explore Wide/Half |
+| **Docs** | README + Help **v438** — hardware gain, admin login note, Passes 1–1000, Explore layout |
 
 ---
 
@@ -133,6 +134,8 @@ Practical differences by setup:
 - **Bandwidth comes from OpenWebRX** (`window.bandwidth`).
 - **Presets** (Air, FM, …) match common profile id/name patterns. Custom names still
   work — tick bands manually or use **All**.
+- **Hardware gain** can be adjusted from Explore → Receiver (see Explore tab guide).
+  Needs OpenWebRX Settings admin login. Tested most on RTL-SDR.
 - **Analyzer** (experimental, off by default) draws from the live OWRX waterfall
   (relative dB). It is **not** a standalone
   [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1).
@@ -333,6 +336,17 @@ Browse the whole spectrum; receiver controls (modes, SQL, NR, mute/vol), zoom,
 memories, find. Drag box titles to reorder; **Wide** / **Half** on each header
 resizes boxes (snaps together). Tune stays pinned at the top.
 
+**Hardware gain** (Explore → Receiver): RF / IF for SDRplay (RSP), overall or
+staged gain for HackRF / Airspy / Lime, and a single **tuner** control for RTL-SDR.
+The box auto-shows when Toolbox detects your SDR. Default is **Auto** (AGC) when
+the profile has no manual value.
+
+Changing gain writes into the active OpenWebRX **profile**. That needs an
+**OpenWebRX Settings admin login in the same browser** (receiver page password /
+Basic auth is not enough). Open **Settings**, sign in, hard-refresh the receiver,
+then use Explore. Guests see a locked preview. Tested most thoroughly on RTL-SDR;
+other SDR types use the same path but need real-world feedback.
+
 ### Analyzer (experimental)
 
 Live spectrum from the OWRX waterfall. Off by default — enable under **Visible tabs**.
@@ -462,7 +476,7 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v421)** | Tag [`toolbox-v421`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v421) (after publish) or `main` |
+| **This Toolbox build (v438)** | Tag [`toolbox-v438`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v438) (after publish) or `main` |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
@@ -470,8 +484,8 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v421 */
-await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");
+/* Toolbox v438 */
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-v438/toolbox.js");
 
 /* Band Survey v110 (tag — root path) */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@band-survey-v110/band_survey.js");
@@ -482,7 +496,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v421**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v438**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
