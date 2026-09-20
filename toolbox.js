@@ -4933,8 +4933,8 @@ Plugins.toolbox.init = function () {
     var out = $("bs-ident-out");
     if (!url) {
       setStatus(extraOn("identExternalClassifier")
-        ? "Set LLM classifier URL under Settings → Identify classifier."
-        : "Set DIY / LLM classifier URL on the Ident tab (Identify actions), or tick external classifier under Settings → Extras.");
+        ? "Set LLM classifier URL under Settings → Identify."
+        : "Set DIY / LLM classifier URL on the Ident tab (Identify actions), or tick External classifier under Settings → Identify.");
       if (out) out.textContent = "";
       return;
     }
