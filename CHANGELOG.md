@@ -1,5 +1,9 @@
 # Changelog
 
+## [443] — Public / shared settings always visible
+
+**Public / shared receiver mode** and **Public visitor allowlist** were hidden when Settings used **Minimal** tab view (same as Extras). Added a dedicated **Settings → Public / shared** box (always visible) and removed Minimal-hide from the allowlist section.
+
 ## [442] — Identify controls always visible in Settings
 
 **External classifier** and the LLM URL field now live in a dedicated **Settings → Identify** box (always visible in Full and Minimal tab view). They are no longer buried only inside **Extras** (which Minimal view hides). The Extras grid still has the same tick for power users.

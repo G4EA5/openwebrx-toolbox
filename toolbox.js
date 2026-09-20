@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 442;
+  Plugins.toolbox._version = 443;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -1773,6 +1773,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-show-new-only")) $("bs-show-new-only").checked = !!S.showNewOnly;
     if ($("bs-show-diff-only")) $("bs-show-diff-only").checked = !!S.showDiffOnly;
     syncIdentSettingsUi();
+    syncPublicSettingsUi();
   }
 
 
@@ -2402,6 +2403,7 @@ Plugins.toolbox.init = function () {
         : "Public / shared receiver extra is on — Factory reset is disabled. Choose visitor options under Public visitor allowlist.";
     }
     applyPublicPolicyUi();
+    try { syncPublicSettingsUi(); } catch (ePubUi) {}
   }
 
   function setControlPublicGate(el, allowed, whyDenied) {
@@ -2664,7 +2666,7 @@ Plugins.toolbox.init = function () {
       featBoxes +
       extrasBoxes +
       "</div>",
-      { id: "bs-public-policy", wide: true, cls: "bs-min-hide",
+      { id: "bs-public-policy", wide: true,
         sub: "Little boxes for tabs, features, Explore limits/bands, and which extras guests may use — they snap together below." });
   }
 
@@ -4895,6 +4897,47 @@ Plugins.toolbox.init = function () {
     if ($("bs-extra-identExternalClassifier")) $("bs-extra-identExternalClassifier").checked = !!on;
     saveSettings();
     syncIdentSettingsUi();
+    applyExtrasUi();
+  }
+
+  function syncPublicSettingsUi() {
+    var chk = $("bs-public-mode-vis");
+    var ex = $("bs-extra-publicMode");
+    var serverOwns = serverPublicMode != null;
+    var on = serverOwns ? !!serverPublicMode : extraOn("publicMode");
+    if (chk) {
+      chk.checked = on;
+      chk.disabled = !canEditPublicPolicy() || serverOwns || !ownerOverrideAllowed();
+    }
+    if (ex && document.activeElement !== ex) {
+      ex.checked = on;
+      ex.disabled = !canEditPublicPolicy() || serverOwns;
+    }
+    var note = $("bs-public-mode-vis-note");
+    if (note) {
+      if (!canEditPublicPolicy()) {
+        note.textContent = "Log into OpenWebRX admin Settings to change public mode and the visitor allowlist below.";
+      } else if (!ownerOverrideAllowed()) {
+        note.textContent = "This install was built with ./install.sh --public — public mode is always on for all visitors.";
+      } else if (serverOwns) {
+        note.textContent = "Public mode is controlled in OpenWebRX Settings → General (server-wide for all visitors).";
+      } else if (on) {
+        note.textContent = "Public mode is on. Choose visitor options in Public visitor allowlist below.";
+      } else {
+        note.textContent = "Public mode is off. Tick above for this browser, or run ./install.sh --public on the host for every visitor.";
+      }
+    }
+  }
+
+  function setPublicMode(on) {
+    if (!canEditPublicPolicy() || serverPublicMode != null || !ownerOverrideAllowed()) return;
+    if (!S.extras) S.extras = extrasDefaults();
+    S.extras.publicMode = !!on;
+    if ($("bs-public-mode-vis")) $("bs-public-mode-vis").checked = !!on;
+    if ($("bs-extra-publicMode")) $("bs-extra-publicMode").checked = !!on;
+    saveSettings();
+    applyPublicModeExtra();
+    syncPublicSettingsUi();
     applyExtrasUi();
   }
 
@@ -21116,6 +21159,13 @@ Plugins.toolbox.init = function () {
         "</div>" +
         '<p class="bs-hint" id="bs-ident-url-tab-hint">External classifier off — set <b>DIY / LLM classifier URL</b> on the <b>Ident</b> tab → Identify actions.</p>',
         { wide: true, id: "bs-ident-settings-box", help: "Always visible here (not buried in Extras). Tick External classifier to enter the URL on Settings; untick to enter it on the Ident tab." }) +
+      settingsBoxHtml("Public / shared",
+        '<p class="bs-hint" id="bs-public-mode-vis-note">Public mode limits what visitors may do. Same switch as Extras → Public / shared receiver mode.</p>' +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label class="bs-chk" title="Turn on public/shared visitor limits for this browser when the host has no OpenWebRX General checkbox. Prefer ./install.sh --public on the host for all visitors."><input type="checkbox" id="bs-public-mode-vis"> Public / shared receiver mode</label>' +
+        "</div>" +
+        '<p class="bs-hint">When public mode is on, edit the <b>Public visitor allowlist</b> section below (tabs, scans, extras guests may use).</p>',
+        { wide: true, id: "bs-public-settings-box", help: "Always visible here — not hidden in Minimal Settings view like Extras. Admin login required to edit." }) +
       settingsBoxHtml("UX feel (optional)",
         '<p class="bs-hint">Try quieter layouts <b>without changing</b> your saved Visible tabs or Extras ticks. All off = classic Toolbox. Soft overlays only — turn a switch off to go back.</p>' +
         '<div class="bs-row bs-chk-grid" id="bs-ux-feel-toggles">' +
@@ -21223,7 +21273,7 @@ Plugins.toolbox.init = function () {
         { extra: "homelabWebhook", cls: "bs-min-hide" }) +
       "</div>" +
       extrasSettingsHtml() +
-      '<div class="bs-settings-bar bs-min-hide" id="bs-settings-pub-bar" role="separator" aria-label="Public visitor allowlist">' +
+      '<div class="bs-settings-bar" id="bs-settings-pub-bar" role="separator" aria-label="Public visitor allowlist">' +
       '<span class="bs-settings-bar-line" aria-hidden="true"></span>' +
       '<span class="bs-settings-bar-lab">Public / shared</span>' +
       '<span class="bs-settings-bar-line" aria-hidden="true"></span>' +
@@ -21868,6 +21918,12 @@ Plugins.toolbox.init = function () {
     if ($("bs-ident-external-classifier")) {
       $("bs-ident-external-classifier").onchange = function () {
         setIdentExternalClassifier(!!$("bs-ident-external-classifier").checked);
+        readForm();
+      };
+    }
+    if ($("bs-public-mode-vis")) {
+      $("bs-public-mode-vis").onchange = function () {
+        setPublicMode(!!$("bs-public-mode-vis").checked);
         readForm();
       };
     }
