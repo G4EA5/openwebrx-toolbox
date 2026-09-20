@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 440;
+  Plugins.toolbox._version = 441;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -274,7 +274,7 @@ Plugins.toolbox.init = function () {
   var EDGE_FRAC = 0.06;
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
-  var TAB_IDS = ["explore", "bands", "range", "analyzer", "peaks", "bookmarks", "audio", "skip", "settings", "help"];
+  var TAB_IDS = ["explore", "bands", "range", "analyzer", "peaks", "bookmarks", "audio", "skip", "ident", "settings", "help"];
 
   /* Optional Extras — on by default (except Public mode); Settings → Extras ticks reveal UI on existing tabs. */
   var EXTRAS_DEFS = [
@@ -324,6 +324,8 @@ Plugins.toolbox.init = function () {
     { id: "rangeHopCap", label: "Range · hop / time cap", where: "Range", tip: "Stop a range scan after N hops or M minutes." },
     { id: "bmFiles", label: "Bookmarks files", where: "Bookmarks", tip: "Save/load/clear bookmark files above the bookmarks list." },
     { id: "homelabWebhook", label: "Peak webhook", where: "Settings", tip: "POST JSON on each new peak to a webhook URL." },
+    { id: "identTab", label: "Identify tab", where: "Identify", tip: "Show the Ident tab (built-in spur/birdie rules plus optional LLM classifier).", defaultOn: true },
+    { id: "identExternalClassifier", label: "External classifier", where: "Identify", tip: "Route Identify to your HTTP LLM classifier. URL moves to Settings → Identify classifier (when this is on)." },
     { id: "installCheck", label: "Install check", where: "Settings", tip: "Check install / download latest plugin zip." }
   ];
 
@@ -332,7 +334,7 @@ Plugins.toolbox.init = function () {
   var UX_SIMPLE_SOFT_OFF = [
     "exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind", "exHwGain",
     "digiSurvey", "bandPacks", "spectrumHistory", "occHeatmap", "surveyDiff",
-    "speechToText", "nearbyTraffic", "homelabWebhook", "bandEditAdvanced",
+    "speechToText", "nearbyTraffic", "homelabWebhook", "identTab", "identExternalClassifier", "bandEditAdvanced",
     "rangePresets", "rangeModeLock", "rangeAutoBm", "rangeRepeat", "rangeCoverage", "rangeSpecDiff", "rangeHopCap"
   ];
   var UX_QUIET_BOX_IDS = [
@@ -357,6 +359,7 @@ Plugins.toolbox.init = function () {
     { id: "bookmarks", label: "Bookmarks", ids: ["bmFiles", "watchlist", "sessionLog", "scanOrder", "freqNotes", "copyTuneLink", "userBmShortcuts"] },
     { id: "recording", label: "Recording & audio", ids: ["clipMeta", "recCaps", "speechToText"] },
     { id: "bands", label: "Bands admin", ids: ["bandEdit", "bandEditAdvanced", "bandSchedule", "bandPacks"] },
+    { id: "identify", label: "Identify", ids: ["identTab", "identExternalClassifier"] },
     { id: "settings", label: "Settings & public", ids: ["publicMode", "idlePresets", "autoStartOwrx", "homelabWebhook", "installCheck"] }
   ];
 
@@ -1457,6 +1460,7 @@ Plugins.toolbox.init = function () {
       showNewOnly: false,
       showDiffOnly: false,
       webhookUrl: "",
+      identClassifierUrl: "",
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
@@ -1907,6 +1911,8 @@ Plugins.toolbox.init = function () {
     "panel layout": "Side dock, size %, save/restore panel placement, and Reset Explore layout (box order + Wide/Half).",
     "data & housekeeping": "Export/import settings JSON or reset settings / factory wipe.",
     "homelab": "Optional webhook URL notified when a new peak is counted.",
+    "identify classifier": "LLM classifier HTTP endpoint (POST JSON). Shown here when Settings → Extras → Identify · external classifier is on.",
+    "identify actions": "Built-in spur/birdie rules always apply. Optional LLM classifier: set the URL here when external classifier is off; otherwise use Settings → Identify classifier.",
     "tune": "Type a frequency in MHz and Go, or hover a digit and scroll the wheel to nudge that place. Mute and Vol are in this header.",
     "vfo": "A/B · Locks · OWRX step · Channel (step/offset/snap) · History — grouped mini-boxes.",
     "profile": "Switch OpenWebRX SDR profiles (independent of Bands ticks).",
@@ -2127,7 +2133,7 @@ Plugins.toolbox.init = function () {
   }
 
   function extrasTabOrder() {
-    return ["Explore", "Bands", "Range", "Peaks", "Bookmarks", "Audio", "Settings", "Global", "Other"];
+    return ["Explore", "Bands", "Range", "Peaks", "Bookmarks", "Audio", "Identify", "Settings", "Global", "Other"];
   }
 
   function extrasSettingsHtml() {
@@ -2225,9 +2231,19 @@ Plugins.toolbox.init = function () {
       if (!id) return;
       /* Never hide public-allowlist ticks — those use data-pub-extra. */
       if (el.classList && el.classList.contains("bs-pub-extra")) return;
+      var hideWhenExtra = el.getAttribute("data-extra-hide-when");
+      if (hideWhenExtra) {
+        var showInv = !extraOn(hideWhenExtra);
+        el.hidden = !showInv;
+        el.classList.toggle("bs-extra-off", !showInv);
+        if (!showInv) el.setAttribute("aria-disabled", "true");
+        else el.removeAttribute("aria-disabled");
+        return;
+      }
       var on = extraOn(id);
       /* Range extras: gone when off (Settings → Extras). Explore/Settings keep greyed boxes. */
       var hideWhenOff = id.indexOf("range") === 0 ||
+        id === "identTab" ||
         (el.classList && el.classList.contains("bs-range-extra-row")) ||
         !!(el.closest && el.closest("#bs-tab-range") && id.indexOf("range") === 0);
       /* exHwGain: visibility is auto (RSP / RTL) or forced by Extra — handled in exploreGainMaybeLoad. */
@@ -2285,6 +2301,13 @@ Plugins.toolbox.init = function () {
       }
     } catch (eBm) {}
     applyPublicModeExtra();
+    try {
+      var identPane = document.querySelector("#bs-tab-ident.bs-tab-on");
+      if (identPane && (!extraOn("identTab") || isTabHidden("ident")) && typeof switchTab === "function") {
+        switchTab(firstVisibleTab(), true);
+      }
+    } catch (eIdentTab) {}
+    try { syncIdentClassifierUrlInputs(); } catch (eIdentUrl) {}
     /* Keep Panel startup Auto-click visible and synced — it is not a data-extra target. */
     try {
       if ($("bs-autostart-owrx")) {
@@ -4840,6 +4863,102 @@ Plugins.toolbox.init = function () {
     } catch (e) {}
   }
 
+  function identClassifierUrl() {
+    return String(S.identClassifierUrl || "").trim();
+  }
+
+  function syncIdentClassifierUrlInputs() {
+    var v = identClassifierUrl();
+    if ($("bs-ident-classifier-url-tab")) $("bs-ident-classifier-url-tab").value = v;
+    if ($("bs-ident-classifier-url-set")) $("bs-ident-classifier-url-set").value = v;
+  }
+
+  function readIdentClassifierUrlFromForm() {
+    var tab = $("bs-ident-classifier-url-tab");
+    var set = $("bs-ident-classifier-url-set");
+    var vTab = tab ? String(tab.value || "").trim() : "";
+    var vSet = set ? String(set.value || "").trim() : "";
+    if (extraOn("identExternalClassifier")) {
+      S.identClassifierUrl = vSet || vTab || String(S.identClassifierUrl || "").trim();
+    } else {
+      S.identClassifierUrl = vTab || vSet || String(S.identClassifierUrl || "").trim();
+    }
+    syncIdentClassifierUrlInputs();
+  }
+
+  function identHitNearTune() {
+    var f = currentTuneHz();
+    if (!f) return null;
+    ensureHitsClassified();
+    var best = null;
+    var bestD = Infinity;
+    hits.forEach(function (h) {
+      if (isSpur(h)) return;
+      var d = Math.abs(h.freq - f);
+      if (d < bestD) {
+        bestD = d;
+        best = h;
+      }
+    });
+    return bestD <= 15000 ? best : null;
+  }
+
+  function runIdentClassify() {
+    var url = identClassifierUrl();
+    var out = $("bs-ident-out");
+    if (!url) {
+      setStatus(extraOn("identExternalClassifier")
+        ? "Set LLM classifier URL under Settings → Identify classifier."
+        : "Set DIY / LLM classifier URL on the Ident tab (Identify actions), or tick external classifier under Settings → Extras.");
+      if (out) out.textContent = "";
+      return;
+    }
+    var freq = currentTuneHz();
+    if (!freq) {
+      setStatus("Tune the receiver first, then Identify.");
+      if (out) out.textContent = "";
+      return;
+    }
+    var hit = identHitNearTune();
+    var payload = {
+      freq: freq,
+      mhz: freq / 1e6,
+      mode: guessMode(hit ? hit.pid : currentProfileIdGuess()),
+      db: hit ? (hit.maxDb || hit.lastDb || 0) : null,
+      band: hit ? (hit.label || hit.pid || "") : "",
+      name: hit ? (hit.name || existingName(hit.freq) || "") : "",
+      spur: hit ? !!hit.spur : null,
+      spurWhy: hit ? (hit.spurWhy || "") : "",
+      source: "openwebrx-toolbox"
+    };
+    if (out) out.textContent = "Calling classifier…";
+    setStatus("Identify — POST " + url);
+    try {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        mode: "cors"
+      }).then(function (res) {
+        return res.text().then(function (txt) {
+          var msg = txt;
+          try {
+            var j = JSON.parse(txt);
+            msg = JSON.stringify(j, null, 2);
+          } catch (eJ) {}
+          if (out) out.textContent = msg || ("HTTP " + res.status);
+          setStatus(res.ok ? "Identify — classifier replied." : ("Identify failed — HTTP " + res.status));
+        });
+      }).catch(function (err) {
+        if (out) out.textContent = String(err && err.message ? err.message : err);
+        setStatus("Identify failed — check URL and CORS.");
+      });
+    } catch (eFetch) {
+      if (out) out.textContent = String(eFetch);
+      setStatus("Identify failed.");
+    }
+  }
+
   function notifyScanComplete(msg) {
     if (!S.notifyScanDone || !msg) return;
     try {
@@ -4970,6 +5089,7 @@ Plugins.toolbox.init = function () {
     bookmarks: "Bookmarks — local and loaded frequencies; scan bookmarks.",
     audio: "Audio — record clips, play, and export WAV.",
     skip: "Skip — frequencies always ignored during scans.",
+    ident: "Ident — built-in spur/birdie rules plus optional LLM classifier.",
     settings: "Settings — panel prefs (OpenWebRX admin login required to edit).",
     help: "Help — how to install and use Toolbox."
   };
@@ -5637,6 +5757,7 @@ Plugins.toolbox.init = function () {
       showNewOnly: false,
       showDiffOnly: false,
       webhookUrl: "",
+      identClassifierUrl: "",
       copyPeaksOnDone: false,
       alertFreqs: "",
       alertOffsetKhz: 25,
@@ -5833,6 +5954,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-keep-peaks")) $("bs-keep-peaks").checked = S.keepPeaks !== false;
     if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || 40;
     if ($("bs-webhook")) $("bs-webhook").value = S.webhookUrl || "";
+    syncIdentClassifierUrlInputs();
     if ($("bs-alert-freqs")) $("bs-alert-freqs").value = S.alertFreqs || "";
     if ($("bs-alert-offset")) $("bs-alert-offset").value = S.alertOffsetKhz || 25;
     if ($("bs-digi-long")) $("bs-digi-long").checked = !!S.digiLongDwell;
@@ -18767,6 +18889,7 @@ Plugins.toolbox.init = function () {
     /* Clip mute is toggled by the Mute button — do not read a checkbox. */
     if ($("bs-bm-loaduser-bands") || $("bs-bm-lu-allbands")) S.loadUserBmBands = loadUserBmSelectedValues();
     if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
+    readIdentClassifierUrlFromForm();
     if ($("bs-alert-freqs")) S.alertFreqs = $("bs-alert-freqs").value || "";
     if ($("bs-alert-offset")) S.alertOffsetKhz = Math.max(1, Number($("bs-alert-offset").value) || 25);
     if ($("bs-digi-long")) S.digiLongDwell = !!$("bs-digi-long").checked;
@@ -19634,6 +19757,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-tab" data-tab="bookmarks" role="tab" title="Bookmarks — local and loaded.">Book</button>' +
       '<button type="button" class="bs-tab" data-tab="audio" role="tab" title="Audio — clips and decode export.">Audio</button>' +
       '<button type="button" class="bs-tab" data-tab="skip" role="tab" title="Skip — always-skipped frequencies.">Skip</button>' +
+      '<button type="button" class="bs-tab" data-tab="ident" data-extra="identTab" role="tab" title="Ident — signal ID (rules + optional LLM).">Ident</button>' +
       '<button type="button" class="bs-tab" data-tab="settings" role="tab" title="Settings — startup, schedule, notifications.">Settings</button>' +
       "</div>" +
       '<div class="bs-head-actions">' +
@@ -20896,6 +21020,21 @@ Plugins.toolbox.init = function () {
       '<div class="bs-tab-scroll bs-skiplist" id="bs-skiplist"></div>',
       { wide: true, cls: "bs-box-list", id: "bs-skiphead-box" }) +
       "</div></div>" +
+      '<div class="bs-tab-pane" id="bs-tab-ident" data-tab="ident" data-extra="identTab" role="tabpanel">' +
+      '<div class="bs-tab-stack">' +
+      tabBoxHtml("Identify actions",
+        '<p class="bs-hint">Built-in rules classify survey peaks as birdies/spurs. Optional: POST the current tune to an LLM classifier.</p>' +
+        '<div id="bs-ident-url-tab-wrap" data-extra-hide-when="identExternalClassifier">' +
+        '<div class="bs-row">' +
+        '<label title="HTTP endpoint for your DIY / LLM classifier (POST JSON: freq, MHz, mode, dB, band).">DIY / LLM classifier URL <input type="url" id="bs-ident-classifier-url-tab" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
+        "</div></div>" +
+        '<p class="bs-hint bs-min-hide" data-extra="identExternalClassifier">External classifier is on — set the LLM classifier URL under <b>Settings → Identify classifier</b> (above Extras).</p>' +
+        '<div class="bs-row">' +
+        '<button type="button" class="bs-primary" id="bs-ident-run" title="POST current tune (and nearest peak, if any) to the classifier URL.">Identify now</button>' +
+        "</div>" +
+        '<pre class="bs-ident-out" id="bs-ident-out"></pre>',
+        { wide: true, help: "When external classifier is off, set the URL here. When Settings → Extras → Identify · external classifier is on, use Settings → Identify classifier instead." }) +
+      "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
       '<div class="bs-settings-admin-gate" id="bs-settings-admin-gate" hidden>' +
@@ -20936,6 +21075,7 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Show or hide the Bookmarks tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="bookmarks" checked> Bookmarks</label>' +
         '<label class="bs-chk" title="Show or hide the Audio tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="audio" checked> Audio</label>' +
         '<label class="bs-chk" title="Show or hide the Skip tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="skip" checked> Skip</label>' +
+        '<label class="bs-chk" title="Show or hide the Ident tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="ident" checked> Ident</label>' +
         '<label class="bs-chk" title="Help is the brown ? button next to M (not in the tab strip). Untick to hide it."><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help (?)</label>' +
         '<label class="bs-chk" title="Settings cannot be hidden."><input type="checkbox" class="bs-tab-vis" data-tab="settings" checked disabled> Settings (always on)</label>' +
         "</div>" +
@@ -21046,6 +21186,12 @@ Plugins.toolbox.init = function () {
         '<label title="POST JSON {freq, name, db, band} on each new peak. Errors are ignored.">Webhook URL <input type="url" id="bs-webhook" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
         "</div>",
         { extra: "homelabWebhook", cls: "bs-min-hide" }) +
+      settingsBoxHtml("Identify classifier",
+        '<p class="bs-hint">Shown when Settings → Extras → Identify · external classifier is on.</p>' +
+        '<div class="bs-row">' +
+        '<label title="HTTP endpoint for your LLM classifier (POST JSON with freq, MHz, mode, dB, band).">LLM classifier URL <input type="url" id="bs-ident-classifier-url-set" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
+        "</div>",
+        { extra: "identExternalClassifier", cls: "bs-min-hide", id: "bs-ident-classifier-set-box" }) +
       "</div>" +
       extrasSettingsHtml() +
       '<div class="bs-settings-bar bs-min-hide" id="bs-settings-pub-bar" role="separator" aria-label="Public visitor allowlist">' +
@@ -21683,10 +21829,13 @@ Plugins.toolbox.init = function () {
     }
       [
       "bs-default-tab", "bs-text-size", "bs-ui-density", "bs-chk-style", "bs-sched-action", "bs-quiet-start", "bs-quiet-end",
-      "bs-settle-ms", "bs-max-peaks", "bs-keep-peaks", "bs-max-clips", "bs-webhook", "bs-alert-freqs", "bs-alert-offset", "bs-digi-long", "bs-digi-force", "bs-digi-dwell", "bs-digi-mode", "bs-daynight-sched", "bs-occ-days"
+      "bs-settle-ms", "bs-max-peaks", "bs-keep-peaks", "bs-max-clips", "bs-webhook",
+      "bs-ident-classifier-url-tab", "bs-ident-classifier-url-set",
+      "bs-alert-freqs", "bs-alert-offset", "bs-digi-long", "bs-digi-force", "bs-digi-dwell", "bs-digi-mode", "bs-daynight-sched", "bs-occ-days"
     ].forEach(function (id) {
       if ($(id)) $(id).onchange = readForm;
     });
+    if ($("bs-ident-run")) $("bs-ident-run").onclick = runIdentClassify;
     if ($("bs-density-reset")) {
       $("bs-density-reset").onclick = function () {
         S.tabDensity = {};

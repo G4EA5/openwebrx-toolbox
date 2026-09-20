@@ -2915,6 +2915,20 @@ body[data-bs-chk-style="switch"] #bs-panel label.bs-chk input[type="checkbox"]:f
   background: #1f2937;
 }
 
+#bs-panel .bs-ident-out {
+  margin: 8px 0 0;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #111827;
+  color: #e5e7eb;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 #bs-panel .bs-settings-admin-gate {
   margin: 0 0 10px;
   padding: 10px 12px;

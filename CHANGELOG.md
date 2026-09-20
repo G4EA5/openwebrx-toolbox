@@ -1,5 +1,9 @@
 # Changelog
 
+## [441] — Ident tab: external classifier URL in Settings
+
+Adds the **Ident** tab and **Settings → Extras → Identify** group. When **external classifier** is off, set the DIY / LLM classifier URL on the Ident tab (Identify actions). When it is on, the URL field appears under **Settings → Identify classifier** (same value, one place at a time). **Identify now** POSTs the current tune to that endpoint.
+
 ## [440] — Scan Stop works during waits; strip stays visible while busy
 
 Stop was easy to miss (Always hide scan strip hid it mid-scan) and could sit
