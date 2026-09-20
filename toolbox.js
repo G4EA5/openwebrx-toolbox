@@ -25,7 +25,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = 441;
+  Plugins.toolbox._version = 442;
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
 Plugins.toolbox.magic_key = Plugins.toolbox.magic_key || "memagic";
@@ -1772,6 +1772,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-listen-order")) $("bs-listen-order").value = S.listenScanOrder || "priority";
     if ($("bs-show-new-only")) $("bs-show-new-only").checked = !!S.showNewOnly;
     if ($("bs-show-diff-only")) $("bs-show-diff-only").checked = !!S.showDiffOnly;
+    syncIdentSettingsUi();
   }
 
 
@@ -1911,8 +1912,9 @@ Plugins.toolbox.init = function () {
     "panel layout": "Side dock, size %, save/restore panel placement, and Reset Explore layout (box order + Wide/Half).",
     "data & housekeeping": "Export/import settings JSON or reset settings / factory wipe.",
     "homelab": "Optional webhook URL notified when a new peak is counted.",
-    "identify classifier": "LLM classifier HTTP endpoint (POST JSON). Shown here when Settings → Extras → Identify · external classifier is on.",
-    "identify actions": "Built-in spur/birdie rules always apply. Optional LLM classifier: set the URL here when external classifier is off; otherwise use Settings → Identify classifier.",
+    "identify": "External classifier keeps the LLM URL on this Settings page. Off = set DIY / LLM classifier URL on the Ident tab → Identify actions.",
+    "identify classifier": "LLM classifier HTTP endpoint (POST JSON). Shown when External classifier is ticked in Settings → Identify.",
+    "identify actions": "Built-in spur/birdie rules always apply. Optional LLM classifier: set the URL here when External classifier is off; otherwise use Settings → Identify.",
     "tune": "Type a frequency in MHz and Go, or hover a digit and scroll the wheel to nudge that place. Mute and Vol are in this header.",
     "vfo": "A/B · Locks · OWRX step · Channel (step/offset/snap) · History — grouped mini-boxes.",
     "profile": "Switch OpenWebRX SDR profiles (independent of Bands ticks).",
@@ -2307,7 +2309,7 @@ Plugins.toolbox.init = function () {
         switchTab(firstVisibleTab(), true);
       }
     } catch (eIdentTab) {}
-    try { syncIdentClassifierUrlInputs(); } catch (eIdentUrl) {}
+    try { syncIdentSettingsUi(); } catch (eIdentUrl) {}
     /* Keep Panel startup Auto-click visible and synced — it is not a data-extra target. */
     try {
       if ($("bs-autostart-owrx")) {
@@ -4871,6 +4873,29 @@ Plugins.toolbox.init = function () {
     var v = identClassifierUrl();
     if ($("bs-ident-classifier-url-tab")) $("bs-ident-classifier-url-tab").value = v;
     if ($("bs-ident-classifier-url-set")) $("bs-ident-classifier-url-set").value = v;
+  }
+
+  function syncIdentSettingsUi() {
+    var on = extraOn("identExternalClassifier");
+    var chk = $("bs-ident-external-classifier");
+    var ex = $("bs-extra-identExternalClassifier");
+    if (chk) chk.checked = on;
+    if (ex && document.activeElement !== ex) ex.checked = on;
+    var wrap = $("bs-ident-url-set-wrap");
+    var hint = $("bs-ident-url-tab-hint");
+    if (wrap) wrap.hidden = !on;
+    if (hint) hint.hidden = on;
+    syncIdentClassifierUrlInputs();
+  }
+
+  function setIdentExternalClassifier(on) {
+    if (!S.extras) S.extras = extrasDefaults();
+    S.extras.identExternalClassifier = !!on;
+    if ($("bs-ident-external-classifier")) $("bs-ident-external-classifier").checked = !!on;
+    if ($("bs-extra-identExternalClassifier")) $("bs-extra-identExternalClassifier").checked = !!on;
+    saveSettings();
+    syncIdentSettingsUi();
+    applyExtrasUi();
   }
 
   function readIdentClassifierUrlFromForm() {
@@ -21028,12 +21053,12 @@ Plugins.toolbox.init = function () {
         '<div class="bs-row">' +
         '<label title="HTTP endpoint for your DIY / LLM classifier (POST JSON: freq, MHz, mode, dB, band).">DIY / LLM classifier URL <input type="url" id="bs-ident-classifier-url-tab" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
         "</div></div>" +
-        '<p class="bs-hint bs-min-hide" data-extra="identExternalClassifier">External classifier is on — set the LLM classifier URL under <b>Settings → Identify classifier</b> (above Extras).</p>' +
+        '<p class="bs-hint" data-extra="identExternalClassifier">External classifier is on — set the LLM classifier URL under <b>Settings → Identify</b> (not on this tab).</p>' +
         '<div class="bs-row">' +
         '<button type="button" class="bs-primary" id="bs-ident-run" title="POST current tune (and nearest peak, if any) to the classifier URL.">Identify now</button>' +
         "</div>" +
         '<pre class="bs-ident-out" id="bs-ident-out"></pre>',
-        { wide: true, help: "When external classifier is off, set the URL here. When Settings → Extras → Identify · external classifier is on, use Settings → Identify classifier instead." }) +
+        { wide: true, help: "External classifier off: set DIY / LLM classifier URL here. External classifier on: URL moves to Settings → Identify on the Settings tab." }) +
       "</div></div>" +
       '<div class="bs-tab-pane" id="bs-tab-settings" data-tab="settings" role="tabpanel">' +
       '<div class="bs-settings" id="bs-settings">' +
@@ -21081,6 +21106,16 @@ Plugins.toolbox.init = function () {
         "</div>" +
         '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-tabs-show-all" title="Turn every tab back on (except Analyzer stays off).">Show all tabs</button></div>',
         { id: "bs-visible-tabs-box", wide: true }) +
+      settingsBoxHtml("Identify",
+        '<p class="bs-hint">Optional LLM endpoint for the <b>Ident</b> tab. Built-in spur/birdie rules work without any URL.</p>' +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label class="bs-chk" title="Keep the classifier URL on this Settings page instead of the Ident tab. Same switch as Extras → Identify · external classifier."><input type="checkbox" id="bs-ident-external-classifier"> External classifier</label>' +
+        "</div>" +
+        '<div class="bs-row" id="bs-ident-url-set-wrap" hidden>' +
+        '<label title="HTTP endpoint for your LLM classifier (POST JSON with freq, MHz, mode, dB, band).">LLM classifier URL <input type="url" id="bs-ident-classifier-url-set" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
+        "</div>" +
+        '<p class="bs-hint" id="bs-ident-url-tab-hint">External classifier off — set <b>DIY / LLM classifier URL</b> on the <b>Ident</b> tab → Identify actions.</p>',
+        { wide: true, id: "bs-ident-settings-box", help: "Always visible here (not buried in Extras). Tick External classifier to enter the URL on Settings; untick to enter it on the Ident tab." }) +
       settingsBoxHtml("UX feel (optional)",
         '<p class="bs-hint">Try quieter layouts <b>without changing</b> your saved Visible tabs or Extras ticks. All off = classic Toolbox. Soft overlays only — turn a switch off to go back.</p>' +
         '<div class="bs-row bs-chk-grid" id="bs-ux-feel-toggles">' +
@@ -21186,12 +21221,6 @@ Plugins.toolbox.init = function () {
         '<label title="POST JSON {freq, name, db, band} on each new peak. Errors are ignored.">Webhook URL <input type="url" id="bs-webhook" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
         "</div>",
         { extra: "homelabWebhook", cls: "bs-min-hide" }) +
-      settingsBoxHtml("Identify classifier",
-        '<p class="bs-hint">Shown when Settings → Extras → Identify · external classifier is on.</p>' +
-        '<div class="bs-row">' +
-        '<label title="HTTP endpoint for your LLM classifier (POST JSON with freq, MHz, mode, dB, band).">LLM classifier URL <input type="url" id="bs-ident-classifier-url-set" placeholder="https://…" style="flex:1;min-width:140px"></label>' +
-        "</div>",
-        { extra: "identExternalClassifier", cls: "bs-min-hide", id: "bs-ident-classifier-set-box" }) +
       "</div>" +
       extrasSettingsHtml() +
       '<div class="bs-settings-bar bs-min-hide" id="bs-settings-pub-bar" role="separator" aria-label="Public visitor allowlist">' +
@@ -21836,6 +21865,12 @@ Plugins.toolbox.init = function () {
       if ($(id)) $(id).onchange = readForm;
     });
     if ($("bs-ident-run")) $("bs-ident-run").onclick = runIdentClassify;
+    if ($("bs-ident-external-classifier")) {
+      $("bs-ident-external-classifier").onchange = function () {
+        setIdentExternalClassifier(!!$("bs-ident-external-classifier").checked);
+        readForm();
+      };
+    }
     if ($("bs-density-reset")) {
       $("bs-density-reset").onclick = function () {
         S.tabDensity = {};

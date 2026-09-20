@@ -1,5 +1,9 @@
 # Changelog
 
+## [442] — Identify controls always visible in Settings
+
+**External classifier** and the LLM URL field now live in a dedicated **Settings → Identify** box (always visible in Full and Minimal tab view). They are no longer buried only inside **Extras** (which Minimal view hides). The Extras grid still has the same tick for power users.
+
 ## [441] — Ident tab: external classifier URL in Settings
 
 Adds the **Ident** tab and **Settings → Extras → Identify** group. When **external classifier** is off, set the DIY / LLM classifier URL on the Ident tab (Identify actions). When it is on, the URL field appears under **Settings → Identify classifier** (same value, one place at a time). **Identify now** POSTs the current tune to that endpoint.
