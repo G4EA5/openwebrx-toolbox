@@ -1,2 +1,12 @@
 # Local Cursor / agent config — not part of the plugin release
 .cursor/
+
+# Do not commit a local installer script if one exists on the maintainer machine.
+install.sh
+
+# Local version snapshots / maintainer deploy helpers (not part of the public plugin)
+.toolbox-versions/
+scripts/
+**/__pycache__/
+*.pyc
+

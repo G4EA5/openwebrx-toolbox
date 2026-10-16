@@ -2,13 +2,7 @@
 // Does not need freq_scanner, scan_hunt, uikit, or notify.
 // Optional: uses notify/freq_scanner if they are already loaded.
 //
-// Install (preferred): run ./install.sh from this folder — it backs up
-// init.js, bookmarks, and any previous copy, then loads the plugin.
-// Manual: see README.md. Survey button is in the top bar (between Help and Status).
-// Help is always available from the panel (and on first run).
-//
-// Public shared OpenWebRX: set the next line to false (or run ./install.sh --public)
-// so visitors cannot tick "Own radio — fast hops". Personal / own-PC installs leave true.
+// Install: edit plugins/receiver/init.js — CDN or local copy (see README).
 
 var BAND_SURVEY_ALLOW_OWNER_OVERRIDE = true;
 
@@ -3503,7 +3497,7 @@ Plugins.band_survey.init = function () {
   function restoreBookmarkBackup(which) {
     var info = backupInfo(which);
     if (!info || !Array.isArray(info.bookmarks)) {
-      setStatus("No bookmark backup in this browser yet. Run a survey once, or re-install with install.sh.");
+      setStatus("No bookmark backup in this browser yet. Run a survey once, or hard-refresh after reloading the plugin.");
       return false;
     }
     if (typeof BookmarkLocalStorage !== "function") {
@@ -3640,7 +3634,7 @@ Plugins.band_survey.init = function () {
     } catch (e2) {}
     if ($("bs-panel") && !cssOk) {
       add("warn", "Plugin CSS did not load.",
-        "band_survey.css must sit next to band_survey.js. Re-copy the folder or re-run install.sh, then hard-refresh.");
+        "band_survey.css must sit next to band_survey.js. Re-copy the plugin files, then hard-refresh.");
     }
     return issues;
   }
@@ -3671,7 +3665,7 @@ Plugins.band_survey.init = function () {
     L("Stored peaks: " + hits.length + " (loaded=" + (_hitsLoaded ? "yes" : "no") + ")");
     L("Plugins loader: " + !!(window.Plugins && Plugins.load));
     L("");
-    L("Send with server report from: ./install.sh --report");
+    L("Use Help → Copy diagnostic report");
     return lines.join("\n");
   }
 
@@ -3876,7 +3870,7 @@ Plugins.band_survey.init = function () {
       "<li>Requires <b>OpenWebRX+</b> (plugin loader). Vanilla OpenWebRX cannot load this plugin.</li>" +
       "</ul>" +
       "<h3>Install</h3>" +
-      "<p>Preferred: run <code>./install.sh</code> on the radio host (SSH). Smart checks: <code>./install.sh --check</code> or <code>./install.sh --report</code> writes a full log (Pi/Docker/Mac hints). Public site: <code>./install.sh --public</code>. On Mac: install on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</p>" +
+      "<p>Manual install: edit <code>plugins/receiver/init.js</code> (CDN or local copy). See the GitHub README → Install. Hard-refresh after changes.</p>" +
       "<h3>Title bar tabs</h3>" +
       "<p><b>Bands</b> · <b>Range</b> · <b>Explore</b> · <b>Analyzer</b> (experimental, off by default) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>Settings</b> · <b>Help</b>. Enable Analyzer under Settings → <b>Visible tabs</b>. Settings always stays on. Drag the title bar to move the panel.</p>" +
       "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
@@ -4009,7 +4003,7 @@ Plugins.band_survey.init = function () {
       "<p>Yellow <b>server</b> bookmarks are admin-only. Export JSON and merge on the radio host.</p>" +
       "<h3>Troubleshooting</h3>" +
       "<ul>" +
-      "<li><b>No Survey / SV button</b> — plugin not loaded or cached old file. Run <code>./install.sh --check</code>, hard-refresh.</li>" +
+      "<li><b>No Survey / SV button</b> — plugin not loaded or cached old file. Confirm <code>Plugins.load</code> in <code>init.js</code>, then hard-refresh. Settings → Check install.</li>" +
       "<li><b>No profile list</b> — open the receiver page (not map/settings only); wait for OpenWebRX+ to load.</li>" +
       "<li><b>No waterfall data</b> — wait after connect; check SDR is started.</li>" +
       "<li><b>Local bookmarks API missing</b> — auto-bookmark disabled; Export JSON still works.</li>" +
