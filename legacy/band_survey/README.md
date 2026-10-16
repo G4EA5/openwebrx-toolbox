@@ -9,16 +9,8 @@ This folder holds the **last Band Survey release** before the project became
 | **Version** | **127** |
 | **Files** | `band_survey.js`, `band_survey.css` |
 
-The frozen plugin lives **only** in this folder. Prefer **Toolbox** from the repo root.
-
-## You almost certainly want Toolbox instead
-
-**Toolbox** includes every Band Survey feature and a lot more (Explore, Audio,
-Extras, public allowlist, side dock, …). Install from the repo root:
-
-```bash
-./install.sh
-```
+The frozen plugin lives **only** in this folder. Prefer **Toolbox** from the repo root
+(see root README — copy files + edit `init.js`; no installer in the public repo).
 
 **Do not load Band Survey and Toolbox together** — they share the same UI hooks
 and will clash.
