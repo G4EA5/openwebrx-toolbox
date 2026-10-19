@@ -307,6 +307,119 @@ body.bs-hide-stock-rx #openwebrx-panel-receiver {
 }
 
 /* Build version — left of Find (⌕); compact but readable. */
+#bs-panel .bs-light-strip {
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+}
+#bs-panel .bs-rst-pads { display: inline-flex; gap: 3px; margin-left: 4px; }
+#bs-panel .bs-cw-qcodes { margin-top: 12px; padding-top: 10px; border-top: 1px solid #334155; }
+#bs-panel .bs-cw-qcodes .bs-opt-lab { margin-bottom: 6px; }
+#bs-panel .bs-tips-sublab {
+  margin-top: 14px;
+  opacity: 0.95;
+}
+#bs-panel .bs-morse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+#bs-panel .bs-morse-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  cursor: default;
+}
+#bs-panel .bs-morse-ch {
+  font-weight: 700;
+  font-size: 13px;
+  color: #f8fafc;
+}
+#bs-panel .bs-morse-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #fde68a;
+  white-space: nowrap;
+}
+#bs-panel .bs-cw-qcode .bs-morse-code {
+  font-size: 10px;
+  opacity: 0.95;
+}
+/* Tips: full-width cards — do not reuse the DX spot 5-column .bs-more-row grid. */
+#bs-panel .bs-tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  width: 100%;
+}
+#bs-panel .bs-tips-card {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.85);
+  cursor: default;
+}
+#bs-panel .bs-tips-card:last-child {
+  border-bottom: none;
+}
+#bs-panel .bs-tips-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7dd3fc;
+  opacity: 0.9;
+  line-height: 1.45;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#bs-panel .bs-tips-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #e2e8f0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+#bs-panel .bs-cw-qcodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+#bs-panel .bs-cw-qcode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  cursor: default;
+}
+#bs-panel .bs-cw-qcode-code {
+  font-weight: 700;
+  font-size: 12px;
+  color: #fde68a;
+  letter-spacing: 0.04em;
+}
+#bs-panel .bs-cw-qcode-mean {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #cbd5e1;
+  white-space: normal;
+}
+
 #bs-panel .bs-head-ver {
   flex: 0 0 auto;
   align-self: center;
@@ -817,14 +930,125 @@ body.bs-side-dock.bs-side-right #webrx-page-container {
   margin: 4px 0 6px;
 }
 
-#bs-panel .bs-pack-list button.bs-pack-present {
-  opacity: 0.72;
-  border-color: #64748b;
-  color: #94a3b8;
+/* Band pack tiles — colour by target SDR (#bs-pack-sdr). ✓ = installed on that SDR. */
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_sdr.bs-pack-present {
+  background: #422006 !important;
+  border-color: #f59e0b !important;
+  color: #fef3c7 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_sdr.bs-pack-missing {
+  border-color: #b45309 !important;
+  color: #fcd34d !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_sdr_soapy.bs-pack-present,
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_tcp.bs-pack-present {
+  background: #713f12 !important;
+  border-color: #fbbf24 !important;
+  color: #fffbeb !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_sdr_soapy.bs-pack-missing,
+#bs-panel .bs-pack-list button.bs-pack-sdr-rtl_tcp.bs-pack-missing {
+  border-color: #d97706 !important;
+  color: #fde68a !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-airspy.bs-pack-present {
+  background: #134e4a !important;
+  border-color: #2dd4bf !important;
+  color: #ccfbf1 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-airspy.bs-pack-missing {
+  border-color: #0d9488 !important;
+  color: #5eead4 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-airspyhf.bs-pack-present {
+  background: #164e63 !important;
+  border-color: #38bdf8 !important;
+  color: #e0f2fe !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-airspyhf.bs-pack-missing {
+  border-color: #0284c7 !important;
+  color: #7dd3fc !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-hackrf.bs-pack-present {
+  background: #4c1d95 !important;
+  border-color: #c4b5fd !important;
+  color: #ede9fe !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-hackrf.bs-pack-missing {
+  border-color: #7c3aed !important;
+  color: #ddd6fe !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-sdrplay.bs-pack-present {
+  background: #14532d !important;
+  border-color: #86efac !important;
+  color: #dcfce7 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-sdrplay.bs-pack-missing {
+  border-color: #16a34a !important;
+  color: #bbf7d0 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-lime_soapy.bs-pack-present {
+  background: #831843 !important;
+  border-color: #f9a8d4 !important;
+  color: #fce7f3 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-lime_soapy.bs-pack-missing {
+  border-color: #db2777 !important;
+  color: #fbcfe8 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-soapy_connector.bs-pack-present,
+#bs-panel .bs-pack-list button.bs-pack-sdr-generic.bs-pack-present {
+  background: #334155 !important;
+  border-color: #cbd5e1 !important;
+  color: #f1f5f9 !important;
+}
+#bs-panel .bs-pack-list button.bs-pack-sdr-soapy_connector.bs-pack-missing,
+#bs-panel .bs-pack-list button.bs-pack-sdr-generic.bs-pack-missing {
+  border-color: #94a3b8 !important;
+  color: #e2e8f0 !important;
 }
 
-#bs-panel .bs-pack-list button[data-band-pack]:not(.bs-pack-present) {
-  border-color: #64748b;
+#bs-panel .bs-pack-list button[class*="bs-pack-sdr-"]:hover {
+  filter: brightness(1.12);
+}
+
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-rtl_sdr,
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-rtl_sdr_soapy,
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-rtl_tcp {
+  background: #b45309 !important;
+  border-color: #fcd34d !important;
+  color: #fffbeb !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-airspy {
+  background: #0f766e !important;
+  border-color: #5eead4 !important;
+  color: #f0fdfa !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-airspyhf {
+  background: #0369a1 !important;
+  border-color: #7dd3fc !important;
+  color: #f0f9ff !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-hackrf {
+  background: #6d28d9 !important;
+  border-color: #ddd6fe !important;
+  color: #faf5ff !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-sdrplay {
+  background: #15803d !important;
+  border-color: #bbf7d0 !important;
+  color: #f0fdf4 !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-lime_soapy {
+  background: #be185d !important;
+  border-color: #fbcfe8 !important;
+  color: #fdf2f8 !important;
+}
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-soapy_connector,
+#bs-panel #bs-pack-dl .bs-pack-dl-btn.bs-pack-sdr-generic {
+  background: #475569 !important;
+  border-color: #e2e8f0 !important;
+  color: #f8fafc !important;
 }
 
 body.bs-toolbox-popout {
@@ -1087,6 +1311,16 @@ body.bs-toolbox-popout #bs-panel.bs-detached {
   flex: 0 0 auto;
   min-height: min-content;
   overflow: visible;
+}
+/* User-resized list boxes: body fills leftover height so Recent/Here/Listen grow. */
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box-recent > .bs-ex-recent,
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box-here > .bs-ex-here,
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box-listen > .bs-ex-listen,
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box-mem > .bs-ex-mem,
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box-find > .bs-ex-find {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box:not(.bs-ex-dragging) {
@@ -1369,6 +1603,56 @@ body.bs-ex-free-adjust {
   flex: 0 0 auto;
 }
 
+#bs-panel #bs-tab-bands .bs-band-sdr-bar,
+#bs-panel #bs-tab-range .bs-range-sdr-bar,
+#bs-panel #bs-tab-identify .bs-id-sdr-bar,
+#bs-panel #bs-tab-analyzer .bs-sa-sdr-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.85);
+  width: 100%;
+  box-sizing: border-box;
+}
+#bs-panel #bs-tab-bands .bs-bd-sdr-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+  color: #e2e8f0;
+}
+#bs-panel #bs-tab-bands .bs-bd-sdr-filter .bs-ex-sdr-show,
+#bs-panel #bs-tab-bands .bs-band-sdr-select {
+  min-width: 9em;
+  max-width: 14em;
+  font-size: 12px;
+  font-weight: 500;
+}
+#bs-panel #bs-tab-bands .bs-band-sdr-hint {
+  margin: 0;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+#bs-panel #bs-ex-box-profile .bs-ex-sdr-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 4px 0 2px;
+  font-size: 11px;
+}
+#bs-panel #bs-ex-box-profile .bs-ex-sdr-show {
+  max-width: 11em;
+  font-size: 11px;
+}
 #bs-panel #bs-tab-explore #bs-ex-box-profile .bs-ex-opt-grid > .bs-opt-group {
   flex: 0 1 auto;
 }
@@ -1477,6 +1761,13 @@ body.bs-ex-free-adjust {
   resize: none;
   box-sizing: border-box;
   position: relative;
+}
+
+/* display:flex above otherwise overrides HTML [hidden] (Settings → Explore boxes). */
+#bs-panel #bs-tab-explore .bs-ex-box[hidden],
+#bs-panel #bs-tab-explore .bs-ex-pack-free .bs-ex-free-canvas > .bs-ex-box[hidden],
+#bs-panel #bs-tab-explore .bs-ex-deck .bs-ex-box[hidden] {
+  display: none !important;
 }
 
 #bs-panel #bs-tab-explore .bs-ex-box-tune > .bs-ex-box-h {
@@ -2029,6 +2320,102 @@ body.bs-ex-box-dnd {
 #bs-panel #bs-tab-explore .bs-ex-recent-row:hover { color: #fde68a; }
 #bs-panel #bs-tab-explore .bs-ex-box-recent .bs-row { padding: 0 4px 6px; }
 
+#bs-panel #bs-tab-explore .bs-ex-listen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 6px 8px;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-arc {
+  position: relative;
+  height: 8px;
+  margin: 2px 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0f172a 0%, #334155 42%, #fbbf24 58%, #fde68a 100%);
+  opacity: 0.85;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-arc[data-phase="night"] {
+  background: linear-gradient(90deg, #020617 0%, #1e293b 55%, #334155 100%);
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-arc[data-phase="grey"] {
+  background: linear-gradient(90deg, #0f172a 0%, #78350f 45%, #fbbf24 70%, #fde68a 100%);
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-arc[data-phase="day"] {
+  background: linear-gradient(90deg, #1e3a5f 0%, #38bdf8 40%, #fbbf24 100%);
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-sun {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #fef08a;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.45);
+  pointer-events: none;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-hero,
+#bs-panel #bs-tab-explore .bs-ex-listen-next {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-hero { color: #e2e8f0; }
+#bs-panel #bs-tab-explore .bs-ex-listen-next { opacity: 0.75; }
+#bs-panel #bs-tab-explore .bs-ex-listen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-chip {
+  flex: 0 0 auto;
+}
+#bs-panel #bs-tab-explore .bs-ex-listen-qth {
+  vertical-align: baseline;
+  margin-left: 2px;
+}
+
+/* Light Explore boxes — text + chips, Pi-friendly */
+#bs-panel #bs-tab-explore .bs-ex-light {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 6px 8px;
+}
+#bs-panel #bs-tab-explore .bs-ex-light-hero,
+#bs-panel #bs-tab-explore .bs-ex-light-line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+#bs-panel #bs-tab-explore .bs-ex-light-hero { color: #e2e8f0; }
+#bs-panel #bs-tab-explore .bs-ex-light-line { opacity: 0.8; }
+#bs-panel #bs-tab-explore .bs-ex-light-chips,
+#bs-panel #bs-tab-explore .bs-ex-mode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+#bs-panel #bs-tab-explore .bs-ex-dial-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+#bs-panel #bs-tab-explore .bs-ex-dial-chip,
+#bs-panel #bs-tab-explore .bs-ex-mode-chip,
+#bs-panel #bs-tab-explore .bs-ex-mute-min {
+  flex: 0 0 auto;
+}
+#bs-panel #bs-tab-explore .bs-ex-near-bm-row {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 #bs-panel #bs-tab-explore .bs-ex-find-hit {
   padding: var(--bs-ex-btn-y) var(--bs-ex-btn-x);
   font-size: var(--bs-ex-fs-sm);
@@ -2190,7 +2577,7 @@ body.bs-ex-box-dnd {
   background: transparent;
   color: #ddd6fe;
 }
-/* Title + subtitle on one line; wrap only when the column is very narrow. */
+/* Title + subtitle: Explore stacks a plain-language “what this box is for” under the name. */
 #bs-panel .bs-ex-box-head-text,
 #bs-panel .bs-set-box-head-text {
   display: flex;
@@ -2200,6 +2587,24 @@ body.bs-ex-box-dnd {
   gap: 0;
   flex: 1 1 auto;
   min-width: 0;
+}
+#bs-panel #bs-tab-explore .bs-ex-box-head-text {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding-right: 4px;
+}
+#bs-panel #bs-tab-explore .bs-ex-box-sub::before {
+  content: none;
+}
+#bs-panel #bs-tab-explore .bs-ex-box-sub {
+  display: block;
+  font-size: 10px;
+  line-height: 1.25;
+  color: #94a3b8;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 #bs-panel .bs-ex-box-toggle .bs-ex-box-title {
   flex: 0 0 auto;
@@ -3006,8 +3411,7 @@ body.bs-ex-box-dnd {
   margin: 0 0 8px;
 }
 
-#bs-panel #bs-factory-reset:disabled,
-#bs-panel #bs-factory-reset-2:disabled {
+#bs-panel #bs-factory-reset:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -3060,6 +3464,416 @@ body.bs-ex-box-dnd {
   border-top: 1px solid #334155;
   flex-wrap: wrap;
   gap: 6px;
+}
+#bs-panel .bs-smeter-cal-danger,
+#bs-smeter-cal-pop .bs-smeter-cal-danger {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid #b91c1c;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0 0 6px;
+}
+
+/* S-meter calibrate — large guided dialog */
+#bs-smeter-cal-shade.bs-smeter-cal-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 100094;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(2px);
+}
+#bs-smeter-cal-pop.bs-smeter-cal-pop {
+  width: min(56rem, calc(100vw - 20px));
+  max-height: min(92vh, 52rem);
+  z-index: 100096;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #334155;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(148, 163, 184, 0.12);
+  background: linear-gradient(165deg, #1e293b 0%, #0f172a 42%, #020617 100%);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-head {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #334155;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), transparent 55%);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+#bs-smeter-cal-pop .bs-bm-edit-pop-title {
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-body {
+  overflow: auto;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-card {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(51, 65, 85, 0.95);
+  background: rgba(15, 23, 42, 0.72);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-h {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-list,
+#bs-smeter-cal-pop .bs-smeter-cal-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-list li,
+#bs-smeter-cal-pop .bs-smeter-cal-steps li {
+  margin: 0 0 5px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-list li:last-child,
+#bs-smeter-cal-pop .bs-smeter-cal-steps li:last-child {
+  margin-bottom: 0;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-chip {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e0f2fe;
+  background: rgba(14, 165, 233, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+#bs-smeter-cal-pop button.bs-smeter-cal-chip-btn {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #e0f2fe;
+  background: rgba(14, 165, 233, 0.22);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+}
+#bs-smeter-cal-pop button.bs-smeter-cal-chip-btn:hover {
+  background: rgba(14, 165, 233, 0.38);
+  border-color: rgba(125, 211, 252, 0.7);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-max {
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.7;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-point {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  background: rgba(15, 23, 42, 0.75);
+  font-size: 12px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-point-mhz {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #f1f5f9;
+  min-width: 5.5em;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-point-off {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-tune {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-off-now {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #a5b4fc;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-note {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.65);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.55);
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr:first-of-type {
+  margin-top: 8px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-name {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  line-height: 1.35;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-name code {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr .bs-hint {
+  margin: 0 0 4px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr .bs-smeter-cal-list {
+  margin-bottom: 0;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 8px 0 10px;
+  border: 1px solid rgba(71, 85, 105, 0.75);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.9fr) minmax(4.5rem, 0.55fr) 1.6fr;
+  gap: 8px 12px;
+  padding: 7px 10px;
+  border-top: 1px solid rgba(51, 65, 85, 0.85);
+  color: #cbd5e1;
+  align-items: baseline;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-row:first-child {
+  border-top: none;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-head {
+  background: rgba(30, 41, 59, 0.9);
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-row span:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-head span:nth-child(2) {
+  color: #94a3b8;
+  font-weight: 700;
+}
+@media (max-width: 560px) {
+  #bs-smeter-cal-pop .bs-smeter-cal-freq-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+#bs-smeter-cal-pop .bs-smeter-cal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  #bs-smeter-cal-pop .bs-smeter-cal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+#bs-smeter-cal-pop .bs-smeter-cal-raw {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-shown {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: #7dd3fc;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-freq-counter {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-mhz-lab {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+  margin: 0;
+}
+#bs-smeter-cal-pop #bs-smeter-cal-mhz {
+  width: 9.5em;
+  max-width: 42vw;
+  padding: 8px 10px;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #020617;
+  color: #f8fafc;
+}
+#bs-smeter-cal-pop #bs-smeter-cal-mhz-go {
+  font-weight: 700;
+  min-width: 4.5rem;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-card-pick {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.55));
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 9.5rem;
+  max-width: 100%;
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  line-height: 1.25;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip:hover {
+  border-color: #38bdf8;
+  background: #172554;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip-on {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.22);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+  color: #f0f9ff;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip-miss {
+  opacity: 0.72;
+  border-style: dashed;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-chip-meta {
+  font-size: 11px;
+  opacity: 0.78;
+  color: #94a3b8;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-pick-row {
+  align-items: center;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-sdr-sel-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+#bs-smeter-cal-pop #bs-smeter-cal-sdr-sel {
+  min-width: 12rem;
+  max-width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #020617;
+  color: #f1f5f9;
+  font-size: 13px;
+}
+#bs-smeter-cal-pop button.bs-smeter-cal-chip-done {
+  opacity: 0.72;
+  border-color: rgba(74, 222, 128, 0.55);
+  background: rgba(22, 163, 74, 0.22);
+  color: #bbf7d0;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-fields {
+  gap: 10px 14px;
+  margin-bottom: 6px;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-fields input {
+  width: 7.5em;
+  max-width: 100%;
+  padding: 6px 8px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #020617;
+  color: #f1f5f9;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-actions {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid #334155;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#bs-smeter-cal-pop .bs-smeter-cal-actions .bs-primary {
+  min-width: 9rem;
+  font-weight: 700;
 }
 #bs-factory-pop .bs-factory-pop-actions .bs-stop {
   margin-right: 2px;
@@ -3370,7 +4184,7 @@ body.bs-ex-box-dnd {
 }
 
 /* Default slate buttons. :where() keeps :not() from beating role colours on hover/press. */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button:where(:not(.bs-tab):not(.bs-x):not(.bs-check-dismiss):not(.bs-ex-mode):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)) {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button:where(:not(.bs-tab):not(.bs-x):not(.bs-check-dismiss):not(.bs-ex-mode):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)) {
   cursor: pointer;
   background: #1e293b;
   color: #e2e8f0;
@@ -3379,191 +4193,191 @@ body.bs-ex-box-dnd {
 }
 
 /* Brighter on hover; stronger flash on click — applies to action buttons and sub-tabs. */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled) {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled) {
   transition: filter 0.08s ease;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button:where(:not(.bs-tab):not(.bs-x):not(.bs-check-dismiss):not(.bs-ex-mode):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):hover {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button:where(:not(.bs-tab):not(.bs-x):not(.bs-check-dismiss):not(.bs-ex-mode):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):hover {
   background: #475569;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled):hover {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled):hover {
   filter: brightness(1.35) contrast(1.04);
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled):active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-press {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button:where(:not(.bs-x):not(.bs-check-dismiss):not(.openwebrx-squelch-auto):not(.bs-ex-sql-auto)):not(:disabled):active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-press {
   filter: brightness(2.05) contrast(1.1) !important;
 }
 
 /* Start / primary actions — blue by default (Scan bands / range / bookmarks, Record, …). */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-primary {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-primary {
   background: #1d4ed8;
   color: #ffffff;
   border-color: #93c5fd;
   font-weight: 700;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-primary:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-primary:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-primary:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-primary:active {
   background: #2563eb;
   color: #ffffff;
   border-color: #93c5fd;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-primary:disabled {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-primary:disabled {
   opacity: 0.72;
   cursor: default;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-primary:disabled:hover {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-primary:disabled:hover {
   background: #1d4ed8;
 }
 
 /* Stop — red by default (every Stop, plus Factory reset). */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-stop {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-stop {
   background: #991b1b;
   color: #ffffff;
   border-color: #fca5a5;
   font-weight: 700;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-stop:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-stop:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-stop:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-stop:active {
   background: #dc2626;
   color: #ffffff;
   border-color: #fca5a5;
 }
 
 /* Other role buttons — neutral slate. Custom shades optional via picker. */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-fresh,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-jump,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-hold,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-skip,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-lock,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-go,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-bm,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-util,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-info,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-preset,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-play,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tune {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-fresh,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-jump,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-hold,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-skip,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-lock,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-go,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-bm,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-util,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-info,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-preset,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-play,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tune {
   background: #1e293b;
   color: #e2e8f0;
   border-color: #64748b;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-go {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-go {
   font-weight: 700;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-fresh,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-jump,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-hold,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-skip,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-lock,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-bm,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-info,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-play,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tune {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-fresh,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-jump,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-hold,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-skip,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-lock,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-bm,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-info,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-play,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tune {
   font-weight: 650;
 }
 
 /* Save / export / download — green */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-export {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-export {
   background: #15803d;
   color: #f0fdf4;
   border-color: #86efac;
   font-weight: 650;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-export:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-export:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-export:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-export:active {
   background: #16a34a;
   color: #f0fdf4;
   border-color: #86efac;
 }
 
 /* Load / import / restore — purple */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) :is(button, a).bs-btn-import {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) :is(button, a).bs-btn-import {
   background: #5b21b6;
   color: #ffffff;
   border-color: #c4b5fd;
   font-weight: 650;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) :is(button, a).bs-btn-import:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) :is(button, a).bs-btn-import:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) a.bs-btn-import:visited {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) :is(button, a).bs-btn-import:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) :is(button, a).bs-btn-import:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) a.bs-btn-import:visited {
   background: #7c3aed;
   color: #ffffff;
   border-color: #c4b5fd;
 }
 
 /* Server bookmarks → [load] — amber (waterfall markers stay yellow) */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button#bs-bm-loaduser.bs-btn-import {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button#bs-bm-loaduser.bs-btn-import {
   background: #b45309;
   color: #fffbeb;
   border-color: #fcd34d;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button#bs-bm-loaduser.bs-btn-import:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button#bs-bm-loaduser.bs-btn-import:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button#bs-bm-loaduser.bs-btn-import:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button#bs-bm-loaduser.bs-btn-import:active {
   background: #d97706;
   color: #fffbeb;
   border-color: #fcd34d;
 }
 
 /* Clear / delete / reset list — red (destructive; Stop uses bs-stop) */
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-clear {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-clear {
   background: #991b1b;
   color: #ffffff;
   border-color: #fca5a5;
   font-weight: 650;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-clear:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-clear:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-clear:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-clear:active {
   background: #dc2626;
   color: #ffffff;
   border-color: #fca5a5;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-fresh:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-fresh:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-jump:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-jump:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-hold:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-hold:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-skip:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-skip:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-lock:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-lock:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-go:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-go:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-bm:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-bm:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-util:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-util:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-info:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-info:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-preset:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-preset:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-play:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-btn-play:active,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tune:hover,
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tune:active {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-fresh:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-fresh:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-jump:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-jump:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-hold:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-hold:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-skip:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-skip:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-lock:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-lock:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-go:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-go:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-bm:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-bm:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-util:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-util:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-info:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-info:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-preset:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-preset:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-play:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-btn-play:active,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tune:hover,
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tune:active {
   background: #475569;
   color: #e2e8f0;
   border-color: #94a3b8;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tune {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tune {
   border: 1px solid #64748b;
   padding: 2px 7px;
 }
 
-:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop) button.bs-tiny {
+:is(#bs-panel, #bs-bm-edit-pop, #bs-bd-edit-pop, #bs-factory-pop, #bs-smeter-cal-pop) button.bs-tiny {
   padding: 1px 6px;
   font-size: 12px;
 }
@@ -4544,10 +5358,16 @@ body.bs-layout-drag.bs-resize-nesw {
   width: 3.8em;
 }
 
+/* Shared sub-tab bar (Bands / Range / Bookmarks / Audio / Log / Watch / Peaks / Skip). */
 #bs-panel #bs-tab-bookmarks .bs-bm-subs,
 #bs-panel #bs-tab-bands .bs-bd-subs,
 #bs-panel #bs-tab-audio .bs-au-subs,
-#bs-panel #bs-tab-range .bs-rg-subs {
+#bs-panel #bs-tab-range .bs-rg-subs,
+#bs-panel #bs-tab-log .bs-lg-subs,
+#bs-panel #bs-tab-watch .bs-sw-subs,
+#bs-panel #bs-tab-peaks .bs-pk-subs,
+#bs-panel #bs-tab-skip .bs-sk-subs,
+#bs-panel #bs-tab-settings .bs-st-subs {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -4562,14 +5382,23 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel .bs-tab-stack > .bs-bm-subs,
 #bs-panel .bs-tab-stack > .bs-bd-subs,
 #bs-panel .bs-tab-stack > .bs-au-subs,
-#bs-panel .bs-tab-stack > .bs-rg-subs {
+#bs-panel .bs-tab-stack > .bs-rg-subs,
+#bs-panel .bs-tab-stack > .bs-lg-subs,
+#bs-panel .bs-tab-stack > .bs-sw-subs,
+#bs-panel .bs-tab-stack > .bs-pk-subs,
+#bs-panel .bs-tab-stack > .bs-sk-subs,
+#bs-panel #bs-settings-stack > .bs-st-subs {
   flex: 0 0 auto;
 }
 
 #bs-panel .bs-tab-stack > .bs-bm-subpane,
 #bs-panel .bs-tab-stack > .bs-bd-subpane,
 #bs-panel .bs-tab-stack > .bs-au-subpane,
-#bs-panel .bs-tab-stack > .bs-rg-subpane {
+#bs-panel .bs-tab-stack > .bs-rg-subpane,
+#bs-panel .bs-tab-stack > .bs-lg-subpane,
+#bs-panel .bs-tab-stack > .bs-sw-subpane,
+#bs-panel .bs-tab-stack > .bs-pk-subpane,
+#bs-panel .bs-tab-stack > .bs-sk-subpane {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -4577,7 +5406,12 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel #bs-tab-bookmarks .bs-bm-sub,
 #bs-panel #bs-tab-bands .bs-bd-sub,
 #bs-panel #bs-tab-audio .bs-au-sub,
-#bs-panel #bs-tab-range .bs-rg-sub {
+#bs-panel #bs-tab-range .bs-rg-sub,
+#bs-panel #bs-tab-log .bs-lg-sub,
+#bs-panel #bs-tab-watch .bs-sw-sub,
+#bs-panel #bs-tab-peaks .bs-pk-sub,
+#bs-panel #bs-tab-skip .bs-sk-sub,
+#bs-panel #bs-tab-settings .bs-st-sub {
   flex: 1 1 auto;
   min-width: 3.5em;
   margin: 0;
@@ -4596,7 +5430,12 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel #bs-tab-bookmarks .bs-bm-sub:hover,
 #bs-panel #bs-tab-bands .bs-bd-sub:hover,
 #bs-panel #bs-tab-audio .bs-au-sub:hover,
-#bs-panel #bs-tab-range .bs-rg-sub:hover {
+#bs-panel #bs-tab-range .bs-rg-sub:hover,
+#bs-panel #bs-tab-log .bs-lg-sub:hover,
+#bs-panel #bs-tab-watch .bs-sw-sub:hover,
+#bs-panel #bs-tab-peaks .bs-pk-sub:hover,
+#bs-panel #bs-tab-skip .bs-sk-sub:hover,
+#bs-panel #bs-tab-settings .bs-st-sub:hover {
   color: #f8fafc;
   background: #1e293b;
 }
@@ -4604,7 +5443,12 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel #bs-tab-bookmarks .bs-bm-sub.bs-bm-sub-on,
 #bs-panel #bs-tab-bands .bs-bd-sub.bs-bd-sub-on,
 #bs-panel #bs-tab-audio .bs-au-sub.bs-au-sub-on,
-#bs-panel #bs-tab-range .bs-rg-sub.bs-rg-sub-on {
+#bs-panel #bs-tab-range .bs-rg-sub.bs-rg-sub-on,
+#bs-panel #bs-tab-log .bs-lg-sub.bs-lg-sub-on,
+#bs-panel #bs-tab-watch .bs-sw-sub.bs-sw-sub-on,
+#bs-panel #bs-tab-peaks .bs-pk-sub.bs-pk-sub-on,
+#bs-panel #bs-tab-skip .bs-sk-sub.bs-sk-sub-on,
+#bs-panel #bs-tab-settings .bs-st-sub.bs-st-sub-on {
   color: #0f172a;
   background: #f59e0b;
   border-color: #fbbf24;
@@ -4613,7 +5457,11 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel #bs-tab-bookmarks .bs-bm-subpane,
 #bs-panel #bs-tab-bands .bs-bd-subpane,
 #bs-panel #bs-tab-audio .bs-au-subpane,
-#bs-panel #bs-tab-range .bs-rg-subpane {
+#bs-panel #bs-tab-range .bs-rg-subpane,
+#bs-panel #bs-tab-log .bs-lg-subpane,
+#bs-panel #bs-tab-watch .bs-sw-subpane,
+#bs-panel #bs-tab-peaks .bs-pk-subpane,
+#bs-panel #bs-tab-skip .bs-sk-subpane {
   display: none;
   flex-direction: column;
   flex: 1 1 auto;
@@ -4624,25 +5472,25 @@ body.bs-layout-drag.bs-resize-nesw {
   gap: 0;
 }
 
-/* Peaks / Skip: one full tab-stack scroll (not nested list scrollers). */
-#bs-panel #bs-tab-peaks .bs-tab-stack > .bs-set-box:not(.bs-box-list),
-#bs-panel #bs-tab-peaks .bs-tab-stack > .bs-box:not(.bs-box-list),
-#bs-panel #bs-tab-skip .bs-tab-stack > .bs-set-box:not(.bs-box-list),
-#bs-panel #bs-tab-skip .bs-tab-stack > .bs-box:not(.bs-box-list) {
+/* Peaks / Skip: boxes live inside the active subpane (same as Bands / Bookmarks). */
+#bs-panel #bs-tab-peaks .bs-pk-subpane > .bs-set-box:not(.bs-box-list),
+#bs-panel #bs-tab-peaks .bs-pk-subpane > .bs-box:not(.bs-box-list),
+#bs-panel #bs-tab-skip .bs-sk-subpane > .bs-set-box:not(.bs-box-list),
+#bs-panel #bs-tab-skip .bs-sk-subpane > .bs-box:not(.bs-box-list) {
   flex: 0 0 auto;
   min-height: auto;
   overflow: visible;
 }
-#bs-panel #bs-tab-peaks .bs-box-list,
-#bs-panel #bs-tab-skip .bs-box-list,
+#bs-panel #bs-tab-peaks .bs-pk-subpane .bs-box-list,
+#bs-panel #bs-tab-skip .bs-sk-subpane .bs-box-list,
 #bs-panel #bs-tab-bands .bs-bd-subpane .bs-box-list,
 #bs-panel #bs-tab-bookmarks .bs-bm-subpane[data-bm-sub="list"] .bs-box-list {
   flex: 0 1 auto !important;
   min-height: 10rem;
   overflow: visible;
 }
-#bs-panel #bs-tab-peaks .bs-box-list > .bs-set-box-body,
-#bs-panel #bs-tab-skip .bs-box-list > .bs-set-box-body,
+#bs-panel #bs-tab-peaks .bs-pk-subpane .bs-box-list > .bs-set-box-body,
+#bs-panel #bs-tab-skip .bs-sk-subpane .bs-box-list > .bs-set-box-body,
 #bs-panel #bs-tab-bands .bs-bd-subpane .bs-box-list > .bs-set-box-body,
 #bs-panel #bs-tab-bookmarks .bs-bm-subpane[data-bm-sub="list"] .bs-box-list > .bs-set-box-body {
   overflow: visible;
@@ -4783,7 +5631,11 @@ body.bs-layout-drag.bs-resize-nesw {
 #bs-panel #bs-tab-bookmarks .bs-bm-subpane.bs-bm-sub-on,
 #bs-panel #bs-tab-bands .bs-bd-subpane.bs-bd-sub-on,
 #bs-panel #bs-tab-audio .bs-au-subpane.bs-au-sub-on,
-#bs-panel #bs-tab-range .bs-rg-subpane.bs-rg-sub-on {
+#bs-panel #bs-tab-range .bs-rg-subpane.bs-rg-sub-on,
+#bs-panel #bs-tab-log .bs-lg-subpane.bs-lg-sub-on,
+#bs-panel #bs-tab-watch .bs-sw-subpane.bs-sw-sub-on,
+#bs-panel #bs-tab-peaks .bs-pk-subpane.bs-pk-sub-on,
+#bs-panel #bs-tab-skip .bs-sk-subpane.bs-sk-sub-on {
   display: flex;
 }
 
@@ -5183,7 +6035,12 @@ body.bs-layout-drag.bs-resize-nesw {
 
 #bs-panel #bs-tab-bands .bs-bd-sub,
 #bs-panel #bs-tab-audio .bs-au-sub,
-#bs-panel #bs-tab-bookmarks .bs-bm-sub {
+#bs-panel #bs-tab-bookmarks .bs-bm-sub,
+#bs-panel #bs-tab-range .bs-rg-sub,
+#bs-panel #bs-tab-log .bs-lg-sub,
+#bs-panel #bs-tab-watch .bs-sw-sub,
+#bs-panel #bs-tab-peaks .bs-pk-sub,
+#bs-panel #bs-tab-skip .bs-sk-sub {
   font-size: 10px;
   padding: 4px 5px;
   min-width: 0;
@@ -6738,6 +7595,46 @@ button.bs-find-hit:hover .bs-find-hit-open {
   display: none !important;
 }
 
+#bs-panel .bs-ex-meter-read .bs-ex-meter-cal,
+#bs-panel .bs-ex-meter-read #bs-ex-smeter-cal {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: #94a3b8;
+  text-shadow: 0 1px 2px #0b1220;
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  z-index: 3;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  line-height: 1.2;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+#bs-panel .bs-ex-meter-read .bs-ex-meter-cal:hover,
+#bs-panel .bs-ex-meter-read #bs-ex-smeter-cal:hover {
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.55);
+}
+#bs-panel .bs-ex-meter-read .bs-ex-meter-cal-on,
+#bs-panel .bs-ex-meter-read #bs-ex-smeter-cal.bs-ex-meter-cal-on {
+  color: #86efac;
+}
+#bs-panel .bs-ex-meter-read .bs-ex-meter-cal-on:hover,
+#bs-panel .bs-ex-meter-read #bs-ex-smeter-cal.bs-ex-meter-cal-on:hover {
+  color: #bbf7d0;
+}
+
 /* Tune row lock is injected from toolbox.js as well (id bs-explore-tune-row-lock)
    so a cached stylesheet cannot put the meter back on top of Hop. */
 
@@ -7848,6 +8745,26 @@ body.bs-sa-box-dnd #bs-panel #bs-tab-analyzer .bs-sa-box-drag-h {
   padding-top: 4px;
   padding-bottom: 5px;
 }
+/* Span / Presets / Analyzer settings — full row (not one --bs-panel-box-w column). */
+#bs-panel #bs-tab-analyzer .bs-sa-stack > #bs-sa-span-box,
+#bs-panel #bs-tab-analyzer .bs-sa-stack > #bs-sa-preset-box,
+#bs-panel #bs-tab-analyzer .bs-sa-stack > #bs-sa-settings-box,
+#bs-panel #bs-tab-analyzer .bs-sa-stack > .bs-sa-sdr-bar {
+  flex: 0 0 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+}
+#bs-panel #bs-sa-settings-box.bs-sa-box-settings > .bs-set-box-body {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#bs-panel #bs-sa-settings-box .bs-chk-grid {
+  width: 100%;
+}
 #bs-panel .bs-sa-preset-group > .bs-opt-lab {
   display: block;
   margin: 0 0 2px;
@@ -8235,6 +9152,26 @@ body.bs-sa-box-dnd #bs-panel #bs-tab-analyzer .bs-sa-box-drag-h {
 #bs-panel .bs-sa-wf {
   cursor: crosshair;
   min-height: 110px;
+}
+
+/* Analyzer wide span — stitched view on OpenWebRX main waterfall */
+#webrx-canvas-background {
+  position: relative;
+}
+canvas.bs-sa-main-wf-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+}
+#bs-panel .bs-sa-main-wf-wrap.bs-sa-main-wf-narrow {
+  opacity: 0.55;
+}
+body.bs-sa-main-wf-on #bs-panel #bs-sa-display-box .bs-sa-canvas {
+  opacity: 0.22;
 }
 
 /* Identify tab — free placement (drag + corner resize), same idea as Explore */
@@ -8957,6 +9894,19 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
+}
+#bs-panel #bs-tab-identify .bs-id-sdr-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 4px 0 0;
+  width: 100%;
+  font-size: 11px;
+}
+#bs-panel #bs-tab-identify .bs-id-sdr-filter .bs-ex-sdr-show {
+  max-width: 11em;
+  font-size: 11px;
 }
 #bs-panel #bs-tab-identify .bs-id-profile-row select.bs-id-profile-sel {
   flex: 1 1 auto;
@@ -10427,11 +11377,24 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   width: 100%;
   min-width: 0;
 }
+#bs-panel #bs-public-policy .bs-pub-more-policy {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #334155;
+  width: 100%;
+  min-width: 0;
+}
+#bs-panel #bs-public-policy .bs-pub-more-lead {
+  margin: 0 0 6px;
+}
+#bs-panel #bs-public-policy .bs-pub-more-grid {
+  margin-top: 4px;
+}
 #bs-panel .bs-pub-cols,
 #bs-panel .bs-settings-cols {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 4px;
+  gap: 8px;
   align-items: stretch;
   width: 100%;
   min-width: 0;
@@ -10464,7 +11427,7 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-settings-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
   align-items: stretch;
 }
@@ -10497,6 +11460,84 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-pub-mini .bs-chk-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
   gap: 2px 6px;
+}
+#bs-panel .bs-pub-mini .bs-pub-mini-bulk,
+#bs-panel .bs-set-box .bs-set-bulk,
+#bs-panel .bs-extra-box .bs-set-bulk {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(51, 65, 85, 0.85);
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Settings → S-meter Calibrate… — green action. */
+#bs-panel button#bs-smeter-cal-open,
+#bs-panel button.bs-smeter-cal-open-btn {
+  background: #15803d;
+  color: #f0fdf4;
+  border-color: #86efac;
+  font-weight: 700;
+}
+#bs-panel button#bs-smeter-cal-open:hover,
+#bs-panel button#bs-smeter-cal-open:active,
+#bs-panel button.bs-smeter-cal-open-btn:hover,
+#bs-panel button.bs-smeter-cal-open-btn:active {
+  background: #16a34a;
+  color: #f0fdf4;
+  border-color: #86efac;
+}
+
+/* Settings box bulk: light green Add all / orange Remove all. */
+#bs-panel button.bs-set-bulk-all {
+  background: #86efac;
+  color: #14532d;
+  border-color: #4ade80;
+  font-weight: 700;
+}
+#bs-panel button.bs-set-bulk-all:hover,
+#bs-panel button.bs-set-bulk-all:active {
+  background: #4ade80;
+  color: #14532d;
+  border-color: #22c55e;
+}
+#bs-panel button.bs-set-bulk-none {
+  background: #ea580c;
+  color: #fff7ed;
+  border-color: #fdba74;
+  font-weight: 700;
+}
+#bs-panel button.bs-set-bulk-none:hover,
+#bs-panel button.bs-set-bulk-none:active {
+  background: #f97316;
+  color: #fff7ed;
+  border-color: #fdba74;
+}
+
+/* Public allowlist presets — teal Allow all (not the usual #16a34a green); red Safe defaults. */
+#bs-panel button.bs-pub-allow-all {
+  background: #0f766e;
+  color: #ecfdf5;
+  border-color: #5eead4;
+  font-weight: 700;
+}
+#bs-panel button.bs-pub-allow-all:hover,
+#bs-panel button.bs-pub-allow-all:active {
+  background: #0d9488;
+  color: #ecfdf5;
+  border-color: #5eead4;
+}
+#bs-panel button.bs-pub-allow-safe {
+  background: #991b1b;
+  color: #ffffff;
+  border-color: #fca5a5;
+  font-weight: 700;
+}
+#bs-panel button.bs-pub-allow-safe:hover,
+#bs-panel button.bs-pub-allow-safe:active {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #fca5a5;
 }
 #bs-panel .bs-settings-masonry {
   display: block;
@@ -10658,8 +11699,131 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-settings-stack {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   margin-top: 4px;
+}
+#bs-panel #bs-tab-settings .bs-st-subpane {
+  display: none;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+  min-width: 0;
+}
+#bs-panel #bs-settings-general-pane > .bs-set-box,
+#bs-panel #bs-settings-general-pane > .bs-settings-duo,
+#bs-panel #bs-settings-general-pane > .bs-settings-sdr-block {
+  margin-bottom: 0;
+}
+#bs-panel #bs-settings-sdr-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+#bs-panel #bs-settings-sdr-block > .bs-set-box {
+  margin: 0;
+}
+#bs-panel #bs-settings-webhooks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #334155;
+}
+#bs-panel #bs-settings-general-pane > .bs-settings-webhooks > .bs-set-box {
+  margin: 0;
+}
+#bs-panel #bs-news-feed-url-line a,
+#bs-panel #bs-cfeed-active-url a {
+  word-break: break-all;
+}
+
+/* Feeds → Yours: one sub-tab per saved feed (when 2+). */
+#bs-panel #bs-more-myfeeds .bs-cfeed-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0 0 6px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #0b1220;
+  border: 1px solid #334155;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-sub {
+  flex: 1 1 auto;
+  min-width: 3.5em;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  line-height: 1.2;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-sub:hover {
+  color: #f8fafc;
+  background: #1e293b;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-sub.bs-cfeed-sub-on {
+  color: #0f172a;
+  background: #f59e0b;
+  border-color: #fbbf24;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  gap: 4px;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-subpane {
+  display: none;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-subpane.bs-cfeed-sub-on {
+  display: flex;
+}
+#bs-panel #bs-more-myfeeds .bs-cfeed-url-line a {
+  word-break: break-all;
+}
+#bs-panel #bs-cfeed-box .bs-cfeed-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-bottom: 4px;
+}
+#bs-panel #bs-cfeed-box .bs-cfeed-actions .bs-tiny {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+#bs-panel #bs-cfeed-box .bs-cfeed-actions #bs-cfeed-meta {
+  flex: 1 1 auto;
+  min-width: 4em;
+  margin: 0 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#bs-panel #bs-tab-settings .bs-st-subpane.bs-st-sub-on {
+  display: flex;
+}
+#bs-panel #bs-settings-public-pane .bs-settings-public-block {
+  margin-top: 0;
+  padding-top: 0;
 }
 #bs-panel .bs-settings-bar {
   display: flex;
@@ -10713,12 +11877,30 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-settings-duo {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr));
-  gap: 4px;
+  gap: 8px;
   align-items: stretch;
 }
 #bs-panel .bs-settings-duo > .bs-set-box {
   min-width: 0;
   height: 100%;
+}
+
+#bs-panel .bs-more-vis-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 6px;
+  align-items: start;
+}
+#bs-panel .bs-more-vis-group {
+  margin: 0;
+  min-width: 0;
+}
+#bs-panel .bs-more-vis-group > .bs-opt-lab {
+  display: block;
+  margin: 0 0 4px;
+}
+#bs-panel .bs-more-vis-grid {
+  margin: 0;
 }
 
 #bs-panel #bs-public-mode-box.bs-set-box {
@@ -10839,9 +12021,12 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-bm-subs .bs-sub-help,
 #bs-panel .bs-au-subs .bs-sub-help,
 #bs-panel .bs-lg-subs .bs-sub-help,
+#bs-panel .bs-st-subs .bs-sub-help,
 #bs-panel .bs-sw-subs .bs-sub-help,
 #bs-panel .bs-more-subs .bs-sub-help,
-#bs-panel .bs-rg-subs .bs-sub-help {
+#bs-panel .bs-rg-subs .bs-sub-help,
+#bs-panel .bs-pk-subs .bs-sub-help,
+#bs-panel .bs-sk-subs .bs-sub-help {
   flex: 0 0 auto;
   margin-left: auto;
   align-self: center;
@@ -11062,9 +12247,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-bm-subpane,
 #bs-panel .bs-au-subpane,
 #bs-panel .bs-rg-subpane,
-#bs-panel #bs-tab-range,
-#bs-panel #bs-tab-skip,
-#bs-panel #bs-tab-peaks,
+#bs-panel .bs-lg-subpane,
+#bs-panel .bs-sw-subpane,
+#bs-panel .bs-pk-subpane,
+#bs-panel .bs-sk-subpane,
 #bs-panel #bs-tab-settings,
 #bs-panel .bs-help-pane,
 #bs-panel .bs-toolbar {
@@ -11077,9 +12263,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-bm-subpane::-webkit-scrollbar,
 #bs-panel .bs-au-subpane::-webkit-scrollbar,
 #bs-panel .bs-rg-subpane::-webkit-scrollbar,
-#bs-panel #bs-tab-range::-webkit-scrollbar,
-#bs-panel #bs-tab-skip::-webkit-scrollbar,
-#bs-panel #bs-tab-peaks::-webkit-scrollbar,
+#bs-panel .bs-lg-subpane::-webkit-scrollbar,
+#bs-panel .bs-sw-subpane::-webkit-scrollbar,
+#bs-panel .bs-pk-subpane::-webkit-scrollbar,
+#bs-panel .bs-sk-subpane::-webkit-scrollbar,
 #bs-panel #bs-tab-settings::-webkit-scrollbar,
 #bs-panel .bs-help-pane::-webkit-scrollbar,
 #bs-panel .bs-toolbar::-webkit-scrollbar {
@@ -11092,9 +12279,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-bm-subpane::-webkit-scrollbar-thumb,
 #bs-panel .bs-au-subpane::-webkit-scrollbar-thumb,
 #bs-panel .bs-rg-subpane::-webkit-scrollbar-thumb,
-#bs-panel #bs-tab-range::-webkit-scrollbar-thumb,
-#bs-panel #bs-tab-skip::-webkit-scrollbar-thumb,
-#bs-panel #bs-tab-peaks::-webkit-scrollbar-thumb,
+#bs-panel .bs-lg-subpane::-webkit-scrollbar-thumb,
+#bs-panel .bs-sw-subpane::-webkit-scrollbar-thumb,
+#bs-panel .bs-pk-subpane::-webkit-scrollbar-thumb,
+#bs-panel .bs-sk-subpane::-webkit-scrollbar-thumb,
 #bs-panel #bs-tab-settings::-webkit-scrollbar-thumb,
 #bs-panel .bs-help-pane::-webkit-scrollbar-thumb,
 #bs-panel .bs-toolbar::-webkit-scrollbar-thumb {
@@ -11108,9 +12296,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-bm-subpane::-webkit-scrollbar-track,
 #bs-panel .bs-au-subpane::-webkit-scrollbar-track,
 #bs-panel .bs-rg-subpane::-webkit-scrollbar-track,
-#bs-panel #bs-tab-range::-webkit-scrollbar-track,
-#bs-panel #bs-tab-skip::-webkit-scrollbar-track,
-#bs-panel #bs-tab-peaks::-webkit-scrollbar-track,
+#bs-panel .bs-lg-subpane::-webkit-scrollbar-track,
+#bs-panel .bs-sw-subpane::-webkit-scrollbar-track,
+#bs-panel .bs-pk-subpane::-webkit-scrollbar-track,
+#bs-panel .bs-sk-subpane::-webkit-scrollbar-track,
 #bs-panel #bs-tab-settings::-webkit-scrollbar-track,
 #bs-panel .bs-help-pane::-webkit-scrollbar-track,
 #bs-panel .bs-toolbar::-webkit-scrollbar-track {
@@ -11125,9 +12314,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   .bs-bm-subpane,
   .bs-au-subpane,
   .bs-rg-subpane,
-  #bs-tab-range,
-  #bs-tab-skip,
-  #bs-tab-peaks,
+  .bs-lg-subpane,
+  .bs-sw-subpane,
+  .bs-pk-subpane,
+  .bs-sk-subpane,
   #bs-tab-settings,
   .bs-help-pane,
   .bs-toolbar {
@@ -11140,9 +12330,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   .bs-bm-subpane::-webkit-scrollbar,
   .bs-au-subpane::-webkit-scrollbar,
   .bs-rg-subpane::-webkit-scrollbar,
-  #bs-tab-range::-webkit-scrollbar,
-  #bs-tab-skip::-webkit-scrollbar,
-  #bs-tab-peaks::-webkit-scrollbar,
+  .bs-lg-subpane::-webkit-scrollbar,
+  .bs-sw-subpane::-webkit-scrollbar,
+  .bs-pk-subpane::-webkit-scrollbar,
+  .bs-sk-subpane::-webkit-scrollbar,
   #bs-tab-settings::-webkit-scrollbar,
   .bs-help-pane::-webkit-scrollbar,
   .bs-toolbar::-webkit-scrollbar {
@@ -11155,9 +12346,10 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   .bs-bm-subpane::-webkit-scrollbar-thumb,
   .bs-au-subpane::-webkit-scrollbar-thumb,
   .bs-rg-subpane::-webkit-scrollbar-thumb,
-  #bs-tab-range::-webkit-scrollbar-thumb,
-  #bs-tab-skip::-webkit-scrollbar-thumb,
-  #bs-tab-peaks::-webkit-scrollbar-thumb,
+  .bs-lg-subpane::-webkit-scrollbar-thumb,
+  .bs-sw-subpane::-webkit-scrollbar-thumb,
+  .bs-pk-subpane::-webkit-scrollbar-thumb,
+  .bs-sk-subpane::-webkit-scrollbar-thumb,
   #bs-tab-settings::-webkit-scrollbar-thumb,
   .bs-help-pane::-webkit-scrollbar-thumb,
   .bs-toolbar::-webkit-scrollbar-thumb {
@@ -11180,14 +12372,14 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 /* Tabs with sub-tabs: stack does not scroll — the active subpane does. */
 #bs-panel #bs-tab-bands > .bs-tab-stack,
 #bs-panel #bs-tab-bookmarks > .bs-tab-stack,
-#bs-panel #bs-tab-audio > .bs-tab-stack {
+#bs-panel #bs-tab-audio > .bs-tab-stack,
+#bs-panel #bs-tab-range > .bs-tab-stack,
+#bs-panel #bs-tab-log > .bs-tab-stack,
+#bs-panel #bs-tab-watch > .bs-tab-stack,
+#bs-panel #bs-tab-peaks > .bs-tab-stack,
+#bs-panel #bs-tab-skip > .bs-tab-stack,
+#bs-panel #bs-tab-more > .bs-tab-stack {
   overflow: hidden;
-}
-/* Range: single stack scrolls (no rg sub-panes) — same idea as Peaks / Skip. */
-#bs-panel #bs-tab-range > .bs-tab-stack {
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 #bs-panel .bs-tab-stack > .bs-note {
   margin: 0;
@@ -11275,6 +12467,17 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   grid-column: span 1;
   box-sizing: border-box;
   margin: 0;
+}
+#bs-panel .bs-sa-stack.bs-tab-box-equal > .bs-set-box.bs-sa-box#bs-sa-settings-box,
+#bs-panel .bs-sa-stack.bs-tab-box-equal > .bs-sa-sdr-bar {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
+}
+#bs-panel #bs-sa-settings-box.bs-sa-box-full > .bs-set-box-body {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 #bs-panel .bs-id-stack.bs-tab-box-equal > .bs-id-meta-gate {
   grid-column: 1 / -1;
@@ -11672,11 +12875,57 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   background: #0b1220;
   border: 1px solid #334155;
 }
-#bs-panel #bs-tab-more .bs-more-sub {
+#bs-panel #bs-tab-more .bs-more-group {
   flex: 1 1 auto;
-  min-width: 3.5em;
+  min-width: 3em;
   margin: 0;
   padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  line-height: 1.2;
+}
+/* Selected More group (Spots / Space / …) — yellow */
+#bs-panel #bs-tab-more .bs-more-group.bs-more-group-on {
+  color: #0f172a;
+  background: #fbbf24;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+#bs-panel #bs-tab-more .bs-more-inners {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin: 0 0 4px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #111827;
+  border: 1px solid #1f2937;
+}
+#bs-panel #bs-tab-more .bs-more-grouppane {
+  display: none;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+#bs-panel #bs-tab-more .bs-more-grouppane.bs-more-group-on {
+  display: flex;
+  overflow: hidden;
+}
+#bs-panel #bs-tab-more .bs-more-sub {
+  flex: 1 1 calc(20% - 3px);
+  min-width: 2.1em;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 3px;
+  font-size: 9px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
@@ -11687,10 +12936,12 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   cursor: pointer;
   line-height: 1.2;
 }
+/* Selected inner More pane (DX / Plan / …) — sky blue (distinct from yellow group) */
 #bs-panel #bs-tab-more .bs-more-sub.bs-more-sub-on {
   color: #0f172a;
-  background: #f59e0b;
-  border-color: #fbbf24;
+  background: #38bdf8;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.35);
 }
 #bs-panel #bs-tab-more .bs-more-sub.bs-more-live:not(.bs-more-sub-on) {
   color: #86efac;
@@ -11703,9 +12954,220 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   margin-left: 4px;
 }
 #bs-panel #bs-more-dx .bs-dx-stack,
-#bs-panel #bs-more-sats {
+#bs-panel #bs-more-sats,
+#bs-panel #bs-tab-more .bs-more-subpane {
   flex: 1 1 auto;
   min-height: 0;
+}
+#bs-panel .bs-more-list {
+  flex: 1 1 auto;
+  min-height: 6rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#bs-panel .bs-more-row {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 1.2fr) 5.5rem 3.2rem minmax(0, 1.6fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+}
+#bs-panel .bs-more-row:hover {
+  background: rgba(30, 41, 59, 0.85);
+}
+#bs-panel .bs-more-row-live .bs-more-name,
+#bs-panel .bs-more-row-live .bs-more-status {
+  color: #86efac;
+  font-weight: 700;
+}
+#bs-panel .bs-more-name {
+  font-weight: 700;
+}
+#bs-panel .bs-more-mhz,
+#bs-panel .bs-more-mode,
+#bs-panel .bs-more-status {
+  font-size: 11px;
+  opacity: 0.9;
+}
+/* DX-style dense rows keep single-line ellipsis; More lists wrap so Plan / Call / etc. stay readable. */
+#bs-panel .bs-dx-list .bs-more-mhz,
+#bs-panel .bs-dx-list .bs-more-mode,
+#bs-panel .bs-dx-list .bs-more-status,
+#bs-panel .bs-dx-row .bs-dx-msg,
+#bs-panel .bs-dx-row .bs-dx-band {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#bs-panel .bs-more-list .bs-more-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1.1fr) minmax(5.5rem, max-content) minmax(0, 2fr);
+  gap: 4px 10px;
+  align-items: start;
+}
+#bs-panel .bs-more-list .bs-more-row:has(.bs-more-mode) {
+  grid-template-columns: minmax(5rem, 1fr) minmax(5rem, max-content) 3.5rem minmax(0, 1.8fr);
+}
+#bs-panel .bs-more-list .bs-more-mhz,
+#bs-panel .bs-more-list .bs-more-mode,
+#bs-panel .bs-more-list .bs-more-status {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+  line-height: 1.3;
+}
+#bs-panel .bs-link-list .bs-more-row {
+  grid-template-columns: minmax(5rem, 0.8fr) minmax(0, 1fr);
+}
+#bs-panel .bs-link-list .bs-more-status {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+#bs-panel #bs-plan-box > .bs-set-box-body,
+#bs-panel #bs-cb-box > .bs-set-box-body,
+#bs-panel #bs-alerts-list {
+  overflow: visible;
+}
+#bs-panel #bs-alerts-list .bs-more-row {
+  grid-template-columns: minmax(0, 1.4fr) minmax(5rem, max-content) minmax(0, 1.6fr);
+  align-items: start;
+}
+#bs-panel #bs-alerts-list .bs-more-status {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+/* Licence / IARU notes — wrap full text (do not reuse DX row ellipsis grid). */
+#bs-panel .bs-more-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#bs-panel .bs-more-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  cursor: default;
+}
+#bs-panel .bs-more-note-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+#bs-panel .bs-more-note-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.92;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+#bs-panel #bs-license-box > .bs-set-box-body,
+#bs-panel #bs-iaru-box > .bs-set-box-body,
+#bs-panel #bs-es-box > .bs-set-box-body,
+#bs-panel #bs-phonetic-box > .bs-set-box-body {
+  overflow: visible;
+}
+#bs-panel .bs-phonetic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: 4px 8px;
+}
+#bs-panel .bs-phonetic-cell {
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(51, 65, 85, 0.55);
+}
+#bs-panel .bs-phonetic-cell b {
+  color: #fbbf24;
+  margin-right: 4px;
+}
+#bs-panel .bs-grey-canvas {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  display: block;
+}
+#bs-panel .bs-prop-extra {
+  margin-top: 8px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+#bs-panel .bs-qth-host {
+  margin-top: 4px;
+}
+#bs-panel .bs-qth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 6px;
+}
+#bs-panel .bs-qth-grid > div {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#bs-panel .bs-qth-grid span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+#bs-panel .bs-qth-grid b {
+  color: #fbbf24;
+  font-size: 14px;
+  word-break: break-word;
+}
+#bs-panel #bs-alerts-list .bs-more-row {
+  grid-template-columns: minmax(0, 1.6fr) 7rem 3.5rem;
+  cursor: default;
+}
+#bs-panel #bs-aurora-host .bs-solar-grid {
+  margin-bottom: 6px;
+}
+#bs-panel .bs-prop-extra span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+#bs-panel .bs-prop-extra b {
+  color: #fbbf24;
+  font-size: 15px;
+}
+#bs-panel .bs-net-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 6px;
 }
 #bs-panel #bs-tab-more .bs-more-subpane {
   display: none;
@@ -11717,6 +13179,18 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 }
 #bs-panel #bs-tab-more .bs-more-subpane.bs-more-sub-on {
   display: flex;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* Tips / Plan / News etc.: let the pane scroll; don’t clip tall set-boxes. */
+#bs-panel #bs-tab-more .bs-more-subpane > .bs-set-box {
+  flex: 0 0 auto;
+  max-height: none;
+}
+#bs-panel #bs-tips-box > .bs-set-box-body {
+  overflow: visible;
 }
 #bs-panel .bs-sat-tools {
   display: flex;
@@ -11734,7 +13208,7 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 }
 #bs-panel .bs-solar-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 #bs-panel .bs-solar-grid div {
@@ -11751,6 +13225,108 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-panel .bs-solar-grid b {
   font-size: 18px;
   color: #fbbf24;
+}
+/* More → Read → Calls: fill dock height; scroll inside the list only. */
+#bs-panel #bs-more-callsigns.bs-more-subpane.bs-more-sub-on {
+  overflow: hidden;
+}
+#bs-panel #bs-more-callsigns > #bs-calls-box {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+}
+#bs-panel #bs-calls-box > .bs-set-box-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#bs-panel #bs-calls-box .bs-net-tools,
+#bs-panel #bs-calls-box > .bs-set-box-body > .bs-hint {
+  flex: 0 0 auto;
+}
+#bs-panel .bs-calls-host {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 6rem;
+  max-height: none;
+  overflow: auto;
+  margin-top: 6px;
+}
+#bs-panel .bs-calls-card {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+#bs-panel .bs-calls-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+#bs-panel .bs-calls-card-head b {
+  color: #fbbf24;
+  font-size: 14px;
+}
+#bs-panel .bs-calls-hist {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #f97316;
+  border: 1px solid #9a3412;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+#bs-panel .bs-calls-meta-line {
+  font-size: 11px;
+  opacity: 0.8;
+}
+#bs-panel .bs-calls-periods {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#bs-panel .bs-calls-periods th,
+#bs-panel .bs-calls-periods td {
+  border: 1px solid #1e293b;
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+}
+#bs-panel .bs-calls-periods th {
+  background: #111827;
+  color: #94a3b8;
+  font-weight: 600;
+}
+#bs-panel .bs-calls-periods td:nth-child(2) {
+  font-family: ui-monospace, monospace;
+  color: #e2e8f0;
+}
+#bs-panel .bs-calls-summary {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 8px;
+  color: #cbd5e1;
+}
+#bs-panel .bs-calls-subhead {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin: 10px 0 4px;
+}
+#bs-panel .bs-calls-licences td:nth-child(3),
+#bs-panel .bs-calls-series td:nth-child(1) {
+  font-family: ui-monospace, monospace;
+  color: #e2e8f0;
 }
 #bs-panel .bs-ex-smeter-pk {
   display: block;
@@ -11824,53 +13400,12 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   flex-wrap: nowrap;
   align-items: stretch;
 }
-#bs-panel #bs-tab-log .bs-lg-subs,
-#bs-panel #bs-tab-watch .bs-sw-subs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  flex: 0 0 auto;
-  margin: 0 0 6px;
-  padding: 2px;
-  border-radius: 6px;
-  background: #0b1220;
-  border: 1px solid #334155;
-}
-#bs-panel #bs-tab-log .bs-lg-sub,
-#bs-panel #bs-tab-watch .bs-sw-sub {
-  flex: 1 1 auto;
-  min-width: 3.5em;
-  margin: 0;
-  padding: 4px 8px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: #e2e8f0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  line-height: 1.2;
-}
-#bs-panel #bs-tab-log .bs-lg-sub.bs-lg-sub-on,
-#bs-panel #bs-tab-watch .bs-sw-sub.bs-sw-sub-on {
-  color: #0f172a;
-  background: #f59e0b;
-  border-color: #fbbf24;
-}
+/* Log / Watch sub-tabs share the common bar/pane system above. */
 #bs-panel #bs-tab-log .bs-lg-subpane,
 #bs-panel #bs-tab-watch .bs-sw-subpane {
-  display: none;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
   width: 100%;
   max-width: 100%;
   gap: 6px;
-}
-#bs-panel #bs-tab-log .bs-lg-subpane.bs-lg-sub-on,
-#bs-panel #bs-tab-watch .bs-sw-subpane.bs-sw-sub-on {
-  display: flex;
 }
 #bs-panel .bs-qso-form,
 #bs-panel .bs-qso-row,
@@ -12241,7 +13776,7 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-ex-box-tune .bs-ex-tune-grid {
   display: flex !important;
   flex-flow: row wrap !important;
-  align-items: flex-start !important;
+  align-items: stretch !important;
   align-content: flex-start !important;
   gap: 6px !important;
   width: 100% !important;
@@ -12267,7 +13802,7 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   height: auto !important;
   max-height: none !important;
   overflow: hidden !important;
-  align-self: flex-start !important;
+  align-self: stretch !important;
   box-sizing: border-box !important;
   margin: 0 !important;
   order: 1 !important;
@@ -12277,13 +13812,14 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   display: flex !important;
   flex-flow: row nowrap !important;
   align-items: stretch !important;
+  align-self: stretch !important;
   flex: 0 0 calc(50% - 3px) !important;
   width: calc(50% - 3px) !important;
   max-width: calc(50% - 3px) !important;
   min-width: 0 !important;
   height: auto !important;
   min-height: 0 !important;
-  max-height: 140px !important;
+  max-height: none !important;
   gap: 6px !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
@@ -12302,12 +13838,12 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
-  height: 120px !important;
-  min-height: 120px !important;
-  max-height: 120px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
   overflow: hidden !important;
   position: relative !important;
-  align-self: flex-start !important;
+  align-self: stretch !important;
   box-sizing: border-box !important;
   margin: 0 !important;
 }
@@ -12317,12 +13853,16 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
 #bs-ex-box-tune .bs-ex-tune-grid #bs-ex-audio-scope-c {
   display: block !important;
   width: 100% !important;
-  height: 88px !important;
+  height: auto !important;
   min-width: 0 !important;
   min-height: 88px !important;
-  max-height: 88px !important;
+  max-height: none !important;
   overflow: hidden !important;
-  flex: 0 0 88px !important;
+  flex: 1 1 auto !important;
+}
+#bs-panel .bs-ex-tune-side .bs-ex-scope-read,
+#bs-ex-box-tune .bs-ex-tune-side .bs-ex-scope-read {
+  flex: 0 0 auto !important;
 }
 #bs-panel .bs-ex-tune-grid > .bs-ex-stats,
 #bs-ex-box-tune .bs-ex-tune-grid > .bs-ex-stats {
@@ -12375,5 +13915,98 @@ body.bs-id-box-dnd #bs-panel #bs-tab-identify .bs-id-box-drag-h {
   #bs-ex-box-tune .bs-ex-tune-side > .bs-ex-scope {
     display: none !important;
   }
+}
+
+
+/* vB2 — compact Peaks table */
+#bs-panel.bs-compact-peaks table.bs-hits td,
+#bs-panel.bs-compact-peaks table.bs-hits th {
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  font-size: 0.92em !important;
+  line-height: 1.15 !important;
+}
+#bs-panel.bs-compact-peaks table.bs-hits .bs-tiny {
+  padding: 0 4px !important;
+  min-height: 1.4em !important;
+  font-size: 0.85em !important;
+}
+
+/* vB110 — first-run welcome wizard */
+body.bs-welcome-open {
+  overflow: hidden;
+}
+.bs-welcome-wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.bs-welcome-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.bs-welcome-card {
+  position: relative;
+  max-width: 34rem;
+  width: 100%;
+  padding: 1.1rem 1.25rem 1rem;
+  background: #1a1a1a;
+  color: #f0f0f0;
+  border: 1px solid #666;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  max-height: min(92vh, 520px);
+  overflow: auto;
+}
+.bs-welcome-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+.bs-welcome-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0.75rem 0;
+}
+.bs-welcome-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem !important;
+  line-height: 1.35;
+}
+.bs-welcome-pick span {
+  font-size: 0.88em;
+  font-weight: normal;
+  opacity: 0.92;
+}
+.bs-welcome-foot {
+  margin-bottom: 0;
+}
+.bs-welcome-guide {
+  margin-top: 0.35rem;
+}
+.bs-welcome-examples {
+  margin: 0.35rem 0 0.5rem;
+  padding-left: 1.15rem;
+  font-size: 0.9em;
+  line-height: 1.4;
+  opacity: 0.95;
+}
+.bs-welcome-examples li {
+  margin-bottom: 0.35rem;
+}
+#bs-factory-box .bs-factory-row {
+  flex-wrap: wrap;
+  gap: 6px;
 }
 

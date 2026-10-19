@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (v965)
+# OpenWebRX Toolbox (vB137)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -19,11 +19,18 @@ the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 
 ### Manual install — there is no installer
 
-There is **no installer** and no zip from Settings — only a manual edit of `init.js`.
-You edit **one file** on the radio host: `plugins/receiver/init.js`.
+There is **no installer** — only a manual edit of `init.js` to install the first time.
+You edit **one file** on the radio host: `plugins/receiver/init.js`. Later updates:
+Settings → **Update Toolbox** (see [Routine update](#routine-update-already-installed)).
 
-**Easiest (CDN)** — add this inside the existing `(async () => { … })();` in `init.js`
-(or wrap it if the file is empty):
+> **Not a shell command.** The `(async () => { … Plugins.load(…) })();` snippet is
+> **JavaScript** for `init.js` (or the OpenWebRX browser page). Do **not** paste it
+> into bash / a terminal — you will get `syntax error near unexpected token`.
+> It also does **not** download files into a folder on disk. The browser loads
+> `toolbox.js` (and matching `toolbox.css`) from the CDN when the receiver page opens.
+
+**Easiest (CDN)** — paste this into `plugins/receiver/init.js` on the radio host
+(inside the existing `(async () => { … })();`, or use this whole block if the file is empty):
 
 ```js
 (async () => {
@@ -33,6 +40,9 @@ You edit **one file** on the radio host: `plugins/receiver/init.js`.
 
 Hard-refresh the receiver (**Ctrl+Shift+R** / **Cmd+Shift+R**), click **Toolbox** in
 the top bar, then **Settings → Check install**.
+
+**Want the files on disk instead?** Use a terminal (`git clone` or `curl`), not
+`Plugins.load` — see [Option B](#option-b--local-copy-from-github) below.
 
 **Local copy** (offline / pin exact files): clone this repo, copy `toolbox.js` +
 `toolbox.css` into `htdocs/plugins/receiver/toolbox/`, then
@@ -46,15 +56,17 @@ the top bar, then **Settings → Check install**.
 | Area | Highlights |
 | --- | --- |
 | **Install** | Manual only — edit `init.js` (CDN or local). **No installer** |
-| **Explore** | Free-layout boxes; Tune + audio scope + analogue S-meter; Nest scan; Jump loudest |
+| **Explore** | Free-layout boxes; Tune + Listen + light helpers (Clock/QTH, steps, band hop, paste-tune, …); Settings → Explore boxes + **Light features**; Nest scan; Jump loudest |
 | **Bands** | Presets + full tick list; beacons / solar / today; edit / schedule / packs |
 | **Range** | Jump loudest / choose profile; hop & grid; spectrum chart; scan skips |
 | **Identify** | Heuristic signal-type guesses; optional DIY LLM URL Extra (on by default in Visible tabs) |
 | **Log / Watch** | Decoder feed, QSO pad, callsign lookup; Watch alerts + Groups + Snooze |
-| **More** | DX cluster + Satellites (Doppler follow) — on by default, between Skip and Set |
+| **More** | Eight groups (Spots…Feeds), up to ten panes each — five on by default; **Settings → General → More sections** |
 | **Skip** | Always-skip / lockouts **and** Scan skips (digital bookmarks + block MHz) |
 | **Audio** | Clips, record busy, receiver audio filters; optional STT webhook Extra |
-| **Public** | Public / shared receiver + visitor allowlist; optional hard lock in host `toolbox.js` |
+| **Public** | **Settings → Public** — shared mode + visitor allowlist (tabs, features, extras, Explore limits, **More panes** per group); optional `TOOLBOX_PUBLIC_POLICY` in host `toolbox.js` |
+| **Settings · SDR** | Device switcher, per-kind behaviour profiles, preferred stick by job, Role→SDR, pack pins, network budget, hop settle, storage quotas, key remap, settings sync URL |
+| **SDR filters** | **Explore** + **Bands**: shared **SDR only** (All SDRs or one kind). **Range** / **Analyzer**: **Choose SDR** (one radio each). **Identify**: **Choose SDR** with **All SDRs** or one kind — each tab remembers separately |
 | **Help** | Hover tips + **?** on every boxed section and sub-tab |
 | **Docs** | [v440→v960 changes](docs/CHANGES-v440-to-v960.md) · full [`CHANGELOG.md`](CHANGELOG.md) |
 
@@ -194,6 +206,10 @@ Practical differences by setup:
 
 - **Profiles must cover the MHz you scan.** Range, Explore, and Analyzer only hop
   where profiles allow.
+- **Which SDR’s profiles to list/hop** — **Explore** and **Bands** share **SDR only**
+  (All SDRs or e.g. hackrf). **Range** and **Analyzer** use **Choose SDR** (one kind
+  each, remembered per tab). **Identify** uses **Choose SDR** with **All SDRs** or one
+  kind. Changing HackRF on Range does not change Explore or Anz.
 - **Bandwidth comes from OpenWebRX** (`window.bandwidth`).
 - **Presets** (Air, FM, …) match common profile id/name patterns. Custom names still
   work — tick bands manually or use **All**.
@@ -227,6 +243,7 @@ Toolbox is mostly **browser JavaScript**. The radio host mainly **serves** the p
 
 **Tips for small PCs / Pi with on-device browser**
 
+- Settings → **Raspberry Pi / low power** — experimental one-click preset that hides juicier tabs (Analyzer, Identify, More, Watch, Range) and trims Explore boxes. Undo anytime. Try different tabs/scenarios with the preset on and off, then feedback via [GitHub issues](https://github.com/G4EA5/openwebrx-toolbox/issues) or the [OpenWebRX+ forum](https://groups.io/g/openwebrx).
 - Turn off unused **Extras** (Settings) — cuts timers and UI work.
 - Untick **Analyzer** / **Identify** under Visible tabs if you do not need them.
 - Cap stored peaks (**Max peaks** / untick **Keep peaks between sessions**) if the Peaks tab feels slow.
@@ -238,7 +255,7 @@ Pi OpenWebRX+ images with Varnish: after file changes, `sudo systemctl restart v
 
 ## Install
 
-**There is no installer** and **no zip download** from Toolbox Settings — nothing to run except your own file edits. Install = edit `plugins/receiver/init.js` (+ optionally copy two files). Updates: clone or pull from [G4EA5/openwebrx-toolbox](https://github.com/G4EA5/openwebrx-toolbox).
+**There is no installer** for first-time setup — edit `plugins/receiver/init.js` (+ optionally copy two files). Once installed, Settings → **Update Toolbox** can reload a CDN `@main` install or download the latest files for a local copy. You can still clone or pull from [G4EA5/openwebrx-toolbox](https://github.com/G4EA5/openwebrx-toolbox).
 
 ### Checklist
 
@@ -276,7 +293,10 @@ minimal async wrapper — keep that shape and add the `Plugins.load` line inside
 
 ### Option A — CDN (easiest, no file copy)
 
-Edit `plugins/receiver/init.js` on the radio host:
+**This is JavaScript for `init.js`, not a bash download.** Paste it into
+`plugins/receiver/init.js` on the radio host. OpenWebRX+ then loads `toolbox.js`
+and the matching `toolbox.css` from the same CDN folder in the browser — nothing
+is saved under `~/Downloads` or `htdocs`.
 
 ```js
 (async () => {
@@ -288,6 +308,13 @@ Pin a release/tag for production instead of floating `@main` when you can (see
 [Versions and downloads](#versions-and-downloads)).
 
 Hard-refresh the receiver. Click **Toolbox** → **Settings** → **Check install**.
+
+To **inspect or save** the files yourself (terminal), use Option B or:
+
+```bash
+curl -fsSL -O "https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js"
+curl -fsSL -O "https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.css"
+```
 
 ### Option B — local copy (from GitHub)
 
@@ -321,12 +348,19 @@ Use this for offline hosts, air-gapped radios, or when you want exact files on d
    })();
    ```
 
-5. Hard-refresh the receiver. **Settings → Check install**. Use **GitHub repo**
-   there when you want updates (clone/pull) — Settings does not offer a zip.
+5. Hard-refresh the receiver. **Settings → Check install**. Use **Update Toolbox**
+   there for later updates (or GitHub repo / clone-pull).
 
 ### Routine update (already installed)
 
-Most admins only need this after pulling from GitHub or copying a new build:
+**From Settings (easiest):** Toolbox → Settings → **Update Toolbox** (needs OpenWebRX admin login).
+
+| How you installed | What the button does |
+| --- | --- |
+| **CDN** with `@main` | Checks GitHub, then **reloads** this browser to pick up the newest JS+CSS. Nothing is written onto the radio host. |
+| **Local copy** (or a **pinned** CDN tag) | Downloads a zip of the latest `toolbox.js` + `toolbox.css`. Copy those two files onto the host (path below), then hard-refresh. The browser cannot overwrite server files by itself. |
+
+**By hand** (same result as the zip path):
 
 1. Copy **`toolbox.js`** and **`toolbox.css`** into  
    `htdocs/plugins/receiver/toolbox/` on the radio host (same folder as today).
@@ -389,15 +423,36 @@ Tabs (left → right): **Explore**, **Bands**, **Range**, **Analyzer**, **Identi
 **Settings**. Help is the brown **?** next to **M** in the header (not a strip
 tab). Explore opens by default.
 
-Hide tabs under Settings → **Visible tabs**. **Show all tabs** restores everything.
-Settings always stays on. **Analyzer**, **Identify**, and **More** are on by
-default.
+Hide tabs under Settings → **General** → **Visible tabs**. **Show all tabs**
+restores everything. Settings always stays on and has sub-tabs **General** ·
+**More** · **Public** (admin). **Analyzer**, **Identify**, and **More** are on by
+default. Under **Settings → General → More sections**, pick which More panes show (grouped like the
+More tab bar) — five per group on by default. **Settings → Public** sets guest
+allowlist including **More · Spots / Space / …** at the bottom. Log / Watch /
+Bookmarks / Audio / Skip / Peaks / Range also have optional Extra sections (on by
+default under General).
+Any of those that store transferable data have **Export** / **Import** (file or
+Shift-click paste), same gate as Peaks CSV/JSON.
+
+**Light switches** (Settings → Extras): mute while scanning, Hold auto-clear,
+peak → Identify, Log auto-scroll / Voice chip, Watch quiet-when-focused /
+whole-word, compact peaks, auto-skip birdies, hide always-skipped, scannable-only
+bookmarks, Record busy auto-tag, clips newest-first, UTC clocks, quieter status,
+remember sub-tabs.
+
+**Main tab size** (Settings → Appearance) defaults to **Default** (100%). Panel
+scale is separate (tab content only).
 
 **Mouse:** hover = tip; click any section **?** for a short guide; **Shift+click** =
 secondary action; **right-click** = colour picker on buttons (when enabled).
 
 **Side dock (default on):** Toolbox column on the **left** (~35% width). Title-bar
 **S** toggles dock; **R** hard-refreshes the page.
+
+**Detach / another screen:** Title-bar **D** opens Toolbox in its own window.
+Drag that window to another monitor so the receiver stays on one screen and
+Toolbox on another. Turn side dock off first if **D** is greyed out; press **D**
+again to return it to the receiver page.
 
 **Explore boxes:** free placement — drag a box **title** to move, drag
 **corners/edges** to resize (boxes hug content). Tune stays pinned at the top.
@@ -536,7 +591,19 @@ also accepted. Failures are ignored; heuristics still show.
 **Log** — decoder feed, QSO pad (ADIF export), callsigns with lookup.  
 **Watch** — alert when a call / flight / ship / talkgroup appears in a new Log
 line; **Groups** arm on↔off; **Snooze**.  
-**More** — DX cluster spots and satellite Doppler **Follow** (on by default).
+**More** — eight groups (Spots / Space / Tune / Sky / Here / Sked / Read /
+Feeds), up to ten panes each (DX, POTA, Sats, Dial, Prop, QTH, Contest, News,
+custom RSS, …). Five panes per group on by default (**Settings → General → More sections**). Each
+pane only fetches or runs timers while open.
+
+**Feeds → Yours** — add your own RSS/Atom URLs (stored in this browser; same
+headline fetch as Read → News). Enable the **Feeds** group under **Settings →
+More** if you do not see it.
+
+**Public `TOOLBOX_PUBLIC_POLICY`** — include a `moreSubs` array (pane ids such as
+`dx`, `sats`, `news`, `myfeeds`) so guests only open allowed More panes; use
+**Settings → Public → Copy policy for install** or see the sample at the top of
+`toolbox.js`.
 
 ### Peaks / Bookmarks / Audio / Skip
 
@@ -578,19 +645,24 @@ Same legal and DIY-only stance as the Identify **LLM URL** — see
 | **Remember last tab** | on | Restore last tab |
 | **Default tab** | Always Explore | Tab on open |
 | **UI text size** | Default | Small / Default / Large |
-| **On/off style** | Tick boxes | Or switches |
+| **On/off style** | Switches | Or tick boxes |
 | **Tab view** | Full | Or Minimal; header **M**/**F** per tab |
 | **Show colour picker** | on | Right-click buttons for shade menu (not header tabs) |
 | **Show right-click colour tip** | on | Hover hint mentions right-click colour |
 | **Mute when changing tab** | **on** | Mute receiver audio while this browser tab is in the background (stock `owrx_hush` behaviour). Untick to keep listening in other tabs |
+| **S-meter calibrate** | — | Align **Toolbox** Explore/Identify meters only (never OpenWebRX’s built-in S-meter). **Pick any SDR** in the dialog (chip chooser) — switches device and loads that stick’s points. Capture at **3–5 frequencies** per SDR; interpolates. **RF damage risk** — attenuator / start weak. Never transmits |
 | **Hide stock receiver panel** | off | Use Explore instead of the floating stock panel |
-| **Always hide scan strip** | off | Never show the Bands/Bookmarks scan strip |
+| **Show scan strip** | on | Bands/Bookmarks scan strip when idle (off = hidden until a scan runs) |
 | **Side dock** | on, left ~35% | Column layout; **S** in title bar; **%** resets width to 35% |
 | **Reset Explore layout** | — | Clear free Explore box positions and sizes |
 | **Visible tabs** | Analyzer / Identify / More on | Untick tabs to hide from the header |
+| **More sections** | 5/group on | **Settings → General → More sections** — tick extra panes; **Show all More sections** |
+| **Main tab size** | Default (100%) | Header tab bar only (Appearance) |
 | **UX feel** | all off | Optional soft overlays |
-| **Public / shared receiver** | off | Own box above **Public visitor allowlist** (admin) |
-| **Public visitor allowlist** | safe defaults | Guest tabs/features when public mode is on |
+| **Settings sub-tabs** | General | **More** = your More panes; **Public** = shared mode + guest allowlist |
+| **Public / shared receiver** | off | **Settings → Public** (admin) |
+| **Public visitor allowlist** | safe defaults | Guest tabs, features, extras, Explore limits; **More** panes at bottom of Public |
+| **More sections (yours)** | top 5/group | **Settings → General → More sections** — not the same as Public More boxes |
 | **Save as my defaults** | — | Personal defaults for Reset / Factory reset |
 | **Check install** | — | Verify plugin + receiver |
 | **Webhook URL** | blank | Optional POST on each new peak |
@@ -687,7 +759,7 @@ hard lock for anonymous URLs.
 
 | Want | Do this |
 | --- | --- |
-| **Update plugin only** | Copy `toolbox.js` + `toolbox.css` → hard-refresh → Check install |
+| **Update plugin only** | Settings → **Update Toolbox**, or copy `toolbox.js` + `toolbox.css` → hard-refresh → Check install |
 | **Personal / trusted LAN** | Repo default (`override = true`); Public tick optional |
 | **Public URL, strangers** | `TOOLBOX_ALLOW_OWNER_OVERRIDE = false` in **host** `toolbox.js` |
 | **Custom guest limits (server-wide)** | Allowlist → **Copy policy for install** → `TOOLBOX_PUBLIC_POLICY` in host file |
@@ -729,7 +801,8 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (v965)** | Tag [`toolbox-v965`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v965) (after publish) or `main` |
+| **This Toolbox build (vB21)** | Tag [`toolbox-vB21`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-vB21) (after publish) or `main` |
+| **Last numeric (v965)** | Tag [`toolbox-v965`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v965) — B era starts at **vB1** after this |
 | **Toolbox v440 (frozen folder)** | [`v440/`](v440/) on `main` — same build as tag [`toolbox-v440`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v440) |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
@@ -739,7 +812,10 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 **CDN pin (do not use floating `@main` for production):**
 
 ```js
-/* Toolbox v965 (after the release tag is pushed) */
+/* Toolbox vB21 (after the release tag is pushed) */
+await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-vB21/toolbox.js");
+
+/* Last numeric era build */
 await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@toolbox-v965/toolbox.js");
 
 /* Toolbox v440 — folder on main (same build as tag toolbox-v440) */
@@ -757,7 +833,7 @@ await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/leg
 
 | Line | Plugin id | Where |
 | --- | --- | --- |
-| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**v965**) |
+| **Current** | `toolbox` | `toolbox.js` / `toolbox.css` on `main` (**vB21**) |
 | **Last Band Survey** | `band_survey` | [`legacy/band_survey/`](legacy/band_survey/) (**v127**) |
 | **Older builds** | either | [GitHub Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) / tags |
 
