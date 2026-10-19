@@ -1,5 +1,595 @@
 # Changelog
 
+## [B137] — Docs + Identify profile list
+
+- Help tab, hover **?**, README/troubleshooting: per-tab **Choose SDR** vs Explore/Bands **SDR only** (Identify: **All SDRs** or one kind).
+- Identify profile dropdown rebuilds when **Choose SDR** changes (not tied to Explore filter).
+
+## [B136] — Identify: All SDRs on Choose SDR
+
+- **Identify → Choose SDR** adds **All SDRs** (empty = every profile on ID tab). Range / Analyzer still pick one radio.
+
+## [B135] — Fix Anz / Range Choose SDR reverting
+
+- Stops background profile refresh from resetting the dropdown while you change RTL vs HackRF; per-tab values save reliably.
+
+## [B132–B134] — Per-tab Choose SDR
+
+- **Range**, **Analyzer**, and **Identify** each store their own SDR choice (`rangeSdrShowOnly`, `saSdrShowOnly`, `idSdrShowOnly`). **Explore** and **Bands** keep shared **SDR only** with **All SDRs**.
+- Analyzer **Main waterfall** — wide-span stitched spectrum on the stock OpenWebRX waterfall while hopping (B129).
+
+## [B109] — Explore SDR only + profile hop
+
+- ◀▶ / Alt+wheel / drag profile hop skips profiles outside **SDR only**. Choosing a filter (e.g. HackRF) switches the stock OpenWebRX profile to match when needed.
+
+## [B108] — Explore Profile (deploy + stale DOM)
+
+- **Hide all on this SDR** removed from shipped Explore HTML; strips legacy checkbox if an old panel was still open.
+
+## [B107] — Explore Profile
+
+- Removed **Hide all on this SDR** from Explore → Profile (use profile dropdown + **SDR only** filter; per-band hide stays on **Bands edit**).
+
+## [B106] — Settings default on/off style
+
+- Factory default **On/off style** is **Switches** (saved tick-box preference unchanged).
+
+## [B105] — Explore Profile UI
+
+- Removed **Hide this profile only** from Explore → Profile (use **Bands edit → Hide from list**).
+
+## [B104] — News / Feeds URL display
+
+- **Read → News** shows only the **selected** source’s RSS URL (not the full preset list).
+- **Feeds → Yours** shows one RSS line for the **open** sub-tab only.
+
+## [B103] — Feeds → Yours UX
+
+- Empty headline hint names the **Refresh** button in the box (not browser F5). **Refresh**, **Remove**, **Export**, and **Import** sit on one row.
+
+## [B102] — Fix Feeds → Yours RSS fetch
+
+- Stops double-fetch on Add and lets a new sub-tab fetch while another feed is still loading; cache/errors keyed to the feed that was requested.
+
+## [B101] — Feeds → Yours sub-tabs
+
+- With **two or more** saved RSS feeds, each feed gets its own sub-tab (headlines + URL per pane). One feed stays a single pane with no extra bar.
+
+## [B100] — Read → News shows RSS URLs
+
+- Selected feed URL plus a list of all preset ham-news RSS links (for copy into **Feeds → Yours**).
+
+## [B99] — More sections on **General**
+
+- **More sections** checkboxes move from the Settings **More** sub-tab to the **bottom of General**. Sub-tabs are now General · Pi & SDR · Public.
+
+## [B98] — Settings **Pi & SDR** sub-tab
+
+- **Raspberry Pi / low power** and the **SDR** block (devices, profiles, hop budget, sync, …) move from General to **Settings → Pi & SDR**.
+
+## [B97] — Hover: Settings More + main More tab
+
+- Hover **Settings → More** explains ticking sections on that sub-tab; main **More** tab and group bars say how to add panes (Settings → More; guests → Public).
+
+## [B96] — Deep scan follow-up
+
+- Help install blurb + title-bar overview match **Settings → General / More / Public**; **Feeds → Yours** documented in Help.
+- **Settings → More** shows a hint when public mode is on (live More panes follow **Public** allowlist).
+
+## [B95] — Docs & help sync (Settings / Public / More)
+
+- README, Help tab, hover **?** intros, and `docs/troubleshooting.md` updated for Settings **General · More · Public**, Public **More · …** allowlist, and current More group layout.
+
+## [B94] — Public More: grouped boxes at bottom
+
+- Visitor allowlist **More** panes sit at the **bottom** of Public settings — **one mini-box per More group** (Spots, Space, Tune, …), not one long list.
+
+## [B93] — Public allowlist: More sections
+
+- **Settings → Public** visitor allowlist includes **More sections** (grouped panes). Guests only see More panes you tick; policy exports in **Copy policy for install**.
+
+## [B92] — Fix Settings → More sub-tab
+
+- **More** under Settings (More sections) works again — B88 added the sub-tab but the switcher only allowed General/Public, so the pane never opened.
+
+## [B91] — Settings: Pi box above SDR + spacing
+
+- **Raspberry Pi / low power** sits directly above the SDR settings block. Settings boxes use a bit more gap (8px) between sections.
+
+## [B90] — Settings: SDR block at bottom
+
+- **SDR devices**, behaviour profiles, preferred stick, band-pack pins, network budget, hop master, storage quotas, keyboard remap, and settings sync URL move to the **bottom** of Settings → General (after Extras).
+
+## [B89] — Fix Show scan strip setting
+
+- **Show scan strip** now saves and applies immediately; drops legacy **Always hide scan strip** checkbox if still in the panel.
+
+## [B88] — Settings: More sub-tab + grouped More sections
+
+- **Settings → More** holds **More sections**, with checkboxes in bordered groups (Spots, Space, Tune, Sky, Here, Sked, Read, Feeds) matching the More tab bar.
+
+## [B87] — Analyzer: fixed box widths
+
+- **Anz** tab drops per-box **Wide/Half** resize; layout uses the factory widths (drag titles still reorders). **Reset Analyzer layout** restores order only.
+
+## [B86] — Bands packs: Download all only
+
+- Installed-pack backup is a single **Download all (SDR)** button — no per-pack download row.
+
+## [B85] — Feeds: Remove feed / Del
+
+- **More → Feeds → Yours** — **Remove feed** (selected) and per-row **Del** on the feed list.
+
+## [B84] — More → Feeds: your own RSS URLs
+
+- New **Feeds** group with **Yours** — add RSS/Atom URLs, read headlines (same fetch as News), Export/Import the list. Shift-click a feed chip to remove.
+
+## [B83] — Settings: Show scan strip (positive toggle)
+
+- **Appearance** uses **Show scan strip** (on by default) instead of **Always hide scan strip**. Stored preference is unchanged (`hideToolbar`); only the checkbox sense and label are flipped.
+
+## [B82] — More: five sub-tabs per group by default
+
+- Each **More** group shows **5** inner tabs by default (wider buttons); the other 5 are off until you enable them under **Settings → More sections**. **Top 5 per group** restores the factory set.
+
+## [B81] — Bands: visible SDR bar; drop Beacons/Solar/Today sub-tabs
+
+- **SDR only** is a full-width bar above Presets (list) and above the edit toolbar — injected on old DOM too. Synced with Explore / Identify / Range.
+- **Beacons**, **Solar**, and **Today** removed from Bands (still under **More** → Space / Here).
+
+## [B80] — Bands list / edit: SDR only filter
+
+- **Bands list** and **Bands edit** add **SDR only** (same shared filter as Explore Profile and Identify). Count and empty states respect the chosen SDR.
+
+## [B79] — Bands packs: rate in MHz
+
+- **Rate** field and pack meta line show sample rate in **MHz** (was raw S/s).
+
+## [B78] — Bands packs: PMR446 vs wide 70cm tile
+
+- Pack “present” no longer treats a **wide** profile (e.g. HackRF Ham 70cm 420–450 MHz) as covering **PMR446**; PMR can be added with + / click. Remove/download use the same rule (won’t delete the whole 70cm tile).
+
+## [B77] — Identify: SDR only profile filter (like Explore)
+
+- **Identify → Profiles** adds **SDR only** — same shared filter as Explore (HackRF vs RTL, etc.) for the profile dropdown and ◀▶ hop.
+
+## [B76] — Bands packs: SDR colours, backup downloads, remove
+
+- Pack tiles are **colour-coded by SDR** (HackRF purple, RTL amber, Airspy teal, …). ✓ = installed on the selected SDR; **Shift+click** removes those profiles (admin).
+- **Download** row only lists packs already on that SDR, labelled e.g. `Download Ham 20m (HackRF)`. Right-click a tile still downloads a merge template before add.
+
+## [B75] — Bands packs: any SDR kind + device id matching
+
+- Pack coverage / add uses normalized device kind (`smeterCalKindFromDeviceId`) so custom OpenWebRX device ids (e.g. `my-hackrf`) still match **hackrf** in the dropdown.
+- **Auto** SDR uses the **active** profile’s device, not the first tile in the list. Explore **SDR only** filter uses the same matcher.
+
+## [B74] — Bands packs: coverage per selected SDR (HackRF vs RTL)
+
+- **Bands packs** “present / missing” and **Add all missing ham** now use only profiles for the SDR chosen in the pack dropdown (`#bs-pack-sdr`), not every RTL tile in the list.
+- One-click add posts to the correct OpenWebRX device id for that SDR (e.g. `hackrf`), not the first profile in the listbox.
+
+## [B73] — Explore: filter / hide whole SDR (RTL vs HackRF)
+
+- **SDR only** dropdown — show just one device’s profiles (e.g. `hackrf`) in Explore hop, Bands list, and Range profile pick.
+- **Hide all on this SDR** — one checkbox hides every profile for that device (e.g. all 87 `rtl_sdr` tiles) in Toolbox; local only. **Hide this profile only** = single tile (unchanged).
+- Per-profile hide no longer conflated with whole-SDR hide.
+
+## [B72] — Explore Profile: hide SDR (local)
+
+- **Explore → Profile** adds **Hide this SDR profile** — same local flag as Bands edit → Hide from list (`bandMeta.hidden` in this browser). Hidden profiles are skipped by ◀▶ / Alt+wheel hop and omitted from the profile dropdown (current profile stays listed as “hidden” so you can uncheck). OpenWebRX profile unchanged.
+
+## [B71] — More: ten sub-tabs per group (listener guides)
+
+- Each **More** group now has **10** inner tabs. Added **Listen/Source/Hear/Data** style panes for SWLs: where to look, what you will hear, and **origin** of live data (NOAA SWPC, cluster feed, Open-Meteo, embedded JSON, etc.). All static or one-shot render — no extra files, no background timers; network only on panes that already fetched (unchanged).
+- New examples: Spots → **Listen** / **Bands**, Space → **Wx sat** / **Track**, Tune → **NDB** / **Util**, Sky → **Source** / **Hear**, Here → **Data** / **UTC**, Sked → **BCast** / **Emcomm**, Read → **SWL** / **About**.
+
+## [B70] — More: eight sub-tabs per group + static panes
+
+- Every **More** group now has **8** inner tabs. New lightweight panes (no extra files, render on open only): **Spots → FT8**, **Space → SSTV**, **Tune → SWL**, **Sky → HF day**, **Here → Units**, **Sked → Field**. Static lists / notes — no background timers or network except where a pane already fetched.
+- **Read → Keys** adds a compact **Q-signal** cheat block. Inner tab bar CSS fits eight buttons per row.
+
+## [B69] — Calls filter: country abbreviations (UK, USA, DE, …)
+
+- Filter accepts common abbrev and ISO-style codes (`uk`, `usa`, `de`, `fr`, …), plus extras (`england`, `ussr`, `uae`, `holland`, …). Multi-word queries still work (`uk foundation`). Continent shortcuts: `eu`, `namer`, `samer`, etc.
+
+## [B68] — More → Read → Calls fills dock height
+
+- Country callsigns list grows to the bottom of the More panel; scrolling stays inside the card list (removed fixed 520px cap).
+
+## [B67] — Calls data embedded in toolbox.js (2-file deploy)
+
+- Country/licence table ships inside `toolbox.js` (~65 KiB compact JSON, parsed once when you open **Calls**; embed string cleared after parse). No extra `callsign-allocations.json` needed on the receiver. Regenerate: `tools/build-callsign-allocations.py` (also runs `tools/embed_callsign_in_toolbox.py`). JSON in repo remains the editable source.
+
+## [B66] — Calls: licence classes (UK G1–G8, USA tiers, major EU)
+
+- `callsign-allocations.json` **v2**: optional `licences`, `callsignSeries`, and `summary` per country. **United Kingdom** (Foundation / Intermediate / Full, M3/M6/M7, 2E0, G1–G8 regional blocks), **United States** (Technician / General / Extra / historical Novice & Advanced), plus Canada, Australia, Japan, Brazil, and major EU regulators (DE, FR, IT, ES, NL, PL, BE, AT, CH, CZ) and UK home nations.
+- **Calls** UI renders licence-class and callsign-series tables; search includes class names and series; countries with detail sort to the top when unfiltered. Regenerate via `tools/build-callsign-allocations.py` + `tools/callsign_licence_patches.py`.
+
+## [B65] — More → Read → Calls: worldwide country prefix history
+
+- New **Calls** pane: bundled `callsign-allocations.json` (~170 countries/entities) with prefix blocks and **start/end years**, including historical entities (USSR, DDR, Yugoslavia, Netherlands Antilles, …). Filter by region, search, toggle Historical.
+- **Prefix** adds **Browse countries** → jumps to Calls. Ship `callsign-allocations.json` beside `toolbox.js` (regenerate via `tools/build-callsign-allocations.py`).
+
+## [B64] — More → Here → Prefix: online ham details
+
+- **Prefix** still uses the local prefix → entity table, and when network is allowed fetches **Callook** (US FCC name, class, grid, address, expiry) and **QRZCQ callinfo** (country, continent, CQ, ITU, DXCC). **Full lookup** uses the same URL as Log / FT8.
+
+## [B63] — More → Sky → Prop: sunspot number and active regions
+
+- **Prop** (and **Bands → Solar**) now show NOAA **sunspot #** (latest monthly SWPC index) and **active sunspot regions** (today’s distinct regions), alongside SFI, K, A, and X-ray.
+
+## [B62] — More → Space → Sats: lat/lon from OpenWebRX General GPS
+
+- **Sats** (and **QTH**) auto-fill from OpenWebRX when you have already set receiver GPS in General settings (`Utils.getReceiverPos`, `/status.json` → `receiver.gps`, locator, or lat/lon fields). Toolbox-saved lat/lon still wins if you used Save / Sats onchange.
+
+## [B61] — Section ? hover shows intro; click opens guide pop
+
+- Hovering a boxed-section **?** shows that section’s short intro (same text as the pop-up lead). Click still opens the full control-tip list; **×** or outside click closes it.
+
+## [B60] — More → Space: expanded amateur sat catalog + WX APT
+
+- **Sats / Passes / LEO** catalog: AO-95, AO-73, RS-44 (FM + linear), XW-3, TEVEL-2-1…9, AO-123, QO-100 reference; fixed **IO-117** NORAD and removed incorrect PO-101 TLE id.
+- **LEO** pane groups FM / linear / digital / geo and adds **weather-sat APT** rows (NOAA 18/19, Meteor-M) — receive-only, decode externally.
+- **ISS** pane links the ARISS school-contact schedule.
+
+## [B59] — Settings sub-tabs: General / Public
+
+- Settings uses **General** and **Public** sub-tabs (same bar style as Log / Bands).
+- **Public / shared receiver** and **Public visitor allowlist** move to the **Public** sub-tab so General is less crowded.
+- Last Settings sub-tab is remembered when Extras → **Remember sub-tabs** is on.
+
+## [B58] — Settings: no Add/Remove all on single-option boxes
+
+- **Add all** / **Remove all** only appear when a Settings (or allowlist mini-) box has **two or more** tickable options — not on lone toggles (Public mode, network budget, Jump FM, …).
+- Extras section still uses its own Add all / Remove all row at the top (not duplicated at the bottom).
+
+## [B57] — More tab colours: yellow group / blue pane
+
+- Selected More **group** (Spots / Space / Tune / …) is **yellow**.
+- Selected **inner pane** (DX / Plan / …) is **sky blue** so both levels stay distinct.
+
+## [B56] — More → Plan: full band lists per region
+
+- Every Plan region (UK / EU / USA / Canada / Australia / Japan / S. Africa) now includes LF/MF through UHF where allocated: **2200 m**, **630 m**, HF, **6 / 4 / 2 m**, **1.25 m / 33 cm** (Americas), **70 cm**, **23 cm**.
+- Japan 80 m shows the main fragmented windows; still check JARL. Still not legal advice.
+
+## [B55] — More: wrap text, 7 panes/group, CB + extras
+
+- More list rows (Plan, Call, Dial, …) wrap instead of clipping; Licence/IARU already used note cards.
+- Each More group now has **seven** panes: QSL, LEO, **CB/PMR**, Es/tropo, Locator, Awards, Phonetic (all static / lazy — no extra polling).
+- CB pane: US 40-ch, CEPT PR27 FM, UK midband FM, PMR446 — click to tune.
+
+## [B54] — More Licence / IARU text wraps; Plan pointer
+
+- **More → Read → License / IARU** use full-width note cards so long lines are not clipped by the DX row grid.
+- Hints point to **More → Tune → Plan** for regional band plans.
+
+## [B53] — Settings: multi-SDR control + network / storage / keys / sync
+
+- New Settings boxes: **SDR devices** (switcher + hardware cheat sheet), **SDR behaviour profiles** (per kind Jump / settle / dwell), **Preferred stick by job**, **Role → SDR**, **Band packs pinned per stick**, **Network budget**, **Scan / hop master**, **Storage quotas**, **Keyboard remap**, **Settings sync URL**.
+- Public allowlist: **Switch SDR device** (off by default for guests).
+- More fetches honour network budget / pause-while-scanning. Hop settle and Jump can follow the active SDR-kind profile when enabled.
+
+## [B52] — More: +14 panes (6 per group)
+
+- Each More group now has **six** panes (was four): WWFF, Cluster filter, ISS, Meteor, Maritime, Air, MUF, Storm, WX, Noise, Special, Repeater, IARU, License.
+- Still lazy — only the open pane fetches or runs timers. Hide any under Settings → More sections.
+
+## [B51] — S-meter cal: Clear / Remove last point
+
+- Clear this SDR and Remove now wipe the final remaining point (legacy migrate was resurrecting it from the flat cache).
+
+## [B50] — S-meter cal: stay on selected SDR when tuning
+
+- Cal Capture / Tune / auto-advance only switch profiles on the **selected** SDR (no more jumping to another stick whose cal list then replaces yours — that was the 3→2 points bug).
+- SDR chips keep a stable order when selected (no jump to the left).
+
+## [B49] — S-meter cal: keep all saved points (HackRF fix)
+
+- Fixed points vanishing after Capture (esp. HackRF / UHF): dedupe no longer uses a %-of-MHz window that merged band points; over-cap trim keeps newest instead of lowest MHz; Capture locks + pins the SDR id so overlapping saves cannot clobber the list.
+- Max points raised to **8**. Wild offsets are rejected with a message (not silently dropped).
+
+## [B48] — S-meter cal: pick any SDR (chip chooser)
+
+- Calibrate dialog leads with a clear **SDR chip chooser** listing every OpenWebRX device (full names from the Bands list), not only the one already selected.
+- Tap a chip to switch OpenWebRX to that device and load its cal points. Remembers devices seen earlier if one is temporarily offline.
+
+## [B47] — S-meter cal: SDR pick, jump buttons, auto-advance
+
+- Calibrate dialog: choose which OpenWebRX SDR to calibrate (switches device); jump buttons match detected type (RTL / Airspy / HF+ / SDRplay / HackRF…).
+- Optional **Auto-advance after Capture** (on by default) jumps to the next suggested MHz still missing a point. **Next suggested** button included.
+
+## [B46] — S-meter cal frequency counter
+
+- Calibrate dialog: enter MHz (with − / + step and Tune). Capture uses that frequency (tunes first if needed). Suggested chips fill the counter.
+
+## [B45] — S-meter cal stored per SDR device
+
+- Calibration points are keyed by the active OpenWebRX SDR id (`device|profile` → device). Switching SDR loads that device’s points; Clear only wipes the active SDR.
+- Legacy single-SDR points migrate onto the current device on first use.
+
+## [B44] — S-meter Calibrate button green
+
+- Settings → S-meter calibrate → **Calibrate…** is green (factory shade + CSS).
+
+## [B43] — S-meter cal: Toolbox-only (not OpenWebRX)
+
+- Calibration applies only to Toolbox Explore / Identify meters — never rewrites OpenWebRX’s stock S-meter, `smeter_level`, or `getLogSmeterValue`.
+- Squelch-open / recording gates / auto-SQL keep using the stock (uncalibrated) reading so they stay aligned with OpenWebRX.
+
+## [B42] — Pi section: test scenarios + feedback
+
+- Settings → Raspberry Pi / low power: ask users to try different tabs/scenarios and send feedback via GitHub issues or the OpenWebRX+ groups.io forum.
+
+## [B41] — S-meter cal: OpenWebRX SDR guide
+
+- Calibrate dialog: comprehensive guide to how OpenWebRX SDR types differ (RTL, Airspy, HF+, SDRplay, HackRF, Lime/Pluto/Soapy), why gain vs frequency matters, and example test frequencies per band.
+- Suggested tune chips expanded (40 m / 20 m / 6 m / 2 m / 70 cm / 23 cm).
+
+## [B40] — Multi-frequency S-meter calibration
+
+- S-meter calibrate stores up to **5 frequency points** and interpolates offset by tune MHz (SDR gain varies by band / type).
+- Popup explains RTL vs Airspy/SDRplay vs wideband TX SDRs, suggested bands (HF / 2 m / 70 cm / 23 cm), and live offset-at-tune.
+- Legacy single offset still works until you capture points.
+
+## [B39] — Add all / Remove all button colours
+
+- Settings box **Add all** is light green; **Remove all** is orange.
+
+## [B38] — Public allowlist preset button colours
+
+- Settings → Public visitor allowlist: **Allow all** is teal green (distinct from the usual success green); **Safe defaults** is red.
+
+## [B37] — Add all / Remove all on every Settings checkbox box
+
+- Every Settings box that has tickable options (Visible tabs, More, Explore boxes, Appearance, Extras groups, Public allowlist mini-boxes, …) gets **Add all** / **Remove all** at the bottom.
+
+## [B36] — Settings bulk buttons keep scroll
+
+- Safe defaults / Allow all, Explore-band presets, Add/Clear extras, Show-all visibility buttons, Check install, and other Settings bulk actions preserve scroll (shared helper).
+- applyHiddenTabs also restores Settings scroll when you stay on that tab.
+
+## [B35] — Low-power preset keeps Settings scroll
+
+- Settings → Apply / Undo low-power preset no longer jumps the panel (or page) to the top.
+
+## [B34] — Public allowlist: Add all / Remove all per box
+
+- Settings → Public visitor allowlist: each checkbox mini-box (Tabs, Explore bands, Scans, Extras · …) has **Add all** / **Remove all** at the bottom.
+
+## [B33] — Explore boxes honour Settings untick / factory reset
+
+- Fix: Explore CSS `display:flex` was overriding HTML `[hidden]`, so unticked Explore boxes (and post–factory-reset defaults) still appeared on Explore.
+- Factory reset / Reset settings now re-apply Explore box (and related) visibility to the live panel.
+
+## [B32] — Settings → Update Toolbox
+
+- Settings → Install check → **Update Toolbox** (admin): CDN `@main` checks GitHub and reloads; local / pinned installs download a zip of the latest `toolbox.js` + `toolbox.css` to copy onto the host (browser cannot write radio files).
+- Hard-refresh cache bust also covers cross-origin CDN script/CSS URLs.
+
+## [B31] — CDN install: not a bash command
+
+- README + Help: the `Plugins.load(…)` CDN snippet is **JavaScript for `init.js`**, not a terminal download; it loads JS+CSS in the browser and does not save files to disk. Point to `git clone` / `curl` for on-disk copies.
+
+## [B30] — Raspberry Pi / low-power preset (experimental)
+
+- Settings → **Raspberry Pi / low power**: one-click experimental preset that hides juicier tabs (Analyzer, Identify, More, Watch, Range) and trims Explore boxes for Pi / small PCs.
+- Undo restores all main tabs; Explore boxes stay as-is (or use Show all Explore boxes).
+
+## [B29] — More Tips scrolls
+
+- Active **More** panes (Tips, Plan, News, …) scroll inside the panel so long
+  cheat sheets are not clipped.
+
+## [B28] — More Tips: Q-codes + Morse
+
+- **More → Tips** — more operating tips; **most-used** Q-codes / CW shorthand
+  first, then a larger Q-code list; Morse letters, numbers, and common
+  prosigns / punctuation.
+
+## [B27] — More Tips layout
+
+- **More → Tips** no longer uses the DX spot row grid (text was crushed into a
+  narrow column). Tips are full-width cards with separators; CW Q-codes sit in
+  a wrapping grid.
+
+## [B26] — More News feeds + regional band plans
+
+- **More → News** — chips for AMSAT-UK, Amateur Radio Newsline, DX World,
+  RTL-SDR Blog, and AmateurRadio.com (plus existing ARRL / RSGB / AMSAT).
+- **More → Plan** — region chips (UK, EU/R1, USA, Canada, Australia, Japan,
+  South Africa) with simplified edges and typical max power. Click a row to
+  tune. Disclaimer: check your licence — not legal advice. Remembers last
+  region; picks a default from QTH when possible.
+
+## [B25] — Peaks / Skip sub-tabs match the rest
+
+- Peaks and Skip use the same yellow sub-tab bar / active-pane scroll system as
+  Bands, Bookmarks, Audio, Log, Watch, and Range (shared CSS + layout hooks).
+
+## [B24] — New Explore boxes off by default
+
+- **Listen** and the light Explore boxes added today (Clock / QTH, Band plan,
+  Quick dials, Mode chips, Nearest BM, Share, Mute timer, Skip here, Profile
+  edges, Step chips, Band hop, Squelch presets, Hold/Skip, Paste-tune, Session,
+  Heard today, Repeater offset, APRS dials, Region / decl.) start **off**.
+  Tick them under Settings → Explore boxes (or **Show all Explore boxes**).
+
+## [B23] — Remove title-bar header chips
+
+- Dropped UTC / local / QTH / MHz·mode / mute chips from the Toolbox title bar
+  (too busy). Same info stays in Explore boxes (Clock, Mute timer, etc.).
+
+## [B22] — Light features everywhere (Settings show/hide)
+
+- **Explore slim boxes** — Step chips, Band hop, Squelch presets, Hold/Skip strip,
+  Paste-tune, Session timer, Heard today, Repeater offset, APRS dials, Region /
+  declination (all under Settings → Explore boxes).
+- **Bands / Range / Peaks** — last 5 profiles, Scan this profile only, peak lock
+  next to ign, empty-list tip.
+- **Log / Bookmarks / More** — pin strip, RST 59/599/5NN pads, bookmark colour
+  filter, CW Q-codes under Tips.
+- **Settings → Light features** — add/remove every non-box helper; **Pi lean** and
+  **Backup kit**; Help **What’s new** for this build. S-meter first-open Safe RF tip.
+
+
+## [B21] — Click S-meter cal label to open popup
+
+- Click **uncalibrated** / **calibrated** on the Explore S-meter to open the
+  calibrate dialog.
+
+## [B20] — S-meter calibrated / uncalibrated label
+
+- Explore analogue S-meter shows small **uncalibrated** or **calibrated** text
+  (from Settings → S-meter calibrate).
+
+## [B19] — Larger S-meter calibrate guide
+
+- Calibrate popup is bigger, with plain-English steps, a dimmed backdrop, and a
+  list of common TX-capable SDRs (HackRF, PortaPack, bladeRF, LimeSDR family,
+  Pluto, USRP…) plus receive-only sticks that cannot TX.
+
+## [B18] — S-meter cal RF damage warning
+
+- Clear warning on Settings → S-meter calibrate and in the popup: do not inject
+  a hot signal into the SDR — use a strong attenuator / start very weak.
+
+## [B17] — S-meter calibrate (Settings)
+
+- Settings → **S-meter calibrate**: popup to align Explore’s meter with a known
+  injection (sig gen / TX-capable SDR). Toolbox never transmits — stores a small
+  dB offset in this browser only. Negligible CPU (capture averages a few samples).
+
+## [B16] — Light Explore boxes (Pi-friendly)
+
+- Nine low-cost Explore boxes (Settings → show/hide): **Clock / QTH**, **Band
+  plan**, **Quick dials**, **Mode chips**, **Nearest BM**, **Share**, **Mute
+  timer**, **Skip here**, **Profile edges**. Text and one-shot clicks only — no
+  waterfall scan or FFT work.
+
+## [B15] — Clearer Explore box explanations
+
+- Every Explore box shows a plain-language subtitle (what it is for) under the
+  title. Hover / **?** help uses the same wording.
+
+## [B14] — Tune audio / S-meter fill freq LCD height
+
+- Explore Tune row: audio scope and S-meter stretch to the frequency LCD
+  height (no empty band under them).
+
+## [B13] — Explore corner-resize keeps height
+
+- Corner-dragging an Explore box (e.g. **Recent tunes**) now keeps the height
+  you set. Previously content-hug snapped it straight back after release.
+
+## [B12] — Listen QTH from /status.json
+
+- **Listen** was stuck on “Waiting…” when `Utils.getReceiverPos` never filled
+  (websocket GPS). Now also pulls **`/status.json` → receiver.gps** (same as
+  your OpenWebRX General QTH), plus header locator fallback.
+- Paints as soon as Explore binds; retries until GPS arrives.
+
+## [B11] — Listen uses OpenWebRX receiver GPS
+
+- **Listen** reads OpenWebRX General → receiver GPS (`Utils.getReceiverPos`) when
+  Toolbox has no saved lat/lon — no need to re-enter QTH.
+- Empty state has a clickable **open QTH** button (More → Here → QTH).
+- Brief retry while the websocket config is still arriving.
+
+## [B10] — Explore Listen advisor + box visibility
+
+- **Explore → Listen** — light day / greyline / night band tips from your QTH
+  sun angle (local calc). Uses cached SFI/K only if Prop/Bands already fetched;
+  no background polling. Band chips tune on click.
+- **Settings → Explore boxes** — show/hide any Explore box (Tune always on).
+  Slim Explore on a Pi without losing Tune.
+
+## [B9] — Every More group has four panes
+
+- Fills each group to **4** light panes:
+  - **Spots** + SOTA · **Space** + Moon · **Tune** + Call · **Here** + Prefix
+  - **Sked** + GB2RS · Events · **Read** + Tips
+- SOTA uses `api-db2.sota.org.uk` (fetch only while open). Moon / Call / Prefix /
+  GB2RS / Events / Tips are local or static.
+
+## [B8] — More grouped + Dial / Plan / Path / POTA / Keys / Today
+
+- **More** outer bar is now **7 groups**: Spots · Space · Tune · Sky · Here · Sked · Read
+  (inner chips per group — avoids a 20+ chip strip on Pis).
+- New panes: **Dial** (FT8/FT4/WSPR/JS8), **Plan** (IARU R1 edges), **Path** (grid
+  distance/bearing), **POTA** spots, **Keys** cheat sheet, **Today** (log/watch by band).
+- Settings → More sections lists panes under those group headings.
+
+## [B7] — News: RSGB chip
+
+- **More → News** — RSGB chip (`rsgb.org/main/feed/`, GB2RS / HQ) alongside ARRL and AMSAT.
+
+## [B6] — More: Beacons, Alerts, Aurora, QTH, News
+
+- **Beacons** — NCDXF / IARU cycle in More (also expands Bands → Beacons to 20/17/15/12/10 m).
+- **Alerts** — NOAA SWPC alerts / warnings (fetch while open).
+- **Aurora** — OVATION probability at your lat/lon (Sats / QTH).
+- **QTH** — Maidenhead grid, UTC/local clocks, sunrise & sunset; shared lat/lon with Sats.
+- **News** — ARRL + AMSAT headlines (Southgate feed currently unavailable).
+
+## [B5] — Light switches across Listening / Log / Peaks / Bookmarks / Audio
+
+New Settings → Extras (on by default unless noted):
+
+- **Mute while scanning** — auto-mute Bands / Range / bookmark scans; unmute on Stop  
+- **Hold auto-clear** — clear Hold after N s (set beside Hold while busy)  
+- **Click peak → Identify** — peak MHz also opens Identify  
+- **Log auto-scroll** · **Log · Voice chip** · **UTC timestamps**  
+- **Watch · quiet when focused** · **Watch · whole-word match**  
+- **Compact peak rows** · **Auto-skip birdies** (Seen ≥ N) · **Hide always-skipped in Peaks**  
+- **Bookmarks · scannable only** chip · **Record busy → auto-tag** · **Clips newest-first**  
+- **Quieter status** · **Remember sub-tabs**
+- **More → Links** — Toolbox GitHub, OpenWebRX+ groups.io / Telegram / GitHub /
+  docs / site, ReceiverBook, HackRF sweep visualizer, KiwiSDR, WebSDR, LoTW, eQSL,
+  DXHeat, APRS.fi, Space Weather Live, SatNOGS (plus existing ham utility links;
+  OpenWebRX entries are + only, not vanilla)
+
+## [B4] — Extra sections + Import/Export everywhere they store data
+
+- Extra sections (on by default under Settings): Log Notes / Export / Dupes;
+  Watch History / Quick add / Mute band; Bookmarks Recent / Stats / Share;
+  Audio Meter / Tags; Skip Map / Import; Peaks Summary / Birdies;
+  Range Presets / Last.
+- **Import / Export** on every light pane that holds transferable data (Notes,
+  Recent, Tags, Nets, Last, Map, …) — file download + Shift-click paste, same
+  public-mode gate as other Import/Export.
+- Range **Last** remembers the five most recent scans; sub-tabs wired for
+  Range / Skip / Peaks extras.
+
+## [B3] — More sections picker, Main tab Default, version eras, detach docs
+
+- Settings → **More sections** — tick which More sub-tabs show (all on by default).
+- **Main tab size** factory default is **Default** (100%), not +15%.
+- Version scheme after **v965**: **vB1**, **vB2**, … then **vC1** after B999
+  (Check install compares letter eras correctly). Formerly drafted as v966–v968;
+  renumbered to B1–B3 so the B era starts immediately after v965.
+- README + Help: undocked Toolbox (**D**) can be dragged to another monitor.
+
+## [B2] — More tab: Passes, RBN, Time, Prop, Grey, Contest, Nets, Links
+
+- Eight light sections under **More** (alongside DX / Sats). Each only fetches or
+  redraws while that sub-tab is open — no background polling.
+- **Passes** — next AOS/LOS for the sat catalog (Celestrak amateur TLE once).
+- **RBN** — skimmer-style CW / digi filter on the shared DX cluster cache.
+- **Time** — WWV / WWVH / CHU / BPM / LF time stations (static, click to tune).
+- **Prop** — SFI / K / A / X-ray via existing NOAA Solar path + rough MUF hint.
+- **Grey** — day/night greyline canvas; green dot from Sats lat/lon.
+- **Contest** — built-in major HF contest calendar (no network).
+- **Nets** — editable net schedule in localStorage.
+- **Links** — curated ham sites (new tab).
+
+## [B1] — Watch Groups Arm buttons respond again
+
+- Arm HF / Digi / … are no longer `disabled` when empty (that swallowed clicks with no tip).
+- Click still arms/disarms; empty group shows a status tip to tick a watch first.
+- Direct click bind on Arm buttons; group label click toggles the tick reliably.
+- First build of the **B** version era (after v965).
+
 ## [965] — v440 folder on GitHub; scrub installer mentions
 
 - Frozen **v440** snapshot in [`v440/`](v440/) (`toolbox.js` + `toolbox.css` + README) so people can download that build from `main`.

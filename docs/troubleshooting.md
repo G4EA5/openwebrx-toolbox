@@ -10,6 +10,12 @@ There is **no installer**. Edit `plugins/receiver/init.js` on the radio host:
 - **CDN:** `await Plugins.load("https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js");`
 - **Local:** copy `toolbox.js` + `toolbox.css` into `htdocs/plugins/receiver/toolbox/`, then `await Plugins.load("toolbox");`
 
+**Not a bash command.** The `(async () => { … Plugins.load(…) })();` block is
+**JavaScript for `init.js`**. Pasting it into a terminal will fail with a syntax
+error, and it does **not** download files into a folder — the browser loads JS +
+CSS from the CDN. To save files on disk, use `git clone` or `curl` (see README
+Option B).
+
 Full steps: [README → Install](../README.md#install). Then hard-refresh and **Settings → Check install**.
 
 ## WebSocket closed / “Attempting to reconnect…”
@@ -64,8 +70,35 @@ Confirm the SDR is running on the host.
 Hard-refresh; **Settings → Reset Explore layout**; use box header **Wide** / **Half**
 (v413+).
 
+## SDR only vs Choose SDR (RTL / HackRF / …)
+
+Toolbox has **two patterns**:
+
+| Where | Control | All SDRs? |
+| --- | --- | --- |
+| **Explore → Profile**, **Bands** list/edit | **SDR only** | Yes — empty = all kinds |
+| **Range → Scan**, **Analyzer** | **Choose SDR** | No — pick one kind per tab |
+| **Identify** (top bar) | **Choose SDR** | Yes — **All SDRs** or one kind |
+
+They are **not linked**. If Anz snaps back to HackRF after picking RTL, hard-refresh
+(**B135+**). If Identify still follows Explore’s filter, hard-refresh (**B136+**).
+
+In-panel **Help** tab has the full guide; hover any control for a short tip.
+
+## Settings → More or Public looks wrong
+
+Hard-refresh (**Ctrl+Shift+R**). Toolbox rebuilds the panel when markup is stale
+(e.g. after an update): open **Settings** once.
+
+- **More sections** for *your* browser: **Settings → General** (scroll to **More sections** at the bottom).
+- **Guest More panes**: **Settings → Public** — grouped **More · Spots / …** boxes
+  at the **bottom** of the visitor allowlist (separate from your **General → More sections** ticks).
+
 ## More
 
-- In-panel **Help** tab (same project, richer list).
+- In-panel **Help** tab (full guide; hover any control for a short tip).
 - [README troubleshooting](../README.md#troubleshooting)
 - [Clear Toolbox browser data](clear-toolbox-browser-data.md) if settings/cache look wrong.
+
+There is no separate project wiki — docs live in this repo (**README**, **CHANGELOG**,
+`docs/`, and the in-panel **Help** tab).
