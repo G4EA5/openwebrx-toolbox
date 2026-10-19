@@ -100,5 +100,9 @@ Hard-refresh (**Ctrl+Shift+R**). Toolbox rebuilds the panel when markup is stale
 - [README troubleshooting](../README.md#troubleshooting)
 - [Clear Toolbox browser data](clear-toolbox-browser-data.md) if settings/cache look wrong.
 
-There is no separate project wiki — docs live in this repo (**README**, **CHANGELOG**,
-`docs/`, and the in-panel **Help** tab).
+There is no separate GitHub wiki — docs live in this repo:
+
+- **[What’s new since v965 (B era)](WHATS-NEW-SINCE-V965.md)** — operator guide after `toolbox-v965`
+- **[README](../README.md)** — install, SDR hardware, troubleshooting table
+- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B137)
+- **In-panel Help** tab — full UI guide + **What’s new since v965** (same era as above)

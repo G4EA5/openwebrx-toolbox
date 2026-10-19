@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B137";
+  Plugins.toolbox._version = "B138";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -20241,6 +20241,28 @@ Plugins.toolbox.init = function () {
     );
   }
 
+  function helpWhatsNewSinceV965Html() {
+    try {
+      if (typeof isLightFeatOn === "function" && !isLightFeatOn("whatsNew")) return "";
+    } catch (eW0) {}
+    return (
+      "<h3>What&rsquo;s new since v965 (B era)</h3>" +
+      "<p>Build <b>v965</b> was the last numeric tag. After that: <b>B1</b>…<b>B" +
+      String(Plugins.toolbox._version || "?").replace(/^B/i, "") +
+      "</b>. Full list: " +
+      "<a href=\"https://github.com/G4EA5/openwebrx-toolbox/blob/main/docs/WHATS-NEW-SINCE-V965.md\" target=\"_blank\" rel=\"noopener\">docs/WHATS-NEW-SINCE-V965.md</a> " +
+      "and <a href=\"https://github.com/G4EA5/openwebrx-toolbox/blob/main/CHANGELOG.md\" target=\"_blank\" rel=\"noopener\">CHANGELOG.md</a>.</p>" +
+      "<ul>" +
+      "<li><b>More</b> — Feeds → Yours (RSS), extra panes per group (5 on by default), Plan / News / Tips, Calls + Prefix (allocations ship inside <code>toolbox.js</code>).</li>" +
+      "<li><b>Explore</b> — Light boxes (Clock, Paste-tune, …), Listen advisor, S-meter calibrate (per SDR, multi-point). <b>Profile → SDR only</b> filters hop/list (All SDRs or one kind). Removed old &ldquo;Hide profile / Hide all on this SDR&rdquo; checkboxes — use Bands edit → Hide.</li>" +
+      "<li><b>Bands</b> — <b>SDR only</b> with Explore; packs per selected SDR; Beacons / Solar / Today moved to More.</li>" +
+      "<li><b>Range / Analyzer / Identify</b> — separate <b>Choose SDR</b> per tab (Range &amp; Anz: one radio; Identify: <b>All SDRs</b> or one kind). Anz: <b>Main waterfall</b> for wide spans.</li>" +
+      "<li><b>Settings</b> — <b>Update Toolbox</b>; SDR devices block at bottom of <b>General</b>; <b>Public</b> sub-tab; layout profiles replace old Pi low-power preset.</li>" +
+      "<li><b>Watch</b> — Groups Arm buttons fixed (B1). Public allowlist: More panes for guests.</li>" +
+      "</ul>"
+    );
+  }
+
   function helpContentHtml() {
     var fastHops = ownerOverrideAllowed()
       ? "<li><b>Own radio — fast hops</b> (Bands / Range) — ~1s between profile changes instead of ~11s. Only on a receiver you run yourself; public sites can ban the client.</li>"
@@ -20257,18 +20279,7 @@ Plugins.toolbox.init = function () {
       "</ol>" +
       '<p><button type="button" class="bs-btn-info" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
       '<button type="button" class="bs-btn-util" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
-      (function () {
-        try {
-          if (typeof isLightFeatOn === "function" && !isLightFeatOn("whatsNew")) return "";
-        } catch (eW) {}
-        return "<h3>What\'s new (this build)</h3>" +
-          "<ul>" +
-          "<li><b>B28</b> — More → Tips: more tips, most-used Q-codes, fuller Q-list, Morse alphabet / prosigns.</li>" +
-          "<li><b>B27</b> — Tips layout fixed (full-width cards).</li>" +
-          "<li><b>B26</b> — More News feeds + regional band plans with typical max power.</li>" +
-          "<li><b>B25–B16</b> — Peaks/Skip sub-tabs; light Explore boxes; S-meter calibrate.</li>" +
-          "</ul>";
-      })() +
+      helpWhatsNewSinceV965Html() +
       "<h3>What this is</h3>" +
       "<p><b>OpenWebRX Toolbox</b> (plugin id <code>toolbox</code>) is a standalone <b>OpenWebRX+ receiver plugin</b> for <b>ham radio</b> and lawful hobby listening — not for nefarious monitoring. Formerly <b>Band Survey</b> (<code>band_survey</code>). Walks ticked bands or a MHz range, counts waterfall peaks, ranks the busiest, and can bookmark them in <em>this browser</em>. Needs only OpenWebRX+ (profile list, waterfall, local bookmarks).</p>" +
       "<p><b>Do not load Band Survey and Toolbox together</b> — they share the same UI hooks and will clash (duplicate panels / fighting controls). Toolbox includes every Band Survey feature and more. Edit <code>init.js</code> so it loads <b>only</b> Toolbox (remove any <code>band_survey</code> load lines).</p>" +
@@ -20284,6 +20295,7 @@ Plugins.toolbox.init = function () {
       "<p>This plugin does <b>not</b> talk to USB radios directly. It uses the OpenWebRX+ receiver page: SDR <b>profiles</b>, the live <b>waterfall</b>, retune / profile hop, and local bookmarks. If OpenWebRX already drives your SDR (HackRF via Soapy, RTL-SDR, Airspy, LimeSDR, etc.) and you see a normal waterfall + profile list, Toolbox works on that radio.</p>" +
       "<ul>" +
       "<li><b>Profiles must cover the MHz you scan</b> — Range / Explore / Analyzer only hop where profiles allow. One wide HackRF profile behaves differently from many narrow RTL slices.</li>" +
+      "<li><b>SDR filters</b> — <b>Explore</b> + <b>Bands</b>: shared <b>SDR only</b> (All SDRs or one kind). <b>Range</b> + <b>Analyzer</b>: <b>Choose SDR</b> (one kind each, remembered per tab). <b>Identify</b>: <b>Choose SDR</b> with <b>All SDRs</b> or one kind. They do not follow each other.</li>" +
       "<li><b>Bandwidth comes from OpenWebRX</b> (<code>window.bandwidth</code>) — hop step and “tile” size follow the active profile, not a fixed HackRF sweep width.</li>" +
       "<li><b>Presets</b> (Air, FM, …) match common profile id/name patterns. Custom names still work — tick bands manually.</li>" +
       "<li><b>Analyzer</b> — live OWRX waterfall only (relative dB). It is <b>not</b> a standalone <code>hackrf_sweep</code> console. Toggle under Settings → <b>Visible tabs</b>.</li>" +
@@ -20299,7 +20311,7 @@ Plugins.toolbox.init = function () {
       "<li><b>First load / hard-refresh</b> — one-time cost: <code>toolbox.js</code> is ~1.5&nbsp;MB (~360&nbsp;KB gzipped); parse is slower on weak SoCs.</li>" +
       "<li><b>Light</b> — Tune / VFO, bookmarks, band ◀/▶ hop.</li>" +
       "<li><b>Heavier</b> — band / range surveys, Identify live, Analyzer, audio FFT scope, Jump loudest peak hunting.</li>" +
-      "<li><b>Tips</b> — Settings → <b>Raspberry Pi / low power</b> (experimental) to hide juicier tabs; turn off unused Extras; leave Analyzer / Identify off unless needed; cap stored peaks if Peaks feels slow; prefer a normal PC browser for long surveys.</li>" +
+      "<li><b>Tips</b> — <b>Settings → General → Choose layout profile</b> (<b>Light</b>) to hide juicier tabs; turn off unused Extras; leave Analyzer / Identify off unless needed; cap stored peaks if Peaks feels slow; prefer a normal PC browser for long surveys.</li>" +
       "<li><b>Feedback</b> — try the low-power preset on/off and different tabs/scenarios, then report via " +
       "<a href=\"https://github.com/G4EA5/openwebrx-toolbox/issues\" target=\"_blank\" rel=\"noopener\">GitHub issues</a> or the " +
       "<a href=\"https://groups.io/g/openwebrx\" target=\"_blank\" rel=\"noopener\">OpenWebRX+ forum</a>.</li>" +
@@ -20353,6 +20365,7 @@ Plugins.toolbox.init = function () {
       "<p>Sub-tabs: <b>Bands list</b> · <b>Beacons</b> · <b>Solar</b> · <b>Today</b> · <b>Bands edit</b> · <b>Bands schedule</b> · <b>Bands packs</b> (last choice remembered). Band scan options sit compactly under Scan bands / Fresh / Stop in the toolbar.</p>" +
       "<ul>" +
       "<li><b>Band scan options</b> — Timing (Passes / Dwell), Peaks (Min seen / dB), Filters (Birdies; Wideband / Bookmarked when those Extras are on), Courtesy (Mute / Own radio / Alone); Digi box when that Extra is on; <b>Import/export</b> beside Digi (profiles + local band edits). Same groups on Range except Digi and Import/export.</li>" +
+      "<li><b>SDR only</b> (above presets) — same filter as Explore Profile: <b>All SDRs</b> or one device kind. Not the same as Range / Anz / ID <b>Choose SDR</b>.</li>" +
       "<li><b>Bands list</b> — <b>Presets &amp; filter</b> (<b>Air</b>, <b>VHF voice</b>, <b>All VHF</b> 30–300&nbsp;MHz, <b>All UHF</b> 300–1000&nbsp;MHz, <b>Ham</b>, <b>All</b>, <b>None</b>; optional <b>Digi</b> / HF day/night) and the tick list for Scan bands. Scroll the pane to see every profile.</li>" +
       "<li><b>Beacons</b> — NCDXF cycle on 20 / 17 / 15 / 12 / 10&nbsp;m. The call on the air is highlighted; click it to open that band.</li>" +
       "<li><b>Solar</b> — next to Beacons. Solar flux, planetary K and A, and the GOES X-ray class.</li>" +

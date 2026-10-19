@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB137)
+# OpenWebRX Toolbox (vB138)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -51,6 +51,19 @@ the top bar, then **Settings → Check install**.
 **Need v440 specifically?** Use the frozen snapshot in [`v440/`](v440/) (or tag
 `toolbox-v440`) — same manual install, different files.
 
+### What’s new since v965 (B era)
+
+After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B138** (see Help → **What’s new since v965**). Summary:
+
+| Area | Highlights |
+| --- | --- |
+| **More** | Feeds → Yours, expanded panes (5 default per group), Plan/News/Tips, Calls/prefix data in `toolbox.js` |
+| **Explore** | Light boxes, Listen, S-meter calibrate, **SDR only** on Profile hop (B73–B109) |
+| **Bands** | Packs per-SDR, **SDR only** bar (with Explore); Beacons/Solar/Today moved to More |
+| **Range / Anz / ID** | Per-tab **Choose SDR** (ID: **All SDRs** or one kind); Anz **Main waterfall** on wide spans |
+| **Settings** | **Update Toolbox**, multi-SDR block at bottom of **General**, **Public** sub-tab, layout profiles (replaces old Pi preset) |
+| **Full guide** | [`docs/WHATS-NEW-SINCE-V965.md`](docs/WHATS-NEW-SINCE-V965.md) · [`CHANGELOG.md`](CHANGELOG.md) |
+
 ### What’s new since v440 (high level)
 
 | Area | Highlights |
@@ -68,7 +81,7 @@ the top bar, then **Settings → Check install**.
 | **Settings · SDR** | Device switcher, per-kind behaviour profiles, preferred stick by job, Role→SDR, pack pins, network budget, hop settle, storage quotas, key remap, settings sync URL |
 | **SDR filters** | **Explore** + **Bands**: shared **SDR only** (All SDRs or one kind). **Range** / **Analyzer**: **Choose SDR** (one radio each). **Identify**: **Choose SDR** with **All SDRs** or one kind — each tab remembers separately |
 | **Help** | Hover tips + **?** on every boxed section and sub-tab |
-| **Docs** | [v440→v960 changes](docs/CHANGES-v440-to-v960.md) · full [`CHANGELOG.md`](CHANGELOG.md) |
+| **Docs** | [Since v965 (B era)](docs/WHATS-NEW-SINCE-V965.md) · [v440→v960](docs/CHANGES-v440-to-v960.md) · [`CHANGELOG.md`](CHANGELOG.md) |
 
 ---
 
@@ -243,7 +256,7 @@ Toolbox is mostly **browser JavaScript**. The radio host mainly **serves** the p
 
 **Tips for small PCs / Pi with on-device browser**
 
-- Settings → **Raspberry Pi / low power** — experimental one-click preset that hides juicier tabs (Analyzer, Identify, More, Watch, Range) and trims Explore boxes. Undo anytime. Try different tabs/scenarios with the preset on and off, then feedback via [GitHub issues](https://github.com/G4EA5/openwebrx-toolbox/issues) or the [OpenWebRX+ forum](https://groups.io/g/openwebrx).
+- **Settings → General → Choose layout profile** (**Light**) — hides juicier tabs and trims Explore boxes on small PCs. Undo by picking **Everything** or tuning **Visible tabs** / **Explore boxes**. Feedback via [GitHub issues](https://github.com/G4EA5/openwebrx-toolbox/issues) or the [OpenWebRX+ forum](https://groups.io/g/openwebrx).
 - Turn off unused **Extras** (Settings) — cuts timers and UI work.
 - Untick **Analyzer** / **Identify** under Visible tabs if you do not need them.
 - Cap stored peaks (**Max peaks** / untick **Keep peaks between sessions**) if the Peaks tab feels slow.
@@ -801,12 +814,13 @@ v500, **v405** is still on the Releases page and via jsDelivr pinned to that tag
 | Want | How |
 | --- | --- |
 | **Latest Toolbox** | Clone `main`, or [Releases](https://github.com/G4EA5/openwebrx-toolbox/releases) → newest **Toolbox** |
-| **This Toolbox build (vB21)** | Tag [`toolbox-vB21`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-vB21) (after publish) or `main` |
-| **Last numeric (v965)** | Tag [`toolbox-v965`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v965) — B era starts at **vB1** after this |
+| **Current B build (e.g. vB138)** | Tag [`toolbox-vB138`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-vB138) or `main` |
+| **Last numeric (v965)** | Tag [`toolbox-v965`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v965) — **B era** starts at **B1** after this |
 | **Toolbox v440 (frozen folder)** | [`v440/`](v440/) on `main` — same build as tag [`toolbox-v440`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/toolbox-v440) |
 | **Band Survey v127** (last) | [`legacy/band_survey/`](legacy/band_survey/) on `main`, or tag `band-survey-v127` |
 | **Band Survey v110** | Tag [`band-survey-v110`](https://github.com/G4EA5/openwebrx-toolbox/releases/tag/band-survey-v110) |
 | **Any older commit** | Releases page, or `git checkout <tag>` |
+| **What changed since v965** | [`docs/WHATS-NEW-SINCE-V965.md`](docs/WHATS-NEW-SINCE-V965.md) · [`CHANGELOG.md`](CHANGELOG.md) |
 | **What changed since v440** | [`docs/CHANGES-v440-to-v960.md`](docs/CHANGES-v440-to-v960.md) · [`CHANGELOG.md`](CHANGELOG.md) |
 
 **CDN pin (do not use floating `@main` for production):**
