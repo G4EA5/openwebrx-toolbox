@@ -1,5 +1,10 @@
 # Changelog
 
+## [B138] — Docs: full v965 → B era guide
+
+- **[docs/WHATS-NEW-SINCE-V965.md](docs/WHATS-NEW-SINCE-V965.md)** — wiki-style summary of all B-era changes.
+- README, Help tab **What’s new since v965**, and troubleshooting index updated to match.
+
 ## [B137] — Docs + Identify profile list
 
 - Help tab, hover **?**, README/troubleshooting: per-tab **Choose SDR** vs Explore/Bands **SDR only** (Identify: **All SDRs** or one kind).
@@ -16,7 +21,18 @@
 ## [B132–B134] — Per-tab Choose SDR
 
 - **Range**, **Analyzer**, and **Identify** each store their own SDR choice (`rangeSdrShowOnly`, `saSdrShowOnly`, `idSdrShowOnly`). **Explore** and **Bands** keep shared **SDR only** with **All SDRs**.
-- Analyzer **Main waterfall** — wide-span stitched spectrum on the stock OpenWebRX waterfall while hopping (B129).
+
+## [B129] — Analyzer: Main waterfall
+
+- Wide **Start–End** spans: optional **Main waterfall** paints stitched full-span spectrum on the stock OpenWebRX waterfall while hopping tiles.
+
+## [B123–B125] — Choose SDR bars (survey tabs)
+
+- **Range → Scan**, **Analyzer**, and **Identify** get a top **Choose SDR** bar (DOM migration for older panels).
+
+## [B118] — Settings layout cleanup
+
+- **Pi & SDR** sub-tab removed; **SDR** settings stay at the **bottom of General**. **Raspberry Pi / low power** preset removed — use **Choose layout profile** (**Light** / **Band survey** / **Everything**).
 
 ## [B109] — Explore SDR only + profile hop
 
