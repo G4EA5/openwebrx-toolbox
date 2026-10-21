@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B138";
+  Plugins.toolbox._version = "B174";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -955,7 +955,7 @@ Plugins.toolbox.init = function () {
   var EDGE_FRAC = 0.06;
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
-  var TAB_IDS = ["explore", "bands", "range", "analyzer", "identify", "log", "watch", "peaks", "bookmarks", "audio", "skip", "more", "settings", "help"];
+  var TAB_IDS = ["explore", "bands", "range", "analyzer", "identify", "log", "watch", "memory", "peaks", "bookmarks", "audio", "skip", "more", "settings", "help"];
   var TAB_BAR_IDS = TAB_IDS.filter(function (id) { return id !== "help"; });
   var TAB_HEAD_META = {
     explore: { lab: "Exp", title: "Explore — browse spectrum by profile hop." },
@@ -965,6 +965,7 @@ Plugins.toolbox.init = function () {
     identify: { lab: "ID", title: "Identify — heuristic signal-type guess from waterfall, bandplan, and digi panels. Optional DIY external classifier Extra." },
     log: { lab: "Log", title: "Log — decoded traffic, identify guesses, new peaks, and busy scan stops. Click a row to tune." },
     watch: { lab: "Watch", title: "Watch — alert when a callsign, flight, ship, or talkgroup shows up in the Log. Click a hit to tune." },
+    memory: { lab: "Mem", title: "Memory — Trace (signal history), Digital (TG / radio IDs), Bench (shared receiver hints). Lazy until you open a sub-tab." },
     more: { lab: "More", title: "More — Spots, Space, Tune, Sky, Here, Sked, Read (grouped sections)." },
     peaks: { lab: "Peaks", title: "Peaks — table and export." },
     bookmarks: { lab: "Book", title: "Bookmarks — Local (blue) and Loaded [load]; yellow/green stay on the OpenWebRX waterfall." },
@@ -1120,7 +1121,7 @@ Plugins.toolbox.init = function () {
     { tab: "range", id: "last", lab: "Last", title: "Last ranges you scanned." }
   ];
   var EXTRA_SUB_CORE = {
-    log: { feed: 1, qso: 1, calls: 1 },
+    log: { feed: 1, qso: 1, calls: 1, archive: 1 },
     watch: { list: 1, groups: 1, snooze: 1 },
     bookmarks: { list: 1, options: 1 },
     audio: { list: 1, record: 1, filters: 1 },
@@ -1275,11 +1276,12 @@ Plugins.toolbox.init = function () {
     { id: "clipNewestFirst", label: "Clips newest-first", where: "Audio", tip: "Always sort the Audio list newest first." },
     { id: "utcTimestamps", label: "UTC timestamps", where: "Log / Watch", tip: "Show clock times in UTC (relative ago stays as-is)." },
     { id: "quietStatus", label: "Quieter status", where: "Global", tip: "Skip routine status lines (hops / dwell); keep errors and finishes." },
-    { id: "rememberSubs", label: "Remember sub-tabs", where: "Global", tip: "Restore the last Extra/More sub-tab per main tab. On by default." }
+    { id: "rememberSubs", label: "Remember sub-tabs", where: "Global", tip: "Restore the last Extra/More sub-tab per main tab. On by default." },
+    { id: "memoryTrace", label: "Memory · Trace sampling", where: "Memory", tip: "Sample S-meter level every 5s while Memory → Trace is open. On by default — untick under Settings → Extras to freeze the graph.", defaultOn: true }
   ];
 
   /* —— Optional UX feel layers (Settings → UX feel). Off = classic Toolbox. —— */
-  var UX_LEAN_HIDE_TABS = ["range", "analyzer", "identify", "skip", "help"];
+  var UX_LEAN_HIDE_TABS = ["range", "analyzer", "identify", "skip", "memory", "help"];
   var UX_SIMPLE_SOFT_OFF = [
     "exVfo", "exIf", "exWaterfall", "exZoom", "exLook", "exMemories", "exFind", "exHwGain",
     "digiSurvey", "bandPacks", "spectrumHistory", "occHeatmap", "surveyDiff",
@@ -1690,6 +1692,8 @@ Plugins.toolbox.init = function () {
   var LS_FREQ_NOTES = "owrx_toolbox_freq_notes_v1";
   var LS_SESSION_LOG = "owrx_toolbox_session_log_v1";
   var LS_TRAFFIC_LOG = "owrx_toolbox_traffic_log_v1";
+  var LS_DECODER_ARCHIVE = "owrx_toolbox_decoder_archive_v1";
+  var DECODER_ARCHIVE_MAX = 2500;
   var LS_QSO = "owrx_toolbox_qso_v1";
   var LS_SIG_WATCH = "owrx_toolbox_sig_watch_v1";
   var LS_RECENT_TUNES = "owrx_toolbox_recent_tunes_v1";
@@ -2279,6 +2283,122 @@ Plugins.toolbox.init = function () {
       setTimeout(apply, 0);
       setTimeout(apply, 48);
     } catch (eT) {}
+  }
+
+  var TAB_SCROLL_BTT_HOST_SEL =
+    "#bs-panel .bs-tab-stack, #bs-panel .bs-tab-scroll, #bs-panel .bs-bd-subpane, " +
+    "#bs-panel .bs-bm-subpane, #bs-panel .bs-au-subpane, #bs-panel .bs-rg-subpane, " +
+    "#bs-panel .bs-lg-subpane, #bs-panel .bs-mem-subpane, #bs-panel .bs-sw-subpane, " +
+    "#bs-panel .bs-pk-subpane, #bs-panel .bs-sk-subpane, #bs-panel .bs-more-subpane, " +
+    "#bs-panel #bs-settings, #bs-panel #bs-ex-deck";
+
+  function tabScrollBackToTopOverflowY(el) {
+    if (!el) return "";
+    try {
+      return window.getComputedStyle(el).overflowY || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function isTabScrollBackToTopHost(el) {
+    if (!el || el.classList && el.classList.contains("bs-tab-btt-wrap")) return false;
+    var oy = tabScrollBackToTopOverflowY(el);
+    return oy === "auto" || oy === "scroll" || oy === "overlay";
+  }
+
+  function tabScrollBackToTopFooterHtml() {
+    return (
+      '<div class="bs-tab-btt-wrap" hidden>' +
+      '<button type="button" class="bs-tab-btt bs-tiny bs-btn-util" title="Scroll to the top of this tab">↑ Back to top</button>' +
+      "</div>"
+    );
+  }
+
+  function ensureTabScrollBackToTopHost(host) {
+    if (!host || !isTabScrollBackToTopHost(host)) return;
+    if (!host.querySelector(":scope > .bs-tab-btt-wrap")) {
+      try {
+        host.insertAdjacentHTML("beforeend", tabScrollBackToTopFooterHtml());
+      } catch (eIns) {}
+    }
+    try { host.setAttribute("data-bs-btt", "1"); } catch (eAttr) {}
+  }
+
+  function refreshTabScrollBackToTopHost(host) {
+    if (!host) return;
+    ensureTabScrollBackToTopHost(host);
+    var wrap = host.querySelector(":scope > .bs-tab-btt-wrap");
+    if (!wrap) return;
+    var scrollable = host.scrollHeight > host.clientHeight + 10;
+    if (scrollable) wrap.removeAttribute("hidden");
+    else wrap.setAttribute("hidden", "");
+  }
+
+  function tabScrollBackToTopHostNodes(root) {
+    var panel = $("bs-panel");
+    if (!panel) return [];
+    var sel = TAB_SCROLL_BTT_HOST_SEL.replace(/#bs-panel /g, "");
+    var all = panel.querySelectorAll(sel);
+    if (!root || root === panel) return all;
+    var out = [];
+    Array.prototype.forEach.call(all, function (el) {
+      if (root.contains(el)) out.push(el);
+    });
+    if (isTabScrollBackToTopHost(root) && out.indexOf(root) < 0) out.push(root);
+    return out;
+  }
+
+  function refreshTabScrollBackToTopHosts(root) {
+    var nodes = tabScrollBackToTopHostNodes(root || $("bs-panel"));
+    Array.prototype.forEach.call(nodes, function (el) {
+      if (!isTabScrollBackToTopHost(el)) return;
+      refreshTabScrollBackToTopHost(el);
+    });
+  }
+
+  function bindTabScrollBackToTop(panel) {
+    panel = panel || $("bs-panel");
+    if (!panel || panel._bsTabBttBound) return;
+    panel._bsTabBttBound = true;
+    panel.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest(".bs-tab-btt");
+      if (!btn || !panel.contains(btn)) return;
+      ev.preventDefault();
+      var host = btn.parentElement;
+      if (!host || !host.classList.contains("bs-tab-btt-wrap")) return;
+      host = host.parentElement;
+      if (!host) return;
+      try {
+        if (typeof host.scrollTo === "function") host.scrollTo({ top: 0, behavior: "smooth" });
+        else host.scrollTop = 0;
+      } catch (eSm) {
+        try { host.scrollTop = 0; } catch (eTop) {}
+      }
+    });
+    var deb = null;
+    function scheduleRefresh() {
+      if (deb) clearTimeout(deb);
+      deb = setTimeout(function () {
+        deb = null;
+        try { refreshTabScrollBackToTopHosts(panel); } catch (eRf) {}
+      }, 100);
+    }
+    try {
+      window.addEventListener("resize", scheduleRefresh);
+      if (typeof ResizeObserver === "function") {
+        var ro = new ResizeObserver(scheduleRefresh);
+        ro.observe(panel);
+      }
+    } catch (eRo) {}
+    panel.addEventListener("click", function (ev) {
+      var sub = ev.target && ev.target.closest && ev.target.closest(
+        ".bs-st-sub, .bs-bd-sub, .bs-bm-sub, .bs-au-sub, .bs-rg-sub, .bs-lg-sub, " +
+        ".bs-mem-sub, .bs-sw-sub, .bs-pk-sub, .bs-sk-sub, .bs-more-sub"
+      );
+      if (sub && panel.contains(sub)) scheduleRefresh();
+    }, true);
+    scheduleRefresh();
   }
 
   function layoutPrefsSnapshotFromS() {
@@ -5095,6 +5215,7 @@ Plugins.toolbox.init = function () {
   try { maybePromoteLoadUserAmberV801(); } catch (eLoadUserAmber) {}
   try { maybePromoteListenTopLimeV866(); } catch (eListenLime) {}
   try { maybePromoteExRecBlueV868(); } catch (eExRecBlue) {}
+  try { maybePromoteMemoryTraceOnB172(); } catch (eMemTraceB172) {}
   try { maybeBakeExploreFactoryFromUserDefaults(); } catch (eExBake) {}
   try { maybeBackfillUserDefaultsExploreLayout(); } catch (eExBf) {}
   try {
@@ -5491,6 +5612,8 @@ Plugins.toolbox.init = function () {
       maxNoiseSamples: 40,
       keyRemap: null,
       settingsSyncUrl: "",
+      settingsSubSystem: true,
+      settingsSubPublic: true,
       /* Optional UX feel layers — all off = classic Toolbox (no change). */
       uxFeel: {
         rolePresets: false,
@@ -5571,7 +5694,7 @@ Plugins.toolbox.init = function () {
 
   /** Pi-friendly default until the first-run wizard (or Settings) changes extras. */
   var EXTRAS_LITE_OFF = [
-    "digiSurvey", "spectrumHistory", "occHeatmap", "surveyDiff", "shareReport", "nearbyTraffic",
+    "digiSurvey", "spectrumHistory", "occHeatmap", "surveyDiff", "shareReport", "nearbyTraffic", "memoryTrace",
     "speechToText", "audioSttWebhook", "audioPlayVoice", "homelabWebhook", "idExternal",
     "bandEditAdvanced", "bandPacks", "rangePresets", "rangeAutoBm", "rangeRepeat", "rangeCoverage",
     "rangeSpecDiff", "rangeHopCap", "exHwGain", "jumpFmExp", "autoStartOwrx", "sendToScanner"
@@ -5599,6 +5722,9 @@ Plugins.toolbox.init = function () {
     d.hiddenTabs = ["bands", "range", "analyzer", "identify", "skip", "decode"];
     d.expAnalyzer = false;
     d.expIdentify = false;
+    d.settingsSubSystem = false;
+    d.settingsSubPublic = true;
+    d.findInToolbox = true;
     d.seenWizard = false;
     return d;
   }
@@ -6059,6 +6185,24 @@ Plugins.toolbox.init = function () {
     }
   }
 
+  /** One-time: Memory → Trace sampling on (was off by default before B172). */
+  function maybePromoteMemoryTraceOnB172() {
+    try {
+      if (window.localStorage.getItem("owrx_toolbox_memory_trace_on_b172") === "1") return;
+      window.localStorage.setItem("owrx_toolbox_memory_trace_on_b172", "1");
+    } catch (e) {
+      return;
+    }
+    if (!S.extras) S.extras = extrasDefaults();
+    if (!S.extras.memoryTrace) {
+      S.extras.memoryTrace = true;
+      try { saveSettings(); } catch (eS) {}
+      try { applyExtrasUi(); } catch (eA) {}
+    }
+    var el = $("bs-extra-memoryTrace");
+    if (el) el.checked = !!S.extras.memoryTrace;
+  }
+
   /** One-time: Settings → S-meter Calibrate… default green. */
   function maybePromoteSmeterCalGreenB44() {
     try {
@@ -6395,12 +6539,14 @@ Plugins.toolbox.init = function () {
     "temporary lockouts": "Timed skips from Lockout — expire after Lockout min, or clear early.",
     "always skip": "Frequencies you marked to never hop to again (until cleared). Details show name, band, mode, and peak stats when known.",
     "factory reset": "Wipes Toolbox data in this browser (pick what to clear). Reset like new install wipes everything Toolbox stored here and shows the first-run wizard again.",
-    "install check": "Verify this page can run Toolbox. Updates: open the GitHub repo (clone or pull).",
+    "install check": "First install: edit init.js on the radio host, hard-refresh this page, then click here. Green = Toolbox loaded. Red/yellow = read the fix on screen. Update Toolbox reloads CDN @main or downloads files for a local copy.",
+    "layout profile": "Starter layouts only — Light (fewer tabs), Band survey (scan workflow), or Everything (full panel). Does not delete peaks or bookmarks. Use Simplify my panel for the same Light shortcut anytime.",
+    "simplify my panel": "One click: Light layout, simpler chrome, and header Find on. Your data stays. Turn tabs back on under Visible tabs.",
     "extras": "Optional features. Untick to hide that UI completely — Add all extras turns default-on features back on (Public / opt-in extras stay off unless you tick them).",
     "public visitor allowlist": "What guests may use when public mode is on (Settings → Public, or TOOLBOX_ALLOW_OWNER_OVERRIDE = false in toolbox.js). Tabs, features, Explore MHz/bands, and extras in the grid; More panes in grouped boxes at the bottom. Safe defaults clears extras. Admin-only.",
     "explore mhz limit": "When public, clamp Explore Go / hop / wheel / drag to this MHz window. Blank = no limit.",
     "explore bands": "When public, guests may only Explore these SDR profiles. All bands (or none ticked) = no band restriction.",
-    "panel startup": "Open panel on startup, auto-click Start OpenWebRX+, remember/default tab. Open-on-startup loads Toolbox after the receiver paints.",
+    "panel startup": "When Toolbox opens automatically, which tab to show, and optional header tools (Find, minimal button). Turn Find on to search settings by keyword from the title bar.",
     "public / shared receiver": "Shared-host mode for this browser (admin). Locks Alone-only on, turns Own radio off, and hides Factory reset. Set TOOLBOX_ALLOW_OWNER_OVERRIDE = false in toolbox.js for every visitor, or tick here when OpenWebRX has no General checkbox. Guest rights: Public visitor allowlist in the section below.",
     "appearance": "Text size, on/off style (ticks / switches), scan strip, stock receiver panel, mute when changing tab, and button colours. Show colour picker (default on) enables the right-click shade menu on buttons (not header or sub-tabs). Show right-click colour tip controls the hover hint.",
     "ux feel (optional)": "Soft layout overlays (lean chrome, simple mode, quieter Explore, optional task strip, extras by job). Layout profiles: Settings → General → Choose layout profile. Does not rewrite Visible tabs or Extras ticks.",
@@ -6483,6 +6629,10 @@ Plugins.toolbox.init = function () {
     "dx cluster": "DX cluster spots from the last 30 minutes. Click a spot to tune; click the callsign for the same lookup as the FT8 window.",
     "satellites": "Pick a satellite, set your lat/lon, then Follow to track the Doppler-corrected downlink. Stop puts the radio back.",
     "log": "Live decoder feed, Identify guesses, peaks, and notes. Click a line to tune. ★ pins a line across Clear.",
+    "memory": "Trace, Digital IDs, and Bench — lazy sub-tabs.",
+    "trace": "Rolling S-meter trace at the current tune (5s samples). Needs Extra: Memory · Trace sampling.",
+    "digital": "Rolling TG / radio ID / meta lines from the decoder feed — only while this sub-tab is open.",
+    "bench": "Light shared-receiver hints from /status.json — who is connected, profile name.",
     "qso pad": "Your logbook: call, RST, grid, mode, time, and MHz. Export as ADIF. Separate from the decoder Log feed.",
     "callsigns": "Callsigns pulled from decoder lines. Click for QRZCQ lookup; click again to tune where it was heard.",
     "watches": "Watch callsigns, flights, ships, or talkgroups in new Log lines. Pause stops every watch; Sound / Desktop alert on hits.",
@@ -6501,6 +6651,11 @@ Plugins.toolbox.init = function () {
     "llm url": "Optional DIY / LLM HTTP URL for Identify now (Live stays heuristic-only). Off until you set a URL.",
     "voice-to-text webhook": "Optional STT webhook — POST clip audio to your own voice-to-text URL. Off until you enable the Extra and set a URL.",
     "peak webhook": "Optional URL that gets a small JSON notice when a survey finds a brand-new peak.",
+    "settings sync": "Optional HTTP URL to pull/push toolbox settings JSON (multi-receiver or backup).",
+    "show system": "Panel startup: show Settings → System (host stats) sub-tab.",
+    "show public": "Panel startup: show Settings → Public (visitor allowlist) sub-tab.",
+    "simplify": "Apply Light layout, lean/simple UI, and header Find — does not delete data.",
+    "advanced urls": "Optional DIY HTTP endpoints (sync, peak webhook, classifier, STT) at the bottom of Settings → General.",
     "jump tuning · experimental (fm broadcast)": "Optional FM broadcast Jump loudest extras (grid / ±kHz / detect). Off by default — Jump loudest stays off on WFM unless you enable this.",
     "presets": "Named Start–End / grid / mode setups for the Range scanner (load / save / delete).",
     "record": "Record demod now or Record busy during bookmark scans; clip limits sit nearby.",
@@ -6522,12 +6677,25 @@ Plugins.toolbox.init = function () {
     "audio:record": "Record now, Play, Import / Export, and the clip queue — same store as Audio list. Recording options and Record busy gates are above / on Bookmarks.",
     "audio:filters": "Noise blanker, notch, and tone EQ on the receiver audio you hear.",
     "log:feed": "Decoder lines, Identify guesses, peaks, and notes. Search and filter chips narrow the feed.",
+    "log:archive": "Longer-lived store of decoder lines (FT8, CW, RTTY/PSK, APRS, ADS-B, …). Filter by mode and export CSV/JSON. Saved in this browser.",
     "log:qso": "Contacts you worked — the logbook. Export ADIF. Not the same as the decoder Log feed.",
     "log:calls": "Callsigns extracted from decoder lines. Click for lookup; click again to tune.",
     "watch:list": "Add watches, see hits, pause / sound / desktop alerts, and export or import.",
     "watch:groups": "Tick watches into band groups, then Arm … on / off. The label flips each press. Pause still stops every watch.",
     "watch:snooze": "Sleep one watch until a time; the others keep alerting.",
-    "settings:general": "Panel prefs, visible tabs, extras, Explore boxes, appearance, SDR devices, import/export. OpenWebRX admin login required to edit.",
+    "memory:trace": "Signal level over time at your current MHz. Sampling runs only while Trace is open and the Trace sampling extra is on.",
+    "memory:digital": "Talkgroup / radio ID history from decoder meta lines. Capture runs only while Digital is open.",
+    "memory:bench": "Receiver status snapshot for shared WebSDRs — users online and profile label.",
+    "memory:today": "Counts from the Log feed since local midnight — digi, peaks, scans, notes.",
+    "memory:recent": "Last decoder / ID / peak lines from Log (read-only). Click to tune.",
+    "memory:markers": "Pin the current MHz with an optional note — saved in this browser.",
+    "memory:export": "Export trace CSV, digital IDs, and markers from one place.",
+    "settings:general": "Start here after install: Check install, Simplify my panel, layout profile, visible tabs. Advanced URLs (optional) at the bottom. OpenWebRX admin login required to change most options.",
+    "help": "Full manual: first install, hover tips, every tab. Start in 3 minutes for Listen / Survey / Public shortcuts.",
+    "settings:system": "Host specs, listener IPs/profiles, your tune trail, Toolbox counters, CPU/RAM, WebSocket and traffic.",
+    "settings:decoders": "Live secondary demod, every OpenWebRX decoder panel (open/closed, line counts), Log ingest stats, IPs/calls/IDs per channel.",
+    "settings:owrx": "OpenWebRX internals: status.json SDRs/profiles, live demod/IF/squelch, WebSocket, footer meters, and open decoder panels.",
+    "settings:nerd": "Deep nerd vault: OWRX globals, waterfall/FFT, secondary demod, WebSocket wire stats, Toolbox buffers, JSON dumps — copy for debugging.",
     "settings:more": "Which More tab panes show for you (grouped checkboxes). Separate from Public → visitor allowlist at the bottom of the Public sub-tab.",
     "settings:public": "Public / shared receiver mode and the visitor allowlist (tabs, features, extras, Explore limits, More panes for guests). Admin only.",
     "more:dx": "DX cluster spots. Filter This band / HF / All, then click a spot to tune.",
@@ -6647,9 +6815,9 @@ Plugins.toolbox.init = function () {
     return "Section";
   }
 
-  var SUB_BAR_SEL = ".bs-bd-subs, .bs-bm-subs, .bs-au-subs, .bs-sw-subs, .bs-lg-subs, .bs-more-subs, .bs-rg-subs, .bs-sk-subs, .bs-pk-subs, .bs-st-subs";
-  var SUB_ON_SEL = ".bs-bd-sub-on, .bs-bm-sub-on, .bs-au-sub-on, .bs-lg-sub-on, .bs-sw-sub-on, .bs-more-sub-on, .bs-rg-sub-on, .bs-sk-sub-on, .bs-pk-sub-on, .bs-st-sub-on, [aria-selected='true']";
-  var SUB_ATTRS = ["data-bd-sub", "data-bm-sub", "data-au-sub", "data-lg-sub", "data-sw-sub", "data-more-sub", "data-rg-sub", "data-sk-sub", "data-pk-sub", "data-st-sub"];
+  var SUB_BAR_SEL = ".bs-bd-subs, .bs-bm-subs, .bs-au-subs, .bs-sw-subs, .bs-lg-subs, .bs-mem-subs, .bs-more-subs, .bs-rg-subs, .bs-sk-subs, .bs-pk-subs, .bs-st-subs";
+  var SUB_ON_SEL = ".bs-bd-sub-on, .bs-bm-sub-on, .bs-au-sub-on, .bs-lg-sub-on, .bs-sw-sub-on, .bs-mem-sub-on, .bs-more-sub-on, .bs-rg-sub-on, .bs-sk-sub-on, .bs-pk-sub-on, .bs-st-sub-on, [aria-selected='true']";
+  var SUB_ATTRS = ["data-bd-sub", "data-bm-sub", "data-au-sub", "data-lg-sub", "data-sw-sub", "data-more-sub", "data-rg-sub", "data-sk-sub", "data-pk-sub", "data-st-sub", "data-mem-sub"];
 
   function subHelpKeyFor(tabId, subId) {
     tabId = String(tabId || "").replace(/^bs-tab-/, "");
@@ -6670,7 +6838,7 @@ Plugins.toolbox.init = function () {
       val = onBtn.getAttribute(attr);
       if (!val) continue;
       pane = stack.querySelector("[" + attr + "=\"" + val + "\"][role=\"tabpanel\"]") ||
-        stack.querySelector(".bs-bd-subpane[" + attr + "=\"" + val + "\"], .bs-bm-subpane[" + attr + "=\"" + val + "\"], .bs-au-subpane[" + attr + "=\"" + val + "\"], .bs-lg-subpane[" + attr + "=\"" + val + "\"], .bs-sw-subpane[" + attr + "=\"" + val + "\"], .bs-more-subpane[" + attr + "=\"" + val + "\"], .bs-rg-subpane[" + attr + "=\"" + val + "\"], .bs-sk-subpane[" + attr + "=\"" + val + "\"], .bs-pk-subpane[" + attr + "=\"" + val + "\"]");
+        stack.querySelector(".bs-bd-subpane[" + attr + "=\"" + val + "\"], .bs-bm-subpane[" + attr + "=\"" + val + "\"], .bs-au-subpane[" + attr + "=\"" + val + "\"], .bs-lg-subpane[" + attr + "=\"" + val + "\"], .bs-sw-subpane[" + attr + "=\"" + val + "\"], .bs-mem-subpane[" + attr + "=\"" + val + "\"], .bs-more-subpane[" + attr + "=\"" + val + "\"], .bs-rg-subpane[" + attr + "=\"" + val + "\"], .bs-sk-subpane[" + attr + "=\"" + val + "\"], .bs-pk-subpane[" + attr + "=\"" + val + "\"]");
       if (pane) return pane;
     }
     return null;
@@ -7201,6 +7369,7 @@ Plugins.toolbox.init = function () {
         exploreGainMaybeLoad();
       }
     } catch (eGainEx) {}
+    try { memorySyncTimers(); memoryTraceRender(); } catch (eMemEx) {}
   }
 
   function applyPublicModeExtra() {
@@ -7689,7 +7858,7 @@ Plugins.toolbox.init = function () {
   function publicPolicySettingsHtml() {
     var tabLabs = {
       bands: "Bands", range: "Range", explore: "Explore", analyzer: "Analyzer",
-      identify: "Identify", log: "Log", watch: "Watch", more: "More", peaks: "Peaks", bookmarks: "Bookmarks", audio: "Audio", skip: "Skip",
+      identify: "Identify", log: "Log", watch: "Watch", memory: "Memory", more: "More", peaks: "Peaks", bookmarks: "Bookmarks", audio: "Audio", skip: "Skip",
       settings: "Settings", help: "Help"
     };
     var tabsHtml = TAB_IDS.map(function (id) {
@@ -8219,6 +8388,320 @@ Plugins.toolbox.init = function () {
     trafficLogRows.sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
   }
 
+  var DECODER_ARCHIVE_MODES = [
+    { id: "all", lab: "All" },
+    { id: "ft8", lab: "FT8" },
+    { id: "js8", lab: "JS8" },
+    { id: "cw", lab: "CW" },
+    { id: "rtty", lab: "RTTY" },
+    { id: "psk", lab: "PSK" },
+    { id: "packet", lab: "Packet" },
+    { id: "adsb", lab: "ADS-B" },
+    { id: "ais", lab: "AIS" },
+    { id: "acars", lab: "ACARS" },
+    { id: "hfdl", lab: "HFDL" },
+    { id: "page", lab: "Pager" },
+    { id: "meta", lab: "Meta" },
+    { id: "other", lab: "Other" }
+  ];
+  var decoderArchiveRows = [];
+  var decoderArchiveFilter = "all";
+  var decoderArchiveQuery = "";
+
+  function loadDecoderArchive() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_DECODER_ARCHIVE) || "null");
+      if (o && Array.isArray(o.rows)) decoderArchiveRows = o.rows.slice(-DECODER_ARCHIVE_MAX);
+      else decoderArchiveRows = [];
+    } catch (e) { decoderArchiveRows = []; }
+    if (!decoderArchiveRows.length && trafficLogRows.length) {
+      trafficLogRows.forEach(function (r) {
+        if (r && (r.kind === "digi" || r.kind === "meta")) decoderArchivePushFromLogRow(r);
+      });
+      if (decoderArchiveRows.length) saveDecoderArchive();
+    }
+  }
+
+  function saveDecoderArchive() {
+    try {
+      window.localStorage.setItem(LS_DECODER_ARCHIVE, JSON.stringify({
+        v: 1,
+        rows: decoderArchiveRows.slice(-DECODER_ARCHIVE_MAX)
+      }));
+    } catch (e) {}
+  }
+
+  loadDecoderArchive();
+
+  function trafficLogRefineDigiBadge(line, meta) {
+    meta = meta || { badge: "Digi", mode: "" };
+    var u = String(line || "");
+    var up = u.toUpperCase();
+    if (/\bWSPR\b/i.test(u)) return { badge: "WSPR", mode: "ft8" };
+    if (/\bFT4\b/i.test(u)) return { badge: "FT4", mode: "ft8" };
+    if (/\bFT8\b/i.test(u) || (u.indexOf("~") >= 0 && /CQ|DE|RR73|73\b/i.test(up))) {
+      return { badge: "FT8", mode: "ft8" };
+    }
+    if (/\bJS8\b/i.test(u)) return { badge: "JS8", mode: "js8" };
+    if (/RTTY|170\s*HZ|450\s*HZ|SHIFT/i.test(up)) return { badge: "RTTY", mode: "rtty" };
+    if (/PSK31|PSK63|BPSK|QPSK|OLIVIA|VARA|FEC/i.test(up)) return { badge: "PSK", mode: "psk" };
+    if (/APRS|UNPROTO|AX\.25/i.test(up)) return { badge: "APRS", mode: "packet" };
+    return meta;
+  }
+
+  function decoderArchiveClassify(row) {
+    var mode = String(row.mode || "").toLowerCase();
+    var badge = String(row.badge || "").toLowerCase();
+    var blob = (badge + " " + mode + " " + String(row.title || "")).toLowerCase();
+    if (row.kind === "meta") return "meta";
+    if (/ft8|ft4|wspr/.test(mode) || /ft8|ft4|wspr/.test(badge)) return "ft8";
+    if (/js8/.test(mode) || /js8/.test(badge)) return "js8";
+    if (/cw|skimmer/.test(mode) || badge === "cw") return "cw";
+    if (/rtty/.test(mode) || badge === "rtty") return "rtty";
+    if (/psk|olivia|vara|bpsk|qpsk/.test(mode) || badge === "psk") return "psk";
+    if (/packet|aprs/.test(mode) || /aprs|packet/.test(badge)) return "packet";
+    if (/adsb|ads-b/.test(mode) || /ads-b/.test(badge)) return "adsb";
+    if (/ais/.test(mode) || badge === "ais") return "ais";
+    if (/acars/.test(mode) || badge === "acars") return "acars";
+    if (/hfdl|vdl/.test(mode) || /hfdl|vdl2/.test(badge)) return "hfdl";
+    if (/page|pocsag|pager/.test(mode) || /page|pocsag/.test(badge)) return "page";
+    if (/dsc|sstv|fax|ism|digi/.test(badge)) return "other";
+    if (row.kind === "digi") return "other";
+    return "other";
+  }
+
+  function decoderArchiveParseFields(title, detail) {
+    var text = String(title || "") + " " + String(detail || "");
+    var calls = lookupCallList(text);
+    var call = calls.length ? calls[0] : "";
+    var grid = "";
+    var gm = text.match(/\b([A-R]{2}\d{2}(?:[a-x]{2})?)\b/i);
+    if (gm) grid = gm[1].toUpperCase();
+    return { call: call, grid: grid };
+  }
+
+  function decoderArchivePushFromLogRow(r) {
+    if (!r) return;
+    var kind = String(r.kind || "");
+    if (kind !== "digi" && kind !== "meta") return;
+    var fields = decoderArchiveParseFields(r.title, r.detail);
+    var decMode = decoderArchiveClassify(r);
+    var key = decMode + "|" + Math.round((Number(r.freqHz) || 0) / 500) + "|" +
+      String(r.title || "").toLowerCase().slice(0, 100);
+    var last = decoderArchiveRows.length ? decoderArchiveRows[decoderArchiveRows.length - 1] : null;
+    if (last && last._key === key && (r.at || 0) - (last.at || 0) < 15000) return;
+    decoderArchiveRows.push({
+      id: "da" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36),
+      at: r.at || Date.now(),
+      kind: kind,
+      decoderMode: decMode,
+      badge: String(r.badge || ""),
+      mode: String(r.mode || ""),
+      title: String(r.title || "").slice(0, 200),
+      detail: String(r.detail || "").slice(0, 280),
+      freqHz: Math.round(Number(r.freqHz) || 0),
+      call: fields.call,
+      grid: fields.grid,
+      logId: r.id || "",
+      _key: key
+    });
+    if (decoderArchiveRows.length > DECODER_ARCHIVE_MAX) {
+      decoderArchiveRows = decoderArchiveRows.slice(-DECODER_ARCHIVE_MAX);
+    }
+    saveDecoderArchive();
+    try {
+      if (logArchiveTabOn()) decoderArchiveRender();
+    } catch (eAr) {}
+  }
+
+  function logArchiveTabOn() {
+    var root = $("bs-tab-log");
+    if (!root) return false;
+    var pane = root.querySelector('.bs-lg-subpane.bs-lg-sub-on[data-lg-sub="archive"]');
+    return !!(pane && !pane.hasAttribute("hidden"));
+  }
+
+  function decoderArchiveVisibleRows() {
+    var q = String(decoderArchiveQuery || "").trim().toLowerCase();
+    var f = decoderArchiveFilter || "all";
+    return decoderArchiveRows.filter(function (r) {
+      if (!r) return false;
+      if (f !== "all" && r.decoderMode !== f) return false;
+      if (!q) return true;
+      var blob = (r.badge + " " + r.mode + " " + r.title + " " + r.detail + " " + r.call + " " + r.grid +
+        (r.freqHz ? (r.freqHz / 1e6).toFixed(3) : "")).toLowerCase();
+      return blob.indexOf(q) >= 0;
+    }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }).slice(0, 200);
+  }
+
+  function decoderArchiveRender() {
+    var feed = $("bs-dec-arch-feed");
+    if (!feed) return;
+    var scroll = feed.scrollTop;
+    var rows = decoderArchiveVisibleRows();
+    var stat = $("bs-dec-arch-stat");
+    if (stat) {
+      stat.textContent = decoderArchiveRows.length + " saved · showing " + rows.length;
+    }
+    var chips = document.querySelectorAll("#bs-dec-arch-chips [data-dec-arch-mode]");
+    Array.prototype.forEach.call(chips, function (b) {
+      var id = b.getAttribute("data-dec-arch-mode");
+      b.classList.toggle("bs-on", id === decoderArchiveFilter);
+    });
+    if (!rows.length) {
+      feed.innerHTML = '<p class="bs-empty">' +
+        (decoderArchiveRows.length ? "Nothing matches this filter." :
+          "Decoder archive fills from the Log feed — FT8, CW, RTTY/PSK, APRS, ADS-B, meta, and other panel lines.") +
+        "</p>";
+      return;
+    }
+    var listHtml = rows.map(function (r) {
+      var mhz = r.freqHz ? fmtMhz(r.freqHz) : "—";
+      var when = new Date(r.at || 0);
+      var clock = "";
+      if (!isNaN(when.getTime())) {
+        clock = extraOn("utcTimestamps")
+          ? when.toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + "Z"
+          : when.toLocaleTimeString();
+      }
+      var callLab = r.call ? ('<span class="bs-dec-arch-call">' + escapeHtml(r.call) + "</span>") : "";
+      var gridLab = r.grid ? ('<span class="bs-dec-arch-grid">' + escapeHtml(r.grid) + "</span>") : "";
+      return '<article class="bs-log-row bs-log-k-digi bs-dec-arch-row" data-dec-arch-hz="' + (r.freqHz || 0) + '">' +
+        '<div class="bs-log-when"><span class="bs-log-ago">' + escapeHtml(trafficLogAgo(r.at)) +
+        '</span><span class="bs-log-clock">' + escapeHtml(clock) + "</span></div>" +
+        '<span class="bs-log-badge">' + escapeHtml(r.badge || r.decoderMode || "") + "</span>" +
+        callLab + gridLab +
+        '<span class="bs-log-tune" data-dec-arch-tune="' + (r.freqHz || 0) + '" title="Tune this frequency.">' +
+        lookupHtml(r.title, r.mode, r.badge) + "</span>" +
+        '<span class="bs-log-mhz">' + escapeHtml(mhz) + (r.mode ? (" · " + escapeHtml(r.mode)) : "") + "</span>" +
+        (r.detail ? ('<p class="bs-log-detail">' + lookupHtml(r.detail, r.mode, r.badge) + "</p>") : "") +
+        "</article>";
+    }).join("");
+    toolboxDashSetHtml(feed, settingsDashScrollBox("dec-arch-feed", rows.length, listHtml));
+    feed.scrollTop = scroll;
+  }
+
+  function decoderArchiveExport(kind) {
+    var f = decoderArchiveFilter || "all";
+    var rows = decoderArchiveRows.slice().filter(function (r) {
+      if (!r) return false;
+      return f === "all" || r.decoderMode === f;
+    }).sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    if (!rows.length) {
+      setStatus("Decoder archive is empty for this filter.");
+      return;
+    }
+    var suffix = f === "all" ? "all" : f;
+    if (kind === "json") {
+      downloadFile("toolbox-decoder-archive-" + suffix + ".json", JSON.stringify(rows, null, 2), "application/json");
+    } else {
+      var lines = ["when,decoder_mode,badge,mhz,mode,call,grid,kind,title,detail"];
+      rows.forEach(function (r) {
+        lines.push([
+          new Date(r.at || 0).toISOString(),
+          JSON.stringify(String(r.decoderMode || "")),
+          JSON.stringify(String(r.badge || "")),
+          r.freqHz ? (r.freqHz / 1e6).toFixed(5) : "",
+          JSON.stringify(String(r.mode || "")),
+          JSON.stringify(String(r.call || "")),
+          JSON.stringify(String(r.grid || "")),
+          JSON.stringify(String(r.kind || "")),
+          JSON.stringify(String(r.title || "")),
+          JSON.stringify(String(r.detail || ""))
+        ].join(","));
+      });
+      downloadFile("toolbox-decoder-archive-" + suffix + ".csv", lines.join("\n"), "text/csv");
+    }
+    setStatus("Exported " + rows.length + " decoder line(s).");
+  }
+
+  function decoderArchiveClear() {
+    if (!decoderArchiveRows.length) {
+      setStatus("Decoder archive is already empty.");
+      return;
+    }
+    if (!window.confirm("Clear all " + decoderArchiveRows.length + " saved decoder lines in this browser?")) return;
+    decoderArchiveRows = [];
+    saveDecoderArchive();
+    decoderArchiveRender();
+    setStatus("Decoder archive cleared.");
+  }
+
+  function decoderArchiveImportText(text) {
+    var added = 0;
+    try {
+      var o = JSON.parse(text);
+      var list = Array.isArray(o) ? o : (o && Array.isArray(o.rows) ? o.rows : []);
+      list.forEach(function (raw) {
+        if (!raw || !raw.title) return;
+        decoderArchivePushFromLogRow({
+          id: raw.logId || raw.id || "",
+          at: raw.at || Date.now(),
+          kind: raw.kind || "digi",
+          badge: raw.badge || "",
+          mode: raw.mode || "",
+          title: raw.title,
+          detail: raw.detail || "",
+          freqHz: raw.freqHz || 0
+        });
+        added++;
+      });
+    } catch (eJ) {
+      setStatus("Archive import failed — need JSON export.");
+      return;
+    }
+    setStatus("Merged " + added + " archive row(s).");
+    decoderArchiveRender();
+  }
+
+  function decoderArchiveOnTab() {
+    var q = $("bs-dec-arch-q");
+    if (q && !q._bsArchWired) {
+      q._bsArchWired = true;
+      q.oninput = function () {
+        decoderArchiveQuery = String(q.value || "");
+        decoderArchiveRender();
+      };
+    }
+    if ($("bs-dec-arch-csv") && !$("bs-dec-arch-csv")._bsWired) {
+      $("bs-dec-arch-csv")._bsWired = true;
+      $("bs-dec-arch-csv").onclick = function () { decoderArchiveExport("csv"); };
+    }
+    if ($("bs-dec-arch-json") && !$("bs-dec-arch-json")._bsWired) {
+      $("bs-dec-arch-json")._bsWired = true;
+      $("bs-dec-arch-json").onclick = function () { decoderArchiveExport("json"); };
+    }
+    if ($("bs-dec-arch-clear") && !$("bs-dec-arch-clear")._bsWired) {
+      $("bs-dec-arch-clear")._bsWired = true;
+      $("bs-dec-arch-clear").onclick = decoderArchiveClear;
+    }
+    if ($("bs-dec-arch-import") && !$("bs-dec-arch-import")._bsWired) {
+      $("bs-dec-arch-import")._bsWired = true;
+      $("bs-dec-arch-import").onclick = function (ev) {
+        if (ev && ev.shiftKey) {
+          var text = window.prompt("Paste decoder archive JSON:");
+          if (text) decoderArchiveImportText(text);
+          return;
+        }
+        var fi = $("bs-dec-arch-file");
+        if (fi) fi.click();
+      };
+    }
+    var fi = $("bs-dec-arch-file");
+    if (fi && !fi._bsWired) {
+      fi._bsWired = true;
+      fi.onchange = function () {
+        var file = fi.files && fi.files[0];
+        fi.value = "";
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () { decoderArchiveImportText(String(reader.result || "")); };
+        reader.readAsText(file);
+      };
+    }
+    decoderArchiveRender();
+  }
+
   function trafficLogPush(row) {
     if (trafficLogPause) return;
     row = row || {};
@@ -8245,9 +8728,15 @@ Plugins.toolbox.init = function () {
     });
     trafficLogTrim();
     saveTrafficLog();
+    try { decoderArchivePushFromLogRow(trafficLogRows[trafficLogRows.length - 1]); } catch (eArch) {}
     trafficLogRender();
     try { updateTabLabels(); } catch (eLab) {}
     try { sigWatchOnLogRow(trafficLogRows[trafficLogRows.length - 1]); } catch (eWatch) {}
+    try { memoryDigitalOnLogRow(trafficLogRows[trafficLogRows.length - 1]); } catch (eMemDig) {}
+    try {
+      if (memoryTabOn() && memorySubOn("recent")) memoryRecentRender();
+      if (memoryTabOn() && memorySubOn("today")) memoryTodayRender();
+    } catch (eMemRc) {}
   }
 
   function trafficLogKindOn(kind) {
@@ -8558,13 +9047,14 @@ Plugins.toolbox.init = function () {
         if (trafficLogLineSeen[lk]) return;
         trafficLogLineSeen[lk] = Date.now();
         if (fresh) return;
+        var refined = trafficLogRefineDigiBadge(line, meta);
         trafficLogPush({
           kind: "digi",
-          badge: meta.badge,
+          badge: refined.badge,
           title: line.slice(0, 140),
           detail: "",
           freqHz: hz,
-          mode: meta.mode
+          mode: refined.mode || meta.mode
         });
       });
       trafficLogPanelPrimed[p.panel] = true;
@@ -8622,6 +9112,7 @@ Plugins.toolbox.init = function () {
   function trafficLogTune(hz) {
     hz = Math.round(Number(hz) || 0);
     if (!(hz > 0)) return;
+    try { settingsTuneHistPush(hz); } catch (eTh) {}
     var p = null;
     try { p = profileForFreq(hz); } catch (eP) { p = null; }
     function dial() {
@@ -8873,6 +9364,606 @@ Plugins.toolbox.init = function () {
     setStatus("Note added to the log.");
   }
 
+  /* —— Memory tab (Trace / Digital / Bench) — lazy timers, hidden by default —— */
+  var MEMORY_DIGITAL_MAX = 200;
+  var MEMORY_TRACE_MAX = 720;
+  var MEMORY_TRACE_INTERVAL_MS = 5000;
+  var LS_MEMORY_SUB = "owrx_toolbox_mem_sub_v1";
+  var LS_MEMORY_MARKERS = "owrx_toolbox_mem_markers_v1";
+  var MEMORY_MARKERS_MAX = 80;
+  var memoryDigitalRows = [];
+  var memoryMarkers = [];
+  var memoryTraceSamples = [];
+  var memoryTraceTimer = null;
+  var memoryBenchTimer = null;
+
+  function memoryTabOn() {
+    var p = $("bs-tab-memory");
+    return !!(p && p.classList.contains("bs-tab-on"));
+  }
+
+  function memorySubOn(sub) {
+    var root = $("bs-tab-memory");
+    if (!root) return false;
+    var pane = root.querySelector('.bs-mem-subpane.bs-mem-sub-on[data-mem-sub="' + sub + '"]');
+    return !!(pane && !pane.hasAttribute("hidden"));
+  }
+
+  function memoryTraceSamplingOn() {
+    return extraOn("memoryTrace") && memoryTabOn() && memorySubOn("trace");
+  }
+
+  function memoryDigitalCaptureOn() {
+    return memoryTabOn() && memorySubOn("digital");
+  }
+
+  function memoryBenchOn() {
+    return memoryTabOn() && memorySubOn("bench");
+  }
+
+  function memoryStopTimers() {
+    if (memoryTraceTimer) {
+      clearInterval(memoryTraceTimer);
+      memoryTraceTimer = null;
+    }
+    if (memoryBenchTimer) {
+      clearInterval(memoryBenchTimer);
+      memoryBenchTimer = null;
+    }
+  }
+
+  function memorySyncTimers() {
+    memoryStopTimers();
+    if (!memoryTabOn()) return;
+    if (memoryTraceSamplingOn()) {
+      memoryTraceTick();
+      memoryTraceTimer = setInterval(memoryTraceTick, MEMORY_TRACE_INTERVAL_MS);
+    }
+    if (memoryBenchOn()) {
+      memoryBenchTick();
+      memoryBenchTimer = setInterval(memoryBenchTick, 30000);
+    }
+  }
+
+  function memoryOffTab() {
+    memoryStopTimers();
+  }
+
+  function memoryOnTab() {
+    memorySyncTimers();
+    try { memoryDigitalRender(); } catch (eD) {}
+    try { memoryTraceRender(); } catch (eT) {}
+    try { memoryBenchRenderPending(); } catch (eB) {}
+    if (memorySubOn("today")) try { memoryTodayRender(); } catch (eTd) {}
+    if (memorySubOn("recent")) try { memoryRecentRender(); } catch (eRc) {}
+    if (memorySubOn("markers")) try { memoryMarkersRender(); } catch (eMk) {}
+  }
+
+  function memoryLoadMarkers() {
+    try {
+      var raw = window.localStorage.getItem(LS_MEMORY_MARKERS);
+      memoryMarkers = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(memoryMarkers)) memoryMarkers = [];
+    } catch (e) {
+      memoryMarkers = [];
+    }
+  }
+
+  function memorySaveMarkers() {
+    try {
+      window.localStorage.setItem(LS_MEMORY_MARKERS, JSON.stringify(memoryMarkers.slice(-MEMORY_MARKERS_MAX)));
+    } catch (e) {}
+  }
+
+  function memoryTodayRender() {
+    var el = $("bs-mem-today-body");
+    if (!el) return;
+    var day0 = new Date();
+    day0.setHours(0, 0, 0, 0);
+    var t0 = day0.getTime();
+    var counts = { all: 0, digi: 0, meta: 0, id: 0, peak: 0, scan: 0, note: 0 };
+    var byMhz = {};
+    trafficLogRows.forEach(function (r) {
+      if (!r || (r.at || 0) < t0) return;
+      counts.all++;
+      var k = String(r.kind || "note");
+      if (counts[k] != null) counts[k]++;
+      else counts.note++;
+      if (r.freqHz > 0) {
+        var m = (r.freqHz / 1e6).toFixed(3);
+        byMhz[m] = (byMhz[m] || 0) + 1;
+      }
+    });
+    var top = Object.keys(byMhz).sort(function (a, b) { return byMhz[b] - byMhz[a]; }).slice(0, 8);
+    var topHtml = top.length
+      ? top.map(function (m) {
+        return '<button type="button" class="bs-tiny bs-btn-util bs-mem-tune-mhz" data-mem-mhz="' +
+          escapeHtml(m) + '">' + escapeHtml(m) + " MHz · " + byMhz[m] + "</button>";
+      }).join(" ")
+      : '<span class="bs-hint">No tuned lines yet today.</span>';
+    el.innerHTML =
+      '<dl class="bs-mem-bench-dl">' +
+      "<dt>Log lines today</dt><dd>" + counts.all + "</dd>" +
+      "<dt>Decoded</dt><dd>" + (counts.digi + counts.meta) + "</dd>" +
+      "<dt>ID guesses</dt><dd>" + counts.id + "</dd>" +
+      "<dt>Peaks</dt><dd>" + counts.peak + "</dd>" +
+      "<dt>Scan stops</dt><dd>" + counts.scan + "</dd>" +
+      "<dt>Digital buffer</dt><dd>" + memoryDigitalRows.length + " (while Digital open)</dd>" +
+      "<dt>Trace samples</dt><dd>" + memoryTraceSamples.length + " (session)</dd>" +
+      "</dl>" +
+      '<p class="bs-hint">Busiest MHz today (from Log):</p>' +
+      '<div class="bs-row bs-mem-today-top">' + topHtml + "</div>";
+  }
+
+  function memoryRecentRender() {
+    var el = $("bs-mem-recent-list");
+    if (!el) return;
+    var rows = trafficLogRows.slice(-100).reverse();
+    if (!rows.length) {
+      el.innerHTML = '<p class="bs-empty">Log is empty — decoder and scan lines show here.</p>';
+      return;
+    }
+    var html = "";
+    rows.forEach(function (r) {
+      var whenDt = new Date(r.at || 0);
+      var when = isNaN(whenDt.getTime()) ? "" : whenDt.toLocaleTimeString();
+      var mhz = r.freqHz > 0 ? fmtMhz(r.freqHz) : "";
+      html += '<button type="button" class="bs-mem-recent-row" data-mem-hz="' + (r.freqHz || 0) + '">' +
+        '<span class="bs-mem-digital-when">' + escapeHtml(when) + "</span>" +
+        '<span class="bs-mem-digital-badge">' + escapeHtml(r.badge || r.kind || "") + "</span>" +
+        '<span class="bs-mem-digital-mhz">' + escapeHtml(mhz) + "</span>" +
+        '<span class="bs-mem-digital-title">' + escapeHtml(r.title || "") + "</span>" +
+        "</button>";
+    });
+    toolboxDashSetHtml(el, settingsDashScrollBox("mem-recent", rows.length, html));
+  }
+
+  function memoryMarkersRender() {
+    var el = $("bs-mem-markers-list");
+    if (!el) return;
+    memoryLoadMarkers();
+    if (!memoryMarkers.length) {
+      el.innerHTML = '<p class="bs-empty">No markers yet. Mark the current frequency with an optional note.</p>';
+      return;
+    }
+    var html = "";
+    var i;
+    for (i = memoryMarkers.length - 1; i >= 0; i--) {
+      var m = memoryMarkers[i];
+      var whenDt = new Date(m.at || 0);
+      var when = isNaN(whenDt.getTime()) ? "" : whenDt.toLocaleTimeString();
+      html += '<button type="button" class="bs-mem-marker-row" data-mem-hz="' + (m.freqHz || 0) + '">' +
+        '<span class="bs-mem-digital-when">' + escapeHtml(when) + "</span>" +
+        '<span class="bs-mem-digital-mhz">' + escapeHtml(m.freqHz > 0 ? fmtMhz(m.freqHz) : "") + "</span>" +
+        '<span class="bs-mem-digital-title">' + escapeHtml(m.note || m.mode || "Marker") + "</span>" +
+        "</button>";
+    }
+    toolboxDashSetHtml(el, settingsDashScrollBox("mem-markers", memoryMarkers.length, html));
+  }
+
+  function memoryMarkerAdd() {
+    var noteEl = $("bs-mem-marker-note");
+    var note = noteEl ? String(noteEl.value || "").trim().slice(0, 120) : "";
+    var hz = 0;
+    try { hz = Math.round(Number(currentTuneHz()) || 0); } catch (e) {}
+    if (!(hz > 0)) {
+      setStatus("No tune frequency to mark.");
+      return;
+    }
+    var mode = "";
+    try { mode = String(idCurrentMode() || ""); } catch (eM) {}
+    memoryLoadMarkers();
+    memoryMarkers.push({ at: Date.now(), freqHz: hz, mode: mode, note: note });
+    if (memoryMarkers.length > MEMORY_MARKERS_MAX) {
+      memoryMarkers = memoryMarkers.slice(-MEMORY_MARKERS_MAX);
+    }
+    memorySaveMarkers();
+    if (noteEl) noteEl.value = "";
+    memoryMarkersRender();
+    setStatus("Marked " + fmtMhz(hz) + (note ? (" — " + note) : "") + ".");
+  }
+
+  function memoryDigitalExportJson() {
+    if (!memoryDigitalRows.length) {
+      setStatus("Digital list is empty.");
+      return;
+    }
+    downloadFile("toolbox-digital-ids.json", JSON.stringify(memoryDigitalRows, null, 2), "application/json");
+  }
+
+  function memoryMarkersExportJson() {
+    memoryLoadMarkers();
+    downloadFile("toolbox-markers.json", JSON.stringify(memoryMarkers, null, 2), "application/json");
+  }
+
+  function memoryDigitalLooksRelevant(r) {
+    if (!r) return false;
+    var kind = String(r.kind || "");
+    var title = String(r.title || "").replace(/\s+/g, " ").trim();
+    var blob = (title + " " + String(r.detail || "") + " " + String(r.badge || "")).toLowerCase();
+    if (/clear$|fromtodata|capcodemode|addressmessage|faxclear|tvclear/i.test(title.replace(/\s/g, ""))) {
+      return false;
+    }
+    if (kind === "digi") return /\d{2,}|tg|talkgroup|dmr|nxdn|dstar|d-star|ysf|radioid/i.test(blob);
+    if (kind !== "meta" && kind !== "id") return false;
+    return /\btg\b|talkgroup|radio\s*id|radioid|\bdmr\b|nxdn|d-star|dstar|ysf|\d{4,}/.test(blob);
+  }
+
+  function memoryDigitalOnLogRow(r) {
+    if (!r || !memoryDigitalCaptureOn()) return;
+    memoryDigitalPushRow(r, false);
+  }
+
+  function memoryDigitalPushRow(r, skipRender) {
+    if (!memoryDigitalLooksRelevant(r)) return;
+    var title = String(r.title || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (title.length < 2) return;
+    var row = {
+      at: r.at || Date.now(),
+      badge: String(r.badge || r.kind || "meta").slice(0, 18),
+      title: title,
+      detail: String(r.detail || "").replace(/\s+/g, " ").trim().slice(0, 200),
+      freqHz: Math.round(Number(r.freqHz) || 0),
+      mode: String(r.mode || "").slice(0, 18)
+    };
+    var key = row.title.toLowerCase() + "|" + row.freqHz;
+    var last = memoryDigitalRows.length ? memoryDigitalRows[memoryDigitalRows.length - 1] : null;
+    if (last && last._key === key && row.at - last.at < 20000) return;
+    row._key = key;
+    memoryDigitalRows.push(row);
+    if (memoryDigitalRows.length > MEMORY_DIGITAL_MAX) {
+      memoryDigitalRows = memoryDigitalRows.slice(-MEMORY_DIGITAL_MAX);
+    }
+    if (!skipRender && memoryDigitalCaptureOn()) memoryDigitalRender();
+  }
+
+  function memoryDigitalBackfill() {
+    if (memoryDigitalRows.length > 4) return;
+    var i;
+    for (i = Math.max(0, trafficLogRows.length - 100); i < trafficLogRows.length; i++) {
+      memoryDigitalPushRow(trafficLogRows[i], true);
+    }
+    memoryDigitalRender();
+  }
+
+  function memoryDigitalRender() {
+    var el = $("bs-mem-digital-list");
+    if (!el) return;
+    if (!memoryDigitalRows.length) {
+      el.innerHTML = '<p class="bs-empty">No digital IDs yet. Open this sub-tab while DMR / meta decoder lines arrive in Log.</p>';
+      return;
+    }
+    var html = "";
+    var i;
+    for (i = memoryDigitalRows.length - 1; i >= 0; i--) {
+      var r = memoryDigitalRows[i];
+      var whenDt = new Date(r.at || 0);
+      var when = isNaN(whenDt.getTime()) ? "" : (extraOn("utcTimestamps")
+        ? whenDt.toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + "Z"
+        : whenDt.toLocaleTimeString());
+      var mhz = r.freqHz > 0 ? fmtMhz(r.freqHz) : "";
+      html += '<button type="button" class="bs-mem-digital-row" data-mem-hz="' + r.freqHz + '" title="Click to tune">' +
+        '<span class="bs-mem-digital-when">' + escapeHtml(when) + "</span>" +
+        '<span class="bs-mem-digital-badge">' + escapeHtml(r.badge) + "</span>" +
+        '<span class="bs-mem-digital-mhz">' + escapeHtml(mhz) + "</span>" +
+        '<span class="bs-mem-digital-title">' + escapeHtml(r.title) + "</span>" +
+        (r.detail ? ('<span class="bs-mem-digital-detail">' + escapeHtml(r.detail) + "</span>") : "") +
+        "</button>";
+    }
+    toolboxDashSetHtml(el, settingsDashScrollBox("mem-digital", memoryDigitalRows.length, html));
+  }
+
+  function memoryTraceReadDb() {
+    var db = null;
+    try { db = smeterDb(); } catch (eDb) { db = null; }
+    if (db == null || !isFinite(db)) {
+      try { db = smeterDbRaw(); } catch (eRaw) { db = null; }
+    }
+    return (db != null && isFinite(db)) ? db : null;
+  }
+
+  function memoryTracePushSample() {
+    var hz = 0;
+    try { hz = Math.round(Number(currentTuneHz()) || 0); } catch (eHz) {}
+    var db = memoryTraceReadDb();
+    if (db == null) return false;
+    memoryTraceSamples.push({ t: Date.now(), db: db, hz: hz });
+    if (memoryTraceSamples.length > MEMORY_TRACE_MAX) memoryTraceSamples.shift();
+    return true;
+  }
+
+  function memoryTraceTick() {
+    if (!memoryTraceSamplingOn()) return;
+    if (memoryTracePushSample()) memoryTraceRender();
+    else memoryTraceRender();
+  }
+
+  function memoryTraceSampleNow() {
+    if (!memoryTabOn() || !memorySubOn("trace")) return;
+    if (!extraOn("memoryTrace")) {
+      setStatus("Turn on Settings → Extras → Memory · Trace sampling first.");
+      memoryTraceRender();
+      return;
+    }
+    if (memoryTracePushSample()) {
+      setStatus("Trace sample added.");
+    } else {
+      setStatus("No S-meter reading yet — tune a signal and ensure the receiver is running.");
+    }
+    memoryTraceRender();
+  }
+
+  function memoryTraceDrawGrid(ctx, w, h) {
+    ctx.strokeStyle = "rgba(51, 65, 85, 0.55)";
+    ctx.lineWidth = 1;
+    var i;
+    for (i = 1; i < 4; i++) {
+      var y = (h * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    for (i = 1; i < 6; i++) {
+      var x = (w * i) / 6;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+  }
+
+  function memoryTraceStatusLine() {
+    if (!memoryTabOn() || !memorySubOn("trace")) return "";
+    if (!extraOn("memoryTrace")) {
+      return "Sampling paused — turn on Settings → Extras → Memory · Trace sampling.";
+    }
+    if (!memoryTraceSamples.length) {
+      if (memoryTraceReadDb() == null) {
+        return "Waiting for S-meter… tune a signal and let audio run, then use Sample now or wait 5s.";
+      }
+      return "Sampling every 5s while this sub-tab is open…";
+    }
+    return "";
+  }
+
+  function memoryTraceRender() {
+    var canvas = $("bs-mem-trace-canvas");
+    var meta = $("bs-mem-trace-meta");
+    var hint = $("bs-mem-trace-hint");
+    if (!canvas || !meta) return;
+    var w = canvas.clientWidth || 320;
+    var h = canvas.clientHeight || 120;
+    if (w < 40) w = 320;
+    if (h < 40) h = 120;
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#0a0e18";
+    ctx.fillRect(0, 0, w, h);
+    memoryTraceDrawGrid(ctx, w, h);
+    if (hint) {
+      hint.hidden = !!extraOn("memoryTrace");
+      if (!extraOn("memoryTrace")) {
+        hint.innerHTML = "Turn on <b>Settings → Extras → Memory · Trace sampling</b> to record levels every 5s while Trace is open.";
+      }
+    }
+    if (!memoryTraceSamples.length) {
+      meta.textContent = memoryTraceStatusLine() || "No samples yet.";
+      return;
+    }
+    var minDb = memoryTraceSamples[0].db;
+    var maxDb = memoryTraceSamples[0].db;
+    var i;
+    for (i = 1; i < memoryTraceSamples.length; i++) {
+      minDb = Math.min(minDb, memoryTraceSamples[i].db);
+      maxDb = Math.max(maxDb, memoryTraceSamples[i].db);
+    }
+    minDb = Math.floor(minDb - 3);
+    maxDb = Math.ceil(maxDb + 3);
+    if (maxDb - minDb < 6) maxDb = minDb + 6;
+    ctx.strokeStyle = "rgba(110,231,183,0.85)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (i = 0; i < memoryTraceSamples.length; i++) {
+      var x = (i / Math.max(1, memoryTraceSamples.length - 1)) * (w - 4) + 2;
+      var y = h - 2 - ((memoryTraceSamples[i].db - minDb) / (maxDb - minDb)) * (h - 4);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    var last = memoryTraceSamples[memoryTraceSamples.length - 1];
+    var hz = last.hz > 0 ? fmtMhz(last.hz) : "—";
+    meta.textContent = memoryTraceSamples.length + " samples · " + smeterDbLabel(last.db) +
+      " · " + hz + " · " + Math.round((last.t - memoryTraceSamples[0].t) / 60000) + " min window";
+    if (hint) hint.hidden = true;
+  }
+
+  function memoryTraceClear() {
+    memoryTraceSamples = [];
+    memoryTraceRender();
+    setStatus("Memory trace cleared (this session).");
+  }
+
+  function memoryTraceExportCsv() {
+    if (!memoryTraceSamples.length) {
+      setStatus("Trace is empty.");
+      return;
+    }
+    var lines = ["iso_utc,db,hz"];
+    memoryTraceSamples.forEach(function (s) {
+      lines.push(new Date(s.t).toISOString() + "," + s.db + "," + (s.hz || 0));
+    });
+    downloadFile("toolbox-trace.csv", lines.join("\n"), "text/csv");
+  }
+
+  var memoryBenchLastHtml = "";
+  var memoryBenchBusy = false;
+
+  function memoryBenchRenderPending() {
+    var el = $("bs-mem-bench-body");
+    if (!el) return;
+    if (memoryBenchLastHtml) el.innerHTML = memoryBenchLastHtml;
+    else if (!memoryBenchBusy) {
+      el.innerHTML = '<p class="bs-hint">Open Bench to fetch receiver status (same origin).</p>';
+    }
+  }
+
+  function memoryBenchTick() {
+    if (!memoryBenchOn() || memoryBenchBusy) return;
+    memoryBenchBusy = true;
+    fetch("/status.json", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        memoryBenchBusy = false;
+        if (!memoryBenchOn()) return;
+        var el = $("bs-mem-bench-body");
+        if (!el) return;
+        if (!j) {
+          memoryBenchLastHtml = '<p class="bs-empty">Could not read /status.json from this receiver.</p>';
+          el.innerHTML = memoryBenchLastHtml;
+          return;
+        }
+        var users = j.clients != null ? j.clients : (j.users != null ? j.users : "—");
+        var prof = j.profile || j.profile_id || j.sdr || "—";
+        var rx = j.receiver || j.name || "";
+        memoryBenchLastHtml =
+          '<dl class="bs-mem-bench-dl">' +
+          "<dt>Listeners</dt><dd>" + escapeHtml(String(users)) + "</dd>" +
+          "<dt>Profile</dt><dd>" + escapeHtml(String(prof)) + "</dd>" +
+          (rx ? ("<dt>Receiver</dt><dd>" + escapeHtml(String(rx)) + "</dd>") : "") +
+          "</dl>" +
+          '<p class="bs-hint">Shared WebSDR etiquette: check listeners before long retunes. Full profile-usage API is still an OpenWebRX wish — this is a light snapshot.</p>';
+        el.innerHTML = memoryBenchLastHtml;
+      })
+      .catch(function () {
+        memoryBenchBusy = false;
+        if (!memoryBenchOn()) return;
+        var el = $("bs-mem-bench-body");
+        if (!el) return;
+        memoryBenchLastHtml = '<p class="bs-empty">Status fetch failed (offline or blocked).</p>';
+        el.innerHTML = memoryBenchLastHtml;
+      });
+  }
+
+  function setMemorySubTab(name, opts) {
+    opts = opts || {};
+    var allowed = { trace: 1, digital: 1, bench: 1, today: 1, recent: 1, markers: 1, export: 1 };
+    if (!allowed[name]) name = "trace";
+    var root = $("bs-tab-memory");
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll(".bs-mem-sub"), function (btn) {
+      var id = btn.getAttribute("data-mem-sub");
+      var on = id === name;
+      btn.classList.toggle("bs-mem-sub-on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".bs-mem-subpane"), function (pane) {
+      var id = pane.getAttribute("data-mem-sub");
+      var on = id === name;
+      pane.classList.toggle("bs-mem-sub-on", on);
+      if (on) pane.removeAttribute("hidden");
+      else pane.setAttribute("hidden", "");
+    });
+    if (name === "digital") memoryDigitalBackfill();
+    if (name === "trace") {
+      memoryTraceRender();
+      try {
+        requestAnimationFrame(function () {
+          if (extraOn("memoryTrace")) memoryTracePushSample();
+          memoryTraceRender();
+        });
+      } catch (eTrRaf) {}
+    }
+    if (name === "bench") memoryBenchTick();
+    if (name === "today") memoryTodayRender();
+    if (name === "recent") memoryRecentRender();
+    if (name === "markers") memoryMarkersRender();
+    memorySyncTimers();
+    if (!opts.skipSave) {
+      try {
+        if (extraOn("rememberSubs")) window.localStorage.setItem(LS_MEMORY_SUB, name);
+      } catch (eLs) {}
+    }
+    try { injectBoxHelpButtons(root); } catch (eH) {}
+  }
+
+  function restoreMemorySubTab() {
+    var name = "trace";
+    try {
+      var raw = extraOn("rememberSubs") ? window.localStorage.getItem(LS_MEMORY_SUB) : null;
+      if (raw && { trace: 1, digital: 1, bench: 1, today: 1, recent: 1, markers: 1, export: 1 }[raw]) name = raw;
+    } catch (e) {}
+    setMemorySubTab(name, { skipSave: true });
+  }
+
+  function bindMemoryTab() {
+    var root = $("bs-tab-memory");
+    if (!root || root._bsMemWired) return;
+    root._bsMemWired = true;
+    root.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var sub = t.closest(".bs-mem-sub");
+      if (sub && sub.getAttribute("data-mem-sub")) {
+        setMemorySubTab(sub.getAttribute("data-mem-sub"));
+        return;
+      }
+      var tuneRow = t.closest(".bs-mem-digital-row, .bs-mem-recent-row, .bs-mem-marker-row");
+      if (tuneRow) {
+        var hz = Math.round(Number(tuneRow.getAttribute("data-mem-hz")) || 0);
+        if (hz > 0) trafficLogTune(hz);
+        return;
+      }
+      var mhzBtn = t.closest(".bs-mem-tune-mhz");
+      if (mhzBtn) {
+        var mhz = Number(mhzBtn.getAttribute("data-mem-mhz"));
+        if (mhz > 0) trafficLogTune(Math.round(mhz * 1e6));
+      }
+    });
+    if ($("bs-mem-trace-clear")) {
+      $("bs-mem-trace-clear").onclick = function () { memoryTraceClear(); };
+    }
+    if ($("bs-mem-trace-now")) {
+      $("bs-mem-trace-now").onclick = function () { memoryTraceSampleNow(); };
+    }
+    if ($("bs-mem-trace-csv")) {
+      $("bs-mem-trace-csv").onclick = function () { memoryTraceExportCsv(); };
+    }
+    if ($("bs-mem-digital-clear")) {
+      $("bs-mem-digital-clear").onclick = function () {
+        memoryDigitalRows = [];
+        memoryDigitalRender();
+        setStatus("Digital ID list cleared.");
+      };
+    }
+    if ($("bs-mem-bench-refresh")) {
+      $("bs-mem-bench-refresh").onclick = function () { memoryBenchTick(); };
+    }
+    if ($("bs-mem-marker-add")) {
+      $("bs-mem-marker-add").onclick = function () { memoryMarkerAdd(); };
+    }
+    if ($("bs-mem-markers-clear")) {
+      $("bs-mem-markers-clear").onclick = function () {
+        memoryMarkers = [];
+        memorySaveMarkers();
+        memoryMarkersRender();
+        setStatus("Markers cleared.");
+      };
+    }
+    if ($("bs-mem-export-digital")) {
+      $("bs-mem-export-digital").onclick = function () { memoryDigitalExportJson(); };
+    }
+    if ($("bs-mem-export-markers")) {
+      $("bs-mem-export-markers").onclick = function () { memoryMarkersExportJson(); };
+    }
+    if ($("bs-mem-export-trace")) {
+      $("bs-mem-export-trace").onclick = function () { memoryTraceExportCsv(); };
+    }
+    restoreMemorySubTab();
+  }
+
   function bindTrafficLog() {
     var root = $("bs-tab-log");
     if (!root || root._bsLogWired) return;
@@ -8914,6 +10005,17 @@ Plugins.toolbox.init = function () {
       var copy = t.closest("[data-tlog-copy]");
       if (copy) {
         trafficLogCopyRow(copy.getAttribute("data-tlog-copy"));
+        return;
+      }
+      var archChip = t.closest("[data-dec-arch-mode]");
+      if (archChip) {
+        decoderArchiveFilter = archChip.getAttribute("data-dec-arch-mode") || "all";
+        decoderArchiveRender();
+        return;
+      }
+      var archTune = t.closest("[data-dec-arch-tune]");
+      if (archTune) {
+        trafficLogTune(archTune.getAttribute("data-dec-arch-tune"));
         return;
       }
       var chip = t.closest("[data-tlog-kind]");
@@ -9260,7 +10362,7 @@ Plugins.toolbox.init = function () {
 
   function setLogSubTab(name, opts) {
     opts = opts || {};
-    var allowed = { feed: 1, qso: 1, calls: 1, notes: 1, export: 1, dupes: 1 };
+    var allowed = { feed: 1, qso: 1, calls: 1, archive: 1, notes: 1, export: 1, dupes: 1 };
     if (!allowed[name] || isExtraSubHidden("log", name)) name = firstVisibleExtraSub("log", "feed");
     var root = $("bs-tab-log");
     if (!root) return;
@@ -9287,6 +10389,7 @@ Plugins.toolbox.init = function () {
     if (name === "calls") {
       try { logCallsRender(); } catch (eC) {}
     }
+    if (name === "archive") { try { decoderArchiveOnTab(); } catch (eAr) {} }
     if (name === "notes") { try { logNotesOnTab(); } catch (eN) {} }
     if (name === "export") { try { logExportOnTab(); } catch (eE) {} }
     if (name === "dupes") { try { logDupesOnTab(); } catch (eD) {} }
@@ -9296,21 +10399,38 @@ Plugins.toolbox.init = function () {
     try { injectBoxHelpButtons(root); } catch (eH) {}
   }
 
-  var SETTINGS_ST_SUB_OK = { general: 1, public: 1 };
+  var SETTINGS_ST_SUB_OK = { general: 1, system: 1, public: 1 };
+
+  function settingsSubTabUserVisible(id) {
+    if (id === "general") return true;
+    if (id === "system") return S.settingsSubSystem !== false;
+    if (id === "public") return S.settingsSubPublic !== false;
+    return false;
+  }
+
+  function settingsSubTabHidden(id) {
+    if (id === "general") return false;
+    if (!settingsSubTabUserVisible(id)) return true;
+    if (id === "public" && owrxAdmin === false) return true;
+    return false;
+  }
 
   function setSettingsSubTab(name, opts) {
     opts = opts || {};
     var root = $("bs-settings");
     if (!root) return;
+    var curBtn0 = root.querySelector(".bs-st-sub.bs-st-sub-on[data-st-sub]");
+    var prevName = (curBtn0 && curBtn0.getAttribute("data-st-sub")) || "general";
     if (!name) {
-      var curBtn = root.querySelector(".bs-st-sub.bs-st-sub-on[data-st-sub]");
-      name = (curBtn && curBtn.getAttribute("data-st-sub")) || "general";
+      name = prevName || "general";
     }
     if (!SETTINGS_ST_SUB_OK[name]) name = "general";
-    if (name === "public" && owrxAdmin === false) name = "general";
+    if (name === "system" && !settingsSubTabUserVisible("system")) name = "general";
+    if (name === "public" && settingsSubTabHidden("public")) name = "general";
+    var subChanged = prevName !== name;
     Array.prototype.forEach.call(root.querySelectorAll(".bs-st-sub"), function (btn) {
       var id = btn.getAttribute("data-st-sub");
-      var hide = (id === "public" && owrxAdmin === false);
+      var hide = settingsSubTabHidden(id);
       btn.hidden = hide;
       if (hide) btn.setAttribute("hidden", "");
       else btn.removeAttribute("hidden");
@@ -9320,11 +10440,16 @@ Plugins.toolbox.init = function () {
     });
     Array.prototype.forEach.call(root.querySelectorAll(".bs-st-subpane"), function (pane) {
       var id = pane.getAttribute("data-st-sub");
-      var on = id === name && !(id === "public" && owrxAdmin === false);
+      var on = id === name && !settingsSubTabHidden(id);
       pane.classList.toggle("bs-st-sub-on", on);
       if (on) pane.removeAttribute("hidden");
       else pane.setAttribute("hidden", "");
     });
+    if (name === "system") {
+      try { settingsHostStatsOnTab(); } catch (eSysOn) {}
+    } else {
+      try { settingsHostStatsOffTab(); } catch (eSysOff) {}
+    }
     if (name === "public" || name === "general") {
       try { packSettingsMasonry(true); } catch (ePack) {}
     }
@@ -9338,8 +10463,23 @@ Plugins.toolbox.init = function () {
         if (extraOn("rememberSubs")) window.localStorage.setItem("owrx_toolbox_st_sub_v1", name);
       } catch (eLs) {}
     }
+    if (subChanged && !opts.skipScroll) {
+      try {
+        var scrollEl = settingsScrollEl();
+        if (scrollEl) scrollEl.scrollTop = 0;
+        var tabPane = $("bs-tab-settings");
+        if (tabPane && tabPane !== scrollEl) tabPane.scrollTop = 0;
+        settingsScrollPinY = 0;
+        settingsScrollPinAt = Date.now();
+      } catch (eScrSt) {}
+    }
     try { injectBoxHelpButtons($("bs-tab-settings")); } catch (eH) {}
     try { syncSettingsSubHoverTips(); } catch (eStTip2) {}
+    try {
+      requestAnimationFrame(function () {
+        refreshTabScrollBackToTopHosts($("bs-tab-settings"));
+      });
+    } catch (eBttSt) {}
   }
 
   function restoreSettingsSubTab() {
@@ -9349,6 +10489,8 @@ Plugins.toolbox.init = function () {
       if (raw === "more" || raw === "pisdr") raw = "general";
       if (raw && SETTINGS_ST_SUB_OK[raw]) name = raw;
     } catch (e) {}
+    if (name === "system" && !settingsSubTabUserVisible("system")) name = "general";
+    if (name === "public" && settingsSubTabHidden("public")) name = "general";
     setSettingsSubTab(name, { skipSave: true });
   }
 
@@ -9368,11 +10510,2348 @@ Plugins.toolbox.init = function () {
     try { syncSettingsSubHoverTips(); } catch (eStTip) {}
   }
 
+  var settingsHostStatsTimer = null;
+  var settingsHostStatsFetchBusy = false;
+  var settingsHostStatsRemote = null;
+  var settingsHostStatsRemoteAt = 0;
+  var settingsHostStatsStatus = null;
+  var settingsHostNetHist = [];
+  var settingsHostAudioHist = [];
+  var settingsOwrxClients = { at: 0, rows: [], busy: false };
+  var settingsTuneHist = [];
+  var settingsLastSampleTuneHz = 0;
+  var settingsNerdLastJson = "";
+  var settingsHostStatsLastD = null;
+  var settingsSystemLastExportJson = "";
+  var SETTINGS_DASH_SCROLL_LINES = 20;
+
+  function settingsDashLineCount(text) {
+    return String(text || "").split(/\r\n|\r|\n/).length;
+  }
+
+  function settingsDashScrollCount(val) {
+    if (typeof val === "number" && isFinite(val)) return Math.max(0, Math.floor(val));
+    return settingsDashLineCount(val);
+  }
+
+  function settingsDashScrollBox(scrollKey, count, innerHtml) {
+    var n = settingsDashScrollCount(count);
+    if (n <= SETTINGS_DASH_SCROLL_LINES) return innerHtml;
+    var key = scrollKey ? String(scrollKey) : "scroll";
+    return '<div class="bs-dash-scroll-20" data-scroll-key="' + escapeHtml(key) + '">' + innerHtml + "</div>";
+  }
+
+  function toolboxDashScrollQuery(root, key) {
+    if (!root || !key) return null;
+    try {
+      if (typeof CSS !== "undefined" && CSS.escape) {
+        return root.querySelector('[data-scroll-key="' + CSS.escape(key) + '"]');
+      }
+    } catch (eC) {}
+    try {
+      return root.querySelector('[data-scroll-key="' + String(key).replace(/"/g, "") + '"]');
+    } catch (eQ) { return null; }
+  }
+
+  function toolboxDashScrollCaptureRoot(root) {
+    var boxes = [];
+    if (!root) return boxes;
+    try {
+      root.querySelectorAll(".bs-dash-scroll-20[data-scroll-key]").forEach(function (el) {
+        var k = el.getAttribute("data-scroll-key");
+        if (k) boxes.push({ key: k, top: el.scrollTop });
+      });
+    } catch (e) {}
+    return boxes;
+  }
+
+  function toolboxDashScrollRestoreRoot(root, boxes) {
+    if (!root || !boxes || !boxes.length) return;
+    function apply() {
+      boxes.forEach(function (b) {
+        if (!b || !b.key) return;
+        var el = toolboxDashScrollQuery(root, b.key);
+        if (el) el.scrollTop = b.top;
+      });
+    }
+    try {
+      requestAnimationFrame(function () {
+        apply();
+        requestAnimationFrame(apply);
+      });
+    } catch (eR) {
+      apply();
+    }
+  }
+
+  function toolboxDashSetHtml(el, html) {
+    if (!el) return;
+    var boxes = toolboxDashScrollCaptureRoot(el);
+    el.innerHTML = html;
+    toolboxDashScrollRestoreRoot(el, boxes);
+  }
+
+  function settingsSystemScrollCapture() {
+    var out = { ancestors: [], boxes: [] };
+    try {
+      var panel = $("bs-panel");
+      if (panel && panel.scrollTop > 0) out.ancestors.push({ el: panel, top: panel.scrollTop });
+    } catch (eP) {}
+    try {
+      var pane = $("bs-settings-system-pane");
+      if (!pane) return out;
+      var p = pane.parentElement;
+      while (p) {
+        if (p.scrollTop > 0 && p.scrollHeight > p.clientHeight + 2) {
+          out.ancestors.push({ el: p, top: p.scrollTop });
+        }
+        if (p.id === "bs-panel") break;
+        p = p.parentElement;
+      }
+      out.boxes = toolboxDashScrollCaptureRoot(pane);
+    } catch (eW) {}
+    return out;
+  }
+
+  function settingsSystemScrollRestore(saved) {
+    if (!saved) return;
+    var ancestors = saved.ancestors || (Array.isArray(saved) ? saved : []);
+    var boxes = saved.boxes || [];
+    function apply() {
+      ancestors.forEach(function (s) {
+        try {
+          if (s.el) s.el.scrollTop = s.top;
+        } catch (e) {}
+      });
+      var pane = $("bs-settings-system-pane");
+      if (pane && boxes.length) toolboxDashScrollRestoreRoot(pane, boxes);
+    }
+    try {
+      requestAnimationFrame(function () {
+        apply();
+        requestAnimationFrame(apply);
+      });
+    } catch (eR) {
+      apply();
+    }
+  }
+
+  function settingsSystemSubOn() {
+    var root = $("bs-settings");
+    if (!root) return false;
+    var pane = root.querySelector('.bs-st-subpane.bs-st-sub-on[data-st-sub="system"]');
+    return !!(pane && !pane.hasAttribute("hidden"));
+  }
+
+  function settingsHostStatsSyncTab() {
+    if (settingsSystemSubOn()) settingsHostStatsOnTab();
+    else settingsHostStatsOffTab();
+  }
+
+  function settingsHostStatsOffTab() {
+    if (settingsHostStatsTimer) {
+      clearInterval(settingsHostStatsTimer);
+      settingsHostStatsTimer = null;
+    }
+  }
+
+  function settingsHostStatsOnTab() {
+    try { settingsHostStatsRender(); } catch (eR0) {}
+    if (!settingsHostStatsTimer) {
+      settingsHostStatsTimer = setInterval(function () {
+        try { settingsHostStatsRender(); } catch (eR1) {}
+      }, 2000);
+    }
+    settingsHostStatsMaybeFetchRemote();
+    try { settingsFetchOwrxClientsMaybe(); } catch (eCl) {}
+  }
+
+  function settingsHostStatsMaybeFetchRemote() {
+    if (settingsHostStatsFetchBusy) return;
+    if (settingsHostStatsRemoteAt && Date.now() - settingsHostStatsRemoteAt < 20000) return;
+    settingsHostStatsFetchBusy = true;
+    var urls = [
+      toolboxAssetUrl("hoststats.json"),
+      "/static/plugins/receiver/toolbox/hoststats.json",
+      "static/plugins/receiver/toolbox/hoststats.json",
+      "plugins/receiver/toolbox/hoststats.json"
+    ];
+    var i = 0;
+    function next() {
+      if (i >= urls.length) {
+        settingsHostStatsFetchBusy = false;
+        settingsHostStatsRemoteAt = Date.now();
+        try { settingsHostStatsRender(); } catch (eRd) {}
+        return;
+      }
+      var url = urls[i++];
+      fetch(url, { credentials: "same-origin", cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("http"); return r.json(); })
+        .then(function (j) {
+          settingsHostStatsRemote = j && typeof j === "object" ? j : null;
+          settingsHostStatsFetchBusy = false;
+          settingsHostStatsRemoteAt = Date.now();
+          try { settingsHostStatsRender(); } catch (eOk) {}
+        })
+        .catch(function () { next(); });
+    }
+    next();
+  }
+
+  function fmtDurSec(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    if (sec < 60) return sec + "s";
+    if (sec < 3600) return Math.floor(sec / 60) + "m " + (sec % 60) + "s";
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    return h + "h " + m + "m";
+  }
+
+  function settingsTuneHistPush(hz) {
+    hz = Math.round(Number(hz) || 0);
+    if (!(hz > 0)) return;
+    var last = settingsTuneHist.length ? settingsTuneHist[settingsTuneHist.length - 1] : null;
+    if (last && Math.abs(last.freqHz - hz) < 400 && Date.now() - last.at < 8000) return;
+    var mode = "";
+    var prof = "";
+    try { mode = String(idCurrentMode() || ""); } catch (eM) {}
+    try { prof = String(currentProfileValue() || ""); } catch (eP) {}
+    settingsTuneHist.push({ at: Date.now(), freqHz: hz, mode: mode, profile: prof });
+    if (settingsTuneHist.length > 48) settingsTuneHist = settingsTuneHist.slice(-48);
+  }
+
+  function settingsTuneHistSample() {
+    var hz = 0;
+    try { hz = Math.round(Number(currentTuneHz()) || 0); } catch (e) {}
+    if (hz > 0 && Math.abs(hz - settingsLastSampleTuneHz) > 600) {
+      settingsLastSampleTuneHz = hz;
+      settingsTuneHistPush(hz);
+    }
+  }
+
+  function settingsParseOwrxClientsHtml(html) {
+    if (!html || html.length < 80) return [];
+    var rows = [];
+    try {
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      Array.prototype.forEach.call(doc.querySelectorAll("table tr"), function (tr) {
+        var td = tr.querySelectorAll("td");
+        if (td.length < 4) return;
+        var ip = String(td[0].textContent || "").replace(/\s+/g, " ").trim();
+        if (!ip || /ip address/i.test(ip)) return;
+        var name = String(td[1].textContent || "").trim();
+        var prof = String(td[2].textContent || "").trim();
+        var when = String(td[3].textContent || "").replace(/\s+/g, " ").trim();
+        if (/^banned$/i.test(prof)) return;
+        rows.push({ ip: ip, name: name, profile: prof, since: when });
+      });
+    } catch (e) {}
+    return rows;
+  }
+
+  function settingsFetchOwrxClientsMaybe() {
+    if (settingsOwrxClients.busy) return;
+    if (settingsOwrxClients.at && Date.now() - settingsOwrxClients.at < 12000) return;
+    settingsOwrxClients.busy = true;
+    if (!isOwrxAdmin()) {
+      settingsOwrxClients.rows = [];
+      settingsOwrxClients.at = Date.now();
+      settingsOwrxClients.busy = false;
+      return;
+    }
+    fetch("/clients", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (html) {
+        settingsOwrxClients.rows = settingsParseOwrxClientsHtml(html);
+        settingsOwrxClients.at = Date.now();
+        settingsOwrxClients.busy = false;
+        try { settingsHostStatsRender(); } catch (eR) {}
+      })
+      .catch(function () {
+        settingsOwrxClients.busy = false;
+        settingsOwrxClients.at = Date.now();
+      });
+  }
+
+  function settingsDashChip(lab, val, tone) {
+    return '<div class="bs-dash-chip bs-dash-tone-' + (tone || "slate") + '">' +
+      '<span class="bs-dash-chip-lab">' + escapeHtml(lab) + "</span>" +
+      '<span class="bs-dash-chip-val">' + val + "</span></div>";
+  }
+
+  function fmtHostBytes(n) {
+    n = Number(n);
+    if (!(n > 0)) return "—";
+    if (n < 1024) return Math.round(n) + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
+    return (n / 1073741824).toFixed(2) + " GB";
+  }
+
+  function readOwrxBarLine(id) {
+    var el = $(id);
+    if (!el) return "";
+    try {
+      var inner = el.querySelector(".openwebrx-progressbar-text");
+      return String((inner ? inner.textContent : el.textContent) || "").trim();
+    } catch (e) {
+      return String(el.textContent || "").trim();
+    }
+  }
+
+  function parseBarKbps(txt) {
+    var m = String(txt || "").match(/([\d.]+)\s*kbps/i);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  function parseBarSeconds(txt) {
+    var m = String(txt || "").match(/([\d.]+)\s*s\]/i) || String(txt || "").match(/\[([\d.]+)\s*s/i);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  function readOwrxWsInfo() {
+    var out = { state: "unknown", stateLab: "Unknown", url: "", ok: false };
+    var sock = null;
+    try {
+      if (typeof ws !== "undefined" && ws) sock = ws;
+      else if (window.ws) sock = window.ws;
+    } catch (e) {}
+    if (!sock) {
+      out.stateLab = "No socket";
+      return out;
+    }
+    try { out.url = String(sock.url || ""); } catch (eU) {}
+    var map = { 0: "connecting", 1: "open", 2: "closing", 3: "closed" };
+    var lab = { 0: "Connecting…", 1: "Live", 2: "Closing…", 3: "Closed" };
+    try {
+      out.state = map[sock.readyState] || "unknown";
+      out.stateLab = lab[sock.readyState] || "Unknown";
+      out.ok = sock.readyState === 1;
+    } catch (eS) {}
+    return out;
+  }
+
+  function settingsHostHistPush(arr, val, max) {
+    if (val == null || !(val >= 0)) return arr;
+    arr.push(val);
+    while (arr.length > (max || 16)) arr.shift();
+    return arr;
+  }
+
+  function settingsHostSparkHtml(vals, tone) {
+    if (!vals || !vals.length) return '<span class="bs-dash-spark-empty">—</span>';
+    var max = 1;
+    vals.forEach(function (v) { if (v > max) max = v; });
+    var bars = vals.map(function (v) {
+      var h = Math.max(8, Math.round((v / max) * 100));
+      return '<span class="bs-dash-spark-bar bs-dash-tone-' + tone + '" style="height:' + h + '%"></span>';
+    }).join("");
+    return '<div class="bs-dash-spark" aria-hidden="true">' + bars + "</div>";
+  }
+
+  function settingsHostDashStat(label, valueHtml, subHtml, pct, tone) {
+    var p = pct != null && pct >= 0 ? Math.max(0, Math.min(100, Number(pct) || 0)) : null;
+    var bar = p != null
+      ? '<div class="bs-dash-stat-bar"><div class="bs-dash-stat-fill bs-dash-tone-' + (tone || "slate") +
+        '" style="width:' + p + '%"></div></div>'
+      : "";
+    return (
+      '<div class="bs-dash-stat bs-dash-tone-' + (tone || "slate") + '">' +
+      '<div class="bs-dash-stat-val">' + valueHtml + "</div>" +
+      '<div class="bs-dash-stat-lab">' + escapeHtml(label) + "</div>" +
+      (subHtml ? '<div class="bs-dash-stat-sub">' + subHtml + "</div>" : "") +
+      bar +
+      "</div>"
+    );
+  }
+
+  function settingsRadioContext(d) {
+    var rc = {
+      mhz: 0, bwKhz: 0, prof: "", profLabel: "", sdrs: 0, profCount: 0,
+      job: "", audioOut: "", smeter: "", online: true, vis: "visible", decoderLines: 0
+    };
+    try { rc.mhz = Number(currentTuneHz()) / 1e6; } catch (eM) {}
+    try { rc.bwKhz = Math.round(Number(window.bandwidth || 0) / 1000); } catch (eB) {}
+    try { rc.prof = String(currentProfileValue() || ""); } catch (eP) {}
+    var sel = $("openwebrx-sdr-profiles-listbox");
+    if (sel && sel.options && sel.selectedIndex >= 0) {
+      rc.profLabel = String(sel.options[sel.selectedIndex].text || "").trim();
+    }
+    var st = d && d.status;
+    if (st && st.sdrs) {
+      rc.sdrs = st.sdrs.length;
+      st.sdrs.forEach(function (s) {
+        if (s && s.profiles) rc.profCount += s.profiles.length;
+      });
+    }
+    try { rc.job = detectRadioJob() || ""; } catch (eJ) {}
+    rc.audioOut = readOwrxBarLine("openwebrx-bar-audio-output");
+    try {
+      if (typeof smeter_db !== "undefined" && smeter_db != null) rc.smeter = String(smeter_db);
+      else if (window.smeter_db != null) rc.smeter = String(window.smeter_db);
+    } catch (eS) {}
+    try { rc.online = navigator.onLine; } catch (eO) {}
+    try { rc.vis = document.visibilityState || "visible"; } catch (eV) {}
+    var day0 = new Date();
+    day0.setHours(0, 0, 0, 0);
+    trafficLogRows.forEach(function (r) {
+      if (r && (r.at || 0) >= day0.getTime() && (r.kind === "digi" || r.kind === "meta")) rc.decoderLines++;
+    });
+    return rc;
+  }
+
+  function settingsOwrxBarSnapshot() {
+    return [
+      "openwebrx-bar-server-cpu",
+      "openwebrx-bar-network-speed",
+      "openwebrx-bar-audio-speed",
+      "openwebrx-bar-audio-buffer",
+      "openwebrx-bar-audio-output",
+      "openwebrx-bar-clients",
+      "openwebrx-bar-battery"
+    ].map(function (id) {
+      var text = readOwrxBarLine(id);
+      if (!text) return null;
+      var lab = id.replace(/^openwebrx-bar-/, "").replace(/-/g, " ");
+      return { id: id, lab: lab, text: text };
+    }).filter(Boolean);
+  }
+
+  function settingsOwrxDemodSnapshot() {
+    var out = {};
+    try {
+      var demod = window.UI && UI.getDemodulator && UI.getDemodulator();
+      if (demod) {
+        if (typeof demod.get_modulation === "function") out.mode = demod.get_modulation();
+        else if (demod.modulation) out.mode = demod.modulation;
+        if (demod.low_cut != null) out.ifLow = demod.low_cut;
+        if (demod.high_cut != null) out.ifHigh = demod.high_cut;
+        if (typeof demod.getSquelch === "function") out.squelch = demod.getSquelch();
+        else if (demod.squelch != null) out.squelch = demod.squelch;
+        if (demod.deemphasis != null) out.deemph = demod.deemphasis;
+      }
+      var panel = window.UI && UI.getDemodulatorPanel && UI.getDemodulatorPanel();
+      if (panel) {
+        if (typeof panel.getSquelchMargin === "function") out.sqlMargin = panel.getSquelchMargin();
+        if (typeof panel.getTuningPrecision === "function") out.tunePrec = panel.getTuningPrecision();
+      }
+      if (window.UI && UI.cwOffset != null) out.cwOffset = UI.cwOffset;
+    } catch (e) {}
+    return out;
+  }
+
+  function settingsOwrxVisibleDecoderPanels() {
+    var out = [];
+    try {
+      var nodes = document.querySelectorAll(
+        ".openwebrx-message-panel, #openwebrx-panel-digimodes, .openwebrx-panel[data-panel-name]"
+      );
+      Array.prototype.forEach.call(nodes, function (el) {
+        if (!el || !el.id) return;
+        var style = window.getComputedStyle ? getComputedStyle(el) : el.style;
+        var hidden = style && (style.display === "none" || style.visibility === "hidden");
+        if (hidden || el.offsetParent === null) return;
+        var txt = String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+        if (txt.length < 8) return;
+        out.push({
+          id: el.id,
+          name: el.getAttribute("data-panel-name") || el.id.replace(/^openwebrx-panel-/, ""),
+          chars: txt.length,
+          preview: txt.slice(0, 72)
+        });
+      });
+    } catch (e) {}
+    return out;
+  }
+
+  function settingsOwrxCanvasSizes() {
+    var ids = ["openwebrx-spectrum-canvas", "openwebrx-scale-canvas", "openwebrx-bandplan-canvas"];
+    var out = [];
+    ids.forEach(function (id) {
+      var c = $(id);
+      if (!c) return;
+      out.push({ id: id, w: c.width || 0, h: c.height || 0 });
+    });
+    try {
+      var wf = document.querySelector("#openwebrx-waterfall-container canvas, canvas.openwebrx-waterfall");
+      if (wf) {
+        out.push({ id: wf.id || "waterfall", w: wf.width || 0, h: wf.height || 0 });
+      }
+    } catch (eW) {}
+    return out;
+  }
+
+  function settingsOwrxBookmarkCounts() {
+    var localN = 0;
+    var serverN = 0;
+    try { localN = (localBookmarkList() || []).length; } catch (eL) {}
+    try {
+      if (window.bookmarks && bookmarks.bookmarks) {
+        if (bookmarks.bookmarks.server) serverN += bookmarks.bookmarks.server.length;
+        if (bookmarks.bookmarks.local) localN = Math.max(localN, bookmarks.bookmarks.local.length);
+      }
+    } catch (eS) {}
+    return { local: localN, server: serverN };
+  }
+
+  function settingsOwrxProfileDetail(st, profLabel) {
+    if (!st || !st.sdrs || !profLabel) return null;
+    var want = String(profLabel).trim();
+    for (var si = 0; si < st.sdrs.length; si++) {
+      var sdr = st.sdrs[si];
+      var profs = sdr && sdr.profiles ? sdr.profiles : [];
+      for (var pi = 0; pi < profs.length; pi++) {
+        var p = profs[pi];
+        if (p && String(p.name || "").trim() === want) {
+          return { sdrName: sdr.name || "", sdrType: sdr.type || "", profile: p };
+        }
+      }
+    }
+    return null;
+  }
+
+  function settingsOwrxInternalsRender(d) {
+    var el = $("bs-settings-owrx-body");
+    if (!el || !d) return;
+    var st = d.status || {};
+    var rx = st.receiver || {};
+    var dem = settingsOwrxDemodSnapshot();
+    var ws = readOwrxWsInfo();
+    try {
+      var sock = null;
+      try {
+        if (typeof ws !== "undefined" && ws) sock = ws;
+        else if (window.ws) sock = window.ws;
+      } catch (eG) {}
+      if (sock) {
+        if (sock.bufferedAmount != null) ws.buffered = sock.bufferedAmount;
+        if (sock.protocol) ws.protocol = sock.protocol;
+      }
+    } catch (eSock) {}
+    var center = 0;
+    var bw = 0;
+    var tune = 0;
+    try { center = Math.round(Number(window.center_freq) || 0); } catch (eC) {}
+    try { bw = Math.round(Number(window.bandwidth) || 0); } catch (eB) {}
+    try { tune = Math.round(Number(currentTuneHz()) || 0); } catch (eT) {}
+    var offset = tune > 0 && center > 0 ? tune - center : 0;
+    var wfDone = false;
+    var muted = false;
+    var smLvl = "";
+    try { wfDone = !!window.waterfall_setup_done; } catch (eWf) {}
+    try { muted = !!window.mute; } catch (eM) {}
+    try {
+      if (typeof smeter_level !== "undefined") smLvl = String(smeter_level);
+      else if (window.smeter_level != null) smLvl = String(window.smeter_level);
+    } catch (eSm) {}
+    var profLabel = "";
+    try {
+      var sel = $("openwebrx-sdr-profiles-listbox");
+      if (sel && sel.options && sel.selectedIndex >= 0) {
+        profLabel = String(sel.options[sel.selectedIndex].text || "").trim();
+      }
+    } catch (ePl) {}
+    var profDet = settingsOwrxProfileDetail(st, profLabel);
+    var bm = settingsOwrxBookmarkCounts();
+    var bars = settingsOwrxBarSnapshot();
+    var decPanels = settingsOwrxVisibleDecoderPanels();
+    var canv = settingsOwrxCanvasSizes();
+    var gps = rx.gps || {};
+    var sdrRows = "";
+    (st.sdrs || []).forEach(function (s) {
+      var profs = s.profiles || [];
+      var rates = profs.map(function (p) { return p.sample_rate || 0; }).filter(function (x) { return x > 0; });
+      var rateLab = rates.length
+        ? (Math.round(Math.min.apply(null, rates) / 1000) + "–" +
+          Math.round(Math.max.apply(null, rates) / 1000) + " kHz")
+        : "—";
+      sdrRows += "<tr><td><b>" + escapeHtml(s.name || "SDR") + "</b></td>" +
+        "<td>" + escapeHtml(s.type || "—") + "</td>" +
+        '<td class="bs-dash-mono">' + profs.length + "</td>" +
+        "<td>" + escapeHtml(rateLab) + "</td></tr>";
+    });
+    var barHtml = bars.map(function (b) {
+      return '<div class="bs-dash-owrx-bar"><span>' + escapeHtml(b.lab) + "</span><b>" +
+        escapeHtml(b.text) + "</b></div>";
+    }).join("");
+    var decListInner = decPanels.length
+      ? decPanels.map(function (p) {
+        return '<li><code class="bs-dash-mono">' + escapeHtml(p.name) + "</code> · " +
+          p.chars + " chars — " + escapeHtml(p.preview) + "…</li>";
+      }).join("")
+      : "<li class=\"bs-hint\">No decoder panels open on the main page.</li>";
+    var decHtml = settingsDashScrollBox("owrx-dec-list", decPanels.length,
+      '<ul class="bs-dash-owrx-dec-list">' + decListInner + "</ul>");
+    var canvasHtml = canv.length
+      ? canv.map(function (c) {
+        return "<span class=\"bs-dash-chip bs-dash-tone-slate\"><span class=\"bs-dash-chip-lab\">" +
+          escapeHtml(c.id.replace(/^openwebrx-/, "")) + "</span><span class=\"bs-dash-chip-val\"><b>" +
+          c.w + "×" + c.h + "</b></span></span>";
+      }).join("")
+      : '<span class="bs-hint">Canvas not ready</span>';
+    var kv = function (lab, val) {
+      return "<tr><th>" + escapeHtml(lab) + "</th><td>" + val + "</td></tr>";
+    };
+    var profKv = profDet
+      ? kv("SDR device", "<b>" + escapeHtml(profDet.sdrName) + "</b> · " + escapeHtml(profDet.sdrType)) +
+        kv("Profile centre", "<span class=\"bs-dash-mono\"><b>" +
+          escapeHtml(fmtMhz(profDet.profile.center_freq)) + "</b></span>") +
+        kv("Profile rate", "<span class=\"bs-dash-mono\">" +
+          escapeHtml(String(Math.round((profDet.profile.sample_rate || 0) / 1000)) + " kHz") + "</span>")
+      : "";
+    var owrxHtml =
+      '<div class="bs-dash-owrx-grid">' +
+      '<div class="bs-dash-panel">' +
+      '<header class="bs-dash-panel-head"><h4>Receiver · status.json</h4>' +
+      '<span class="bs-dash-panel-sub">v' + escapeHtml(st.version || d.ver || "—") +
+      " · max " + escapeHtml(String(st.max_clients || d.maxCli || "—")) + " clients</span></header>" +
+      '<table class="bs-dash-table bs-dash-table-compact bs-dash-kv">' +
+      kv("Name", "<b>" + escapeHtml(rx.name || "—") + "</b>") +
+      kv("QTH", escapeHtml(rx.location || "—") + (rx.asl != null ? " · " + rx.asl + " m ASL" : "")) +
+      kv("GPS", (gps.lat != null && gps.lon != null)
+        ? '<span class="bs-dash-mono">' + Number(gps.lat).toFixed(5) + ", " + Number(gps.lon).toFixed(5) + "</span>"
+        : "—") +
+      kv("Admin", escapeHtml(rx.admin || "—")) +
+      "</table>" +
+      (sdrRows
+        ? '<h5 class="bs-dash-owrx-h5">SDR sources</h5><table class="bs-dash-table bs-dash-table-compact">' +
+          "<thead><tr><th>Device</th><th>Driver</th><th>Profiles</th><th>Rate span</th></tr></thead><tbody>" +
+          sdrRows + "</tbody></table>"
+        : '<p class="bs-hint">No SDR list in status.json yet.</p>') +
+      "</div>" +
+      '<div class="bs-dash-panel">' +
+      '<header class="bs-dash-panel-head"><h4>Session · demod &amp; waterfall</h4>' +
+      '<span class="bs-dash-panel-sub">Live globals in this browser tab</span></header>' +
+      '<table class="bs-dash-table bs-dash-table-compact bs-dash-kv">' +
+      kv("Tile centre", center > 0 ? "<b class=\"bs-dash-mono\">" + escapeHtml(fmtMhz(center)) + "</b>" : "—") +
+      kv("Bandwidth", bw > 0 ? "<span class=\"bs-dash-mono\">" + escapeHtml((bw / 1000).toFixed(1)) + " kHz</span>" : "—") +
+      kv("VFO / tune", tune > 0 ? "<b class=\"bs-dash-mono\">" + escapeHtml(fmtMhz(tune)) + "</b>" : "—") +
+      kv("Offset", offset ? "<span class=\"bs-dash-mono\">" + (offset > 0 ? "+" : "") +
+        escapeHtml((offset / 1000).toFixed(1)) + " kHz</span>" : "0") +
+      kv("Mode", "<b>" + escapeHtml(dem.mode || idCurrentMode() || "—") + "</b>") +
+      kv("IF passband", (dem.ifLow != null && dem.ifHigh != null)
+        ? '<span class="bs-dash-mono">' + dem.ifLow + "…" + dem.ifHigh + " Hz</span>" : "—") +
+      kv("Squelch", dem.squelch != null ? escapeHtml(String(dem.squelch)) : "—") +
+      kv("SQL margin", dem.sqlMargin != null ? escapeHtml(String(dem.sqlMargin)) : "—") +
+      kv("Tune precision", dem.tunePrec != null ? escapeHtml(String(dem.tunePrec)) : "—") +
+      kv("Mute", muted ? "<b>On</b>" : "Off") +
+      kv("S-meter lvl", smLvl ? escapeHtml(smLvl) : "—") +
+      kv("Waterfall", wfDone ? "Ready" : "Starting…") +
+      profKv +
+      kv("Bookmarks", "server <b>" + bm.server + "</b> · local <b>" + bm.local + "</b>") +
+      "</table>" +
+      '<h5 class="bs-dash-owrx-h5">Canvases</h5><div class="bs-dash-chip-grid">' + canvasHtml + "</div>" +
+      "</div>" +
+      '<div class="bs-dash-panel bs-dash-panel-wide">' +
+      '<header class="bs-dash-panel-head"><h4>Link · WebSocket &amp; footer</h4>' +
+      '<span class="bs-dash-panel-sub">' + escapeHtml(ws.stateLab || "") + "</span></header>" +
+      '<table class="bs-dash-table bs-dash-table-compact bs-dash-kv">' +
+      kv("WebSocket", ws.ok ? "<b class=\"bs-dash-tone-mint\">Live</b>" : escapeHtml(ws.stateLab || "—")) +
+      kv("URL", '<code class="bs-dash-code">' + escapeHtml((ws.url || "").replace(/^wss?:\/\//, "")) + "</code>") +
+      kv("Buffered", ws.buffered != null ? "<span class=\"bs-dash-mono\">" + escapeHtml(fmtHostBytes(ws.buffered)) + "</span>" : "—") +
+      kv("Protocol", escapeHtml(ws.protocol || "—")) +
+      kv("Page", escapeHtml(document.visibilityState || "—") + " · " + (navigator.onLine ? "online" : "offline")) +
+      "</table>" +
+      (barHtml ? '<h5 class="bs-dash-owrx-h5">Footer meters</h5><div class="bs-dash-owrx-bars">' + barHtml + "</div>" : "") +
+      '<h5 class="bs-dash-owrx-h5">Open decoder panels</h5>' + decHtml +
+      "</div></div>" +
+      '<p class="bs-hint bs-dash-foot">Read from <code>/status.json</code>, OpenWebRX globals (<code>center_freq</code>, <code>bandwidth</code>, <code>UI.getDemodulator()</code>), and visible panels. Updates while System is open.</p>';
+    toolboxDashSetHtml(el, owrxHtml);
+  }
+
+  function settingsRadioRender(d) {
+    var el = $("bs-settings-radio-body");
+    if (!el || !d) return;
+    var rc = settingsRadioContext(d);
+    var jobLab = rc.job ? escapeHtml(radioJobLabel(rc.job)) : "Idle";
+    var sm = rc.smeter ? (rc.smeter + " dB") : "—";
+    var modeStr = "";
+    try { modeStr = String(idCurrentMode() || "—"); } catch (eMd) { modeStr = "—"; }
+    el.innerHTML =
+      '<div class="bs-dash-stat-grid">' +
+      settingsHostDashStat("Centre", rc.mhz > 0 ? "<b>" + escapeHtml(fmtMhz(rc.mhz * 1e6)) + "</b>" : "—",
+        rc.bwKhz > 0 ? escapeHtml(rc.bwKhz + " kHz span") : "", null, "mint") +
+      settingsHostDashStat("Profile", "<b>" + escapeHtml(rc.profLabel || rc.prof || "—") + "</b>",
+        rc.profCount ? escapeHtml(rc.profCount + " profiles · " + rc.sdrs + " SDR") : "", null, "sky") +
+      settingsHostDashStat("Mode", "<b>" + escapeHtml(modeStr) + "</b>", "", null, "violet") +
+      settingsHostDashStat("S-meter", "<b>" + escapeHtml(sm) + "</b>", "live footer", null, "amber") +
+      settingsHostDashStat("Toolbox job", "<b>" + jobLab + "</b>",
+        (surveyRunning || running) ? "survey active" : "receiver ready", null, rc.job ? "amber" : "slate") +
+      settingsHostDashStat("Decoder today", "<b>" + rc.decoderLines + "</b>", "digi + meta log lines", null, "mint") +
+      settingsHostDashStat("Audio out", rc.audioOut ? "<b>" + escapeHtml(rc.audioOut.replace(/^Audio\s*/i, "").slice(0, 28)) + "</b>" : "—",
+        "", null, "violet") +
+      settingsHostDashStat("Tab", "<b>" + escapeHtml(rc.vis === "visible" ? "Focused" : "Background") + "</b>",
+        rc.online ? "online" : "offline", null, rc.vis === "visible" ? "mint" : "amber") +
+      "</div>";
+  }
+
+  function settingsHostDashMeter(pct, label, valueHtml, tone) {
+    var p = Math.max(0, Math.min(100, Number(pct) || 0));
+    return (
+      '<div class="bs-dash-meter bs-dash-tone-' + (tone || "mint") + '">' +
+      '<div class="bs-dash-meter-head"><span>' + escapeHtml(label) + "</span><b>" + valueHtml + "</b></div>" +
+      '<div class="bs-dash-meter-track"><div class="bs-dash-meter-fill" style="width:' + p + '%"></div></div>' +
+      "</div>"
+    );
+  }
+
+  function settingsHostConnPill(ok, text) {
+    return '<span class="bs-dash-pill' + (ok ? " bs-dash-pill-ok" : " bs-dash-pill-warn") + '">' +
+      escapeHtml(text) + "</span>";
+  }
+
+  function readOwrxServerCpuPct() {
+    var el = $("openwebrx-bar-server-cpu");
+    if (!el) return null;
+    var txt = "";
+    try {
+      var inner = el.querySelector(".openwebrx-progressbar-text");
+      txt = inner ? inner.textContent : el.textContent;
+    } catch (e) { txt = el.textContent || ""; }
+    txt = String(txt || "");
+    var m = txt.match(/Server CPU\s*\[(\d+)%/i) || txt.match(/(\d+)\s*%/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function readOwrxServerTempC() {
+    var el = $("openwebrx-bar-server-cpu");
+    if (!el) return null;
+    var txt = "";
+    try {
+      var inner = el.querySelector(".openwebrx-progressbar-text");
+      txt = inner ? inner.innerHTML : el.innerHTML;
+    } catch (e) { return null; }
+    var m = String(txt || "").match(/(\d+)\s*(?:&deg;|°)C/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function browserPlatformLine() {
+    var plat = "";
+    try {
+      if (navigator.userAgentData && navigator.userAgentData.platform) plat = navigator.userAgentData.platform;
+      else plat = navigator.platform || "";
+    } catch (e) {}
+    var cores = "";
+    try { if (navigator.hardwareConcurrency) cores = String(navigator.hardwareConcurrency); } catch (eC) {}
+    var devMem = "";
+    try { if (navigator.deviceMemory) devMem = navigator.deviceMemory + " GB RAM (browser hint)"; } catch (eD) {}
+    var bits = [plat || "This browser"];
+    if (cores) bits.push(cores + " cores");
+    if (devMem) bits.push(devMem);
+    return bits.join(" · ");
+  }
+
+  function toolboxTransferBytes() {
+    var sum = 0;
+    try {
+      var entries = performance.getEntriesByType("resource");
+      entries.forEach(function (e) {
+        if (!e || !e.name) return;
+        if (!/toolbox\.(js|css)(\?|$)/.test(e.name)) return;
+        sum += e.transferSize || e.encodedBodySize || 0;
+      });
+    } catch (e) {}
+    return sum;
+  }
+
+  function readBrowserJsHeap() {
+    try {
+      if (performance.memory && performance.memory.usedJSHeapSize > 0) {
+        return {
+          used: performance.memory.usedJSHeapSize,
+          total: performance.memory.totalJSHeapSize || 0
+        };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function settingsHostStatsFetchStatus() {
+    if (settingsHostStatsStatus) return settingsHostStatsStatus;
+    settingsHostStatsStatus = { at: 0, data: null, busy: false };
+    var urls = ["/status.json", "status.json"];
+    var i = 0;
+    function go() {
+      if (i >= urls.length) return;
+      fetch(urls[i++], { credentials: "same-origin", cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (j) {
+            settingsHostStatsStatus.data = j;
+            settingsHostStatsStatus.at = Date.now();
+            try { settingsHostStatsRender(); } catch (eS) {}
+          }
+        })
+        .catch(function () { go(); });
+    }
+    go();
+    return settingsHostStatsStatus;
+  }
+
+  function settingsHostStatsShared() {
+    var st = settingsHostStatsFetchStatus();
+    var status = st && st.data ? st.data : null;
+    var remote = settingsHostStatsRemote;
+    var cpuBar = readOwrxServerCpuPct();
+    var tempC = readOwrxServerTempC();
+    var heap = readBrowserJsHeap();
+    var tbXfer = toolboxTransferBytes();
+    var owrxCpu = cpuBar;
+    var owrxMem = null;
+    var hostMemTotal = null;
+    var hostMemAvail = null;
+    var hostLine = "";
+    if (remote) {
+      if (remote.hostname) hostLine = String(remote.hostname);
+      if (remote.platform) hostLine = (hostLine ? hostLine + " · " : "") + String(remote.platform);
+      if (remote.owrx && remote.owrx.cpu_pct != null) owrxCpu = Math.round(Number(remote.owrx.cpu_pct));
+      if (remote.owrx && remote.owrx.rss_mb != null) owrxMem = Number(remote.owrx.rss_mb);
+      hostMemTotal = remote.mem_total_mb;
+      hostMemAvail = remote.mem_avail_mb;
+    }
+    if (!hostLine && status && status.receiver) {
+      hostLine = String(status.receiver.name || status.receiver.location || "OpenWebRX host");
+    }
+    if (!hostLine) hostLine = location.hostname || "Receiver";
+    var ver = status && status.version ? String(status.version) : "—";
+    var tbDisk = remote && remote.toolbox_on_disk_kb != null ? Number(remote.toolbox_on_disk_kb) : null;
+    var tbHeapEst = heap && tbXfer > 0 ? Math.min(heap.used, tbXfer * 4) : (tbXfer > 0 ? tbXfer : null);
+    var owrxHeapEst = heap && tbHeapEst ? Math.max(0, heap.used - tbHeapEst) : (heap ? heap.used : null);
+    var heapPct = heap && heap.total > 0 ? Math.round((heap.used / heap.total) * 100) : (heap ? 55 : 0);
+    var hostRamPct = hostMemTotal > 0 && hostMemAvail != null
+      ? Math.round(((hostMemTotal - hostMemAvail) / hostMemTotal) * 100) : null;
+    var owrxMemPct = owrxMem != null && hostMemTotal > 0
+      ? Math.min(100, Math.round((owrxMem / hostMemTotal) * 100)) : (owrxMem != null ? 40 : 0);
+    var netTxt = readOwrxBarLine("openwebrx-bar-network-speed");
+    var audTxt = readOwrxBarLine("openwebrx-bar-audio-speed");
+    var bufTxt = readOwrxBarLine("openwebrx-bar-audio-buffer");
+    var outTxt = readOwrxBarLine("openwebrx-bar-audio-output");
+    var cliTxt = readOwrxBarLine("openwebrx-bar-clients");
+    var netKbps = parseBarKbps(netTxt);
+    var audKbps = parseBarKbps(audTxt);
+    var bufSec = parseBarSeconds(bufTxt);
+    settingsHostHistPush(settingsHostNetHist, netKbps, 14);
+    settingsHostHistPush(settingsHostAudioHist, audKbps, 14);
+    var ws = readOwrxWsInfo();
+    var clients = clientCount();
+    var maxCli = status && status.max_clients ? Number(status.max_clients) : 20;
+    return {
+      status: status,
+      remote: remote,
+      hostLine: hostLine,
+      ver: ver,
+      owrxCpu: owrxCpu,
+      tempC: tempC,
+      owrxMem: owrxMem,
+      hostMemTotal: hostMemTotal,
+      hostMemAvail: hostMemAvail,
+      hostRamPct: hostRamPct,
+      owrxMemPct: owrxMemPct,
+      tbDisk: tbDisk,
+      heap: heap,
+      heapPct: heapPct,
+      tbHeapEst: tbHeapEst,
+      owrxHeapEst: owrxHeapEst,
+      tbXfer: tbXfer,
+      netTxt: netTxt,
+      audTxt: audTxt,
+      bufTxt: bufTxt,
+      outTxt: outTxt,
+      netKbps: netKbps,
+      audKbps: audKbps,
+      bufSec: bufSec,
+      ws: ws,
+      clients: clients,
+      maxCli: maxCli,
+      cliTxt: cliTxt,
+      stAt: st && st.at ? st.at : 0,
+      remoteAt: settingsHostStatsRemoteAt,
+      remoteFull: remote,
+      owrxClients: settingsOwrxClients.rows || [],
+      receiver: status && status.receiver ? status.receiver : null
+    };
+  }
+
+  function settingsSystemHeroRender(d) {
+    var el = $("bs-settings-system-hero");
+    if (!el || !d) return;
+    var r = d.remoteFull || {};
+    var cpu = r.cpu || {};
+    var disk = r.disk || {};
+    var ips = Array.isArray(r.ips) ? r.ips : [];
+    var load = Array.isArray(r.load) ? r.load.join(" · ") : "—";
+    var up = r.uptime_sec != null ? fmtDurSec(r.uptime_sec) : "—";
+    var memPct = d.hostRamPct != null ? d.hostRamPct : 0;
+    var diskPct = disk.pct != null ? disk.pct : 0;
+    var chips =
+      settingsDashChip("Hostname", "<b>" + escapeHtml(r.hostname || d.hostLine.split(" · ")[0]) + "</b>", "mint") +
+      settingsDashChip("Platform", escapeHtml((r.platform || "") + " " + (r.machine || "")), "sky") +
+      settingsDashChip("CPU", escapeHtml((cpu.model || "—").slice(0, 48)) +
+        (cpu.cores ? " · <b>" + cpu.cores + " cores</b>" : "") +
+        (cpu.mhz ? " @ " + cpu.mhz + " MHz" : ""), "violet") +
+      settingsDashChip("Load avg", escapeHtml(String(load)), "slate") +
+      settingsDashChip("Uptime", escapeHtml(up), "mint") +
+      settingsDashChip("RAM", d.hostMemTotal != null
+        ? "<b>" + (d.hostMemTotal - (d.hostMemAvail || 0)) + "</b> / " + d.hostMemTotal + " MB"
+        : "—", memPct > 88 ? "amber" : "sky") +
+      settingsDashChip("Swap", r.swap_used_mb != null ? escapeHtml(r.swap_used_mb + " MB used") : "—", "slate") +
+      settingsDashChip("Disk /", disk.total_gb != null
+        ? "<b>" + disk.used_gb + "</b> / " + disk.total_gb + " GB (" + diskPct + "%)"
+        : "—", diskPct > 90 ? "amber" : "slate") +
+      settingsDashChip("OpenWebRX", "v" + escapeHtml(d.ver) +
+        (d.owrxMem != null ? " · <b>" + Math.round(d.owrxMem) + " MB</b>" : ""), "mint") +
+      settingsDashChip("Toolbox on host", r.toolbox_version
+        ? "<b>" + escapeHtml(r.toolbox_version) + "</b>" + (d.tbDisk != null ? " · " + d.tbDisk + " KB" : "")
+        : (d.tbDisk != null ? d.tbDisk + " KB static" : "—"), "violet");
+    var ipHtml = ips.length
+      ? ips.map(function (x) {
+        return '<span class="bs-dash-ip" title="' + escapeHtml(x.iface || "") + '">' +
+          escapeHtml(x.addr) + '<small>' + escapeHtml(x.kind || "") + "</small></span>";
+      }).join("")
+      : '<span class="bs-hint">No LAN IPs in hoststats — run hoststats.py on the receiver.</span>';
+    el.innerHTML =
+      '<div class="bs-dash-hero">' +
+      '<div class="bs-dash-hero-glow"></div>' +
+      '<header class="bs-dash-hero-head">' +
+      '<span class="bs-dash-live-dot' + (d.ws.ok ? " bs-dash-live-on" : "") + '"></span>' +
+      "<h3>Receiver machine</h3>" +
+      '<span class="bs-dash-hero-sub">' + escapeHtml(d.hostLine) + "</span>" +
+      "</header>" +
+      '<div class="bs-dash-chip-grid">' + chips + "</div>" +
+      '<div class="bs-dash-hero-meters">' +
+      settingsHostDashMeter(memPct, "Memory", d.hostMemAvail != null ? d.hostMemAvail + " MB free" : "—", memPct > 88 ? "amber" : "sky") +
+      settingsHostDashMeter(diskPct, "Root disk", disk.free_gb != null ? disk.free_gb + " GB free" : "—", diskPct > 90 ? "amber" : "slate") +
+      settingsHostDashMeter(d.owrxCpu != null ? d.owrxCpu : 0, "OWRX CPU", d.owrxCpu != null ? d.owrxCpu + "%" : "—",
+        d.owrxCpu > 85 ? "amber" : "mint") +
+      "</div>" +
+      '<div class="bs-dash-ip-row"><span class="bs-dash-ip-lab">Addresses</span><div class="bs-dash-ip-list">' + ipHtml + "</div></div>" +
+      '<div class="bs-dash-system-export">' +
+      '<button type="button" class="bs-btn-util bs-settings-export-data" title="Download JSON: host stats, nerd snapshot, listeners, tune trail, Toolbox log, QSO pad, decoders.">Export data</button>' +
+      '<span class="bs-hint">One JSON file for debugging or your notes — same as Nerd vault export.</span>' +
+      "</div></div>";
+  }
+
+  function settingsListenersMerged(d) {
+    if (!d) return [];
+    var adminRows = d.owrxClients || [];
+    var peers = (d.remoteFull && d.remoteFull.ws_peers) ? d.remoteFull.ws_peers : [];
+    var merged = {};
+    adminRows.forEach(function (row) {
+      merged[row.ip] = {
+        ip: row.ip,
+        name: row.name || "",
+        profile: row.profile || "",
+        since: row.since || "",
+        source: "admin"
+      };
+    });
+    peers.forEach(function (p) {
+      if (!p || !p.ip) return;
+      if (!merged[p.ip]) {
+        merged[p.ip] = {
+          ip: p.ip,
+          name: "",
+          profile: "TCP · ports " + (p.local_ports || []).join(","),
+          since: p.connections + " conn",
+          source: "socket"
+        };
+      } else if (p.connections) {
+        merged[p.ip].since = (merged[p.ip].since || "") + " · " + p.connections + " tcp";
+      }
+    });
+    var list = Object.keys(merged).map(function (k) { return merged[k]; });
+    list.sort(function (a, b) { return String(a.ip).localeCompare(String(b.ip)); });
+    return list;
+  }
+
+  function settingsListenersRender(d) {
+    var el = $("bs-settings-listeners-body");
+    if (!el || !d) return;
+    var list = settingsListenersMerged(d);
+    var adminHint = isOwrxAdmin()
+      ? "Profile / SDR from OpenWebRX <code>/clients</code> (admin). TCP peers from <code>hoststats.json</code>."
+      : "Listener IPs from TCP peers in hoststats. Log in as OpenWebRX admin for profile names and connect times.";
+    if (!list.length) {
+      el.innerHTML =
+        '<p class="bs-dash-empty">No remote listeners right now — only you, or hoststats not installed.</p>' +
+        '<p class="bs-hint">' + adminHint + "</p>";
+      return;
+    }
+    var tableHtml = '<div class="bs-dash-listeners"><table class="bs-dash-table"><thead><tr>' +
+      "<th>IP</th><th>Name</th><th>SDR / profile</th><th>Connected</th><th></th></tr></thead><tbody>";
+    list.forEach(function (row) {
+      var init = (row.name || row.ip || "?").charAt(0).toUpperCase();
+      tableHtml += "<tr>" +
+        '<td class="bs-dash-mono">' + escapeHtml(row.ip) + "</td>" +
+        "<td><span class=\"bs-dash-avatar\">" + escapeHtml(init) + "</span> " + escapeHtml(row.name || "—") + "</td>" +
+        "<td>" + escapeHtml(row.profile || "—") + "</td>" +
+        "<td>" + escapeHtml(row.since || "—") + "</td>" +
+        '<td class="bs-dash-src">' + escapeHtml(row.source) + "</td></tr>";
+    });
+    tableHtml += "</tbody></table></div>";
+    var html = settingsDashScrollBox("listeners", list.length, tableHtml) +
+      '<p class="bs-dash-listeners-foot"><b>' + list.length + "</b> remote listener(s) · " +
+      "<b>" + d.clients + "</b> / " + d.maxCli + " reported on WebSocket bar · " + adminHint + "</p>";
+    toolboxDashSetHtml(el, html);
+  }
+
+  function settingsSessionRender(d) {
+    var el = $("bs-settings-session-body");
+    if (!el || !d) return;
+    if (!(S.sessionStartedAt > 0)) S.sessionStartedAt = Date.now();
+    var sessSec = Math.max(0, Math.floor((Date.now() - S.sessionStartedAt) / 1000));
+    var hz = 0;
+    var mode = "";
+    var prof = "";
+    try { hz = Math.round(Number(currentTuneHz()) || 0); } catch (eH) {}
+    try { mode = String(idCurrentMode() || ""); } catch (eM) {}
+    try { prof = String(currentProfileValue() || ""); } catch (eP) {}
+    var loc = d.receiver && d.receiver.location ? String(d.receiver.location) : "";
+    var rows = settingsTuneHist.slice(-12).reverse();
+    var histHtml = rows.length
+      ? rows.map(function (r) {
+        var t = new Date(r.at || 0).toLocaleTimeString();
+        return "<tr><td>" + escapeHtml(t) + "</td><td class=\"bs-dash-mono\">" +
+          escapeHtml(r.freqHz > 0 ? fmtMhz(r.freqHz) : "—") + "</td><td>" +
+          escapeHtml(r.mode || r.profile || "") + "</td></tr>";
+      }).join("")
+      : "<tr><td colspan=\"3\" class=\"bs-hint\">Tune the radio — changes appear here while System is open.</td></tr>";
+    el.innerHTML =
+      '<div class="bs-dash-session-grid">' +
+      '<div class="bs-dash-session-now">' +
+      "<h4>Now</h4>" +
+      '<div class="bs-dash-stat-grid bs-dash-stat-grid-tight">' +
+      settingsHostDashStat("Tuned", hz > 0 ? "<b>" + escapeHtml(fmtMhz(hz)) + "</b>" : "—",
+        escapeHtml(mode || "mode"), null, "mint") +
+      settingsHostDashStat("Profile", "<b>" + escapeHtml(prof || "—") + "</b>", "OpenWebRX", null, "sky") +
+      settingsHostDashStat("Session", "<b>" + escapeHtml(fmtDurSec(sessSec)) + "</b>", "toolbox open", null, "violet") +
+      "</div>" +
+      (loc ? '<p class="bs-dash-session-meta">QTH <b>' + escapeHtml(loc) + "</b></p>" : "") +
+      "</div>" +
+      '<div class="bs-dash-session-hist">' +
+      "<h4>Your tune trail (this tab)</h4>" +
+      '<table class="bs-dash-table bs-dash-table-compact"><thead><tr><th>Time</th><th>MHz</th><th>Mode / profile</th></tr></thead><tbody>' +
+      histHtml + "</tbody></table></div></div>";
+  }
+
+  function settingsMainTabId() {
+    try {
+      var on = document.querySelector("#bs-tabs .bs-tab.bs-tab-on");
+      return on ? String(on.getAttribute("data-tab") || "") : "";
+    } catch (e) { return ""; }
+  }
+
+  function settingsTabJsonBytes(obj) {
+    if (obj == null) return 0;
+    try { return JSON.stringify(obj).length * 2; } catch (e) { return 0; }
+  }
+
+  function settingsTabClassifyLsKey(key) {
+    key = String(key || "");
+    if (key.indexOf("owrx_toolbox") < 0 && key.indexOf("owrx_band_survey") < 0) return null;
+    var rules = [
+      ["log", /traffic_log|qso|session_log|log_notes|lg_sub/i],
+      ["memory", /mem_|memory/i],
+      ["audio", /rec_|clip_seq|audio/i],
+      ["range", /range_spectrum|range_/i],
+      ["identify", /id_layout|id_class/i],
+      ["analyzer", /sa_layout/i],
+      ["watch", /sig_watch/i],
+      ["peaks", /hits|survey_snap|snap_v1|occ_heat|spec_hist/i],
+      ["bookmarks", /bm_|bookmark|freq_notes|loaded_bm/i],
+      ["explore", /explore|ex_layout|ex_builtin|ex_free|ex_frame|ex_factory|panel_layout/i],
+      ["bands", /survey|occ_heat|spec_hist|scan|band/i],
+      ["skip", /skip|lock|bird/i],
+      ["more", /dx_|sat_|solar|grey|beacon|qth|feed|more_sub/i],
+      ["help", /welcome|check_dismiss/i],
+      ["settings", /./]
+    ];
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i][1].test(key)) return rules[i][0];
+    }
+    return "settings";
+  }
+
+  function settingsTabRamBytes(tabId) {
+    var n = 0;
+    try {
+      if (tabId === "log") {
+        n += settingsTabJsonBytes(trafficLogRows) + settingsTabJsonBytes(qsoRows);
+      } else if (tabId === "peaks") {
+        n += settingsTabJsonBytes(hits);
+      } else if (tabId === "memory") {
+        n += settingsTabJsonBytes(memoryDigitalRows) + settingsTabJsonBytes(memoryTraceSamples) +
+          settingsTabJsonBytes(memoryMarkers);
+      } else if (tabId === "watch") {
+        n += settingsTabJsonBytes(sigWatchRules);
+      } else if (tabId === "bookmarks") {
+        n += settingsTabJsonBytes(loadedBookmarks);
+      } else if (tabId === "audio") {
+        try { n += totalAudioBytes(); } catch (eA) {}
+        n += settingsTabJsonBytes(audioClips);
+      } else if (tabId === "bands" || tabId === "range" || tabId === "analyzer") {
+        n += settingsTabJsonBytes(spectrumHist);
+      }
+    } catch (e) {}
+    return n;
+  }
+
+  function settingsTabActivityFlags(tabId) {
+    var flags = [];
+    if (settingsMainTabId() === tabId) flags.push("open");
+    try { if (isTabHidden(tabId)) flags.push("hidden"); } catch (eH) {}
+    if (tabId === "memory" && (memoryTraceTimer || memoryBenchTimer)) flags.push("poll");
+    if (tabId === "log" && trafficLogTimer) flags.push("poll");
+    if (tabId === "settings" && settingsHostStatsTimer) flags.push("poll");
+    if (tabId === "identify" && idState && idState.liveTimer) flags.push("poll");
+    if (tabId === "explore" && exploreListenTimer) flags.push("poll");
+    if (tabId === "analyzer" && audioMeterTimer) flags.push("poll");
+    if (tabId === "bands" && (surveyRunning || running)) flags.push("job");
+    if (tabId === "more") {
+      if (window._bs_dx_timer || window._bs_sat_timer || greyTimer || moreBeaconTimer || qthTimer) flags.push("poll");
+    }
+    return flags;
+  }
+
+  function settingsTabFootprintRows() {
+    var store = {};
+    TAB_IDS.forEach(function (id) { store[id] = 0; });
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k) continue;
+        var tab = settingsTabClassifyLsKey(k);
+        if (!tab || store[tab] == null) continue;
+        var v = localStorage.getItem(k) || "";
+        store[tab] += (k.length + v.length) * 2;
+      }
+    } catch (eLs) {}
+    var rows = TAB_IDS.map(function (id) {
+      return {
+        id: id,
+        lab: (TAB_HEAD_META[id] && TAB_HEAD_META[id].lab) || id,
+        store: store[id] || 0,
+        ram: settingsTabRamBytes(id),
+        flags: settingsTabActivityFlags(id)
+      };
+    });
+    rows.sort(function (a, b) { return (b.store + b.ram) - (a.store + a.ram); });
+    return rows;
+  }
+
+  function settingsTabActivityLabel(flags) {
+    if (!flags || !flags.length) return "idle";
+    if (flags.indexOf("job") >= 0) return "survey";
+    if (flags.indexOf("poll") >= 0) return flags.indexOf("open") >= 0 ? "live" : "poll";
+    if (flags.indexOf("open") >= 0) return "open";
+    if (flags.indexOf("hidden") >= 0) return "hidden";
+    return "idle";
+  }
+
+  function settingsTabResourcesTableHtml() {
+    var rows = settingsTabFootprintRows();
+    var maxTot = 1;
+    rows.forEach(function (r) {
+      var t = r.store + r.ram;
+      if (t > maxTot) maxTot = t;
+    });
+    var head = '<h4 class="bs-dash-subhead">Toolbox tabs · memory</h4>' +
+      '<p class="bs-hint">Per main tab: <b>Storage</b> = localStorage attributed to that tab; ' +
+      "<b>RAM</b> = in-browser buffers (clips, log, peaks, …). <b>Activity</b> = open / timers / scan job.</p>";
+    var tableHtml = '<div class="bs-dash-tab-res-wrap"><table class="bs-dash-table bs-dash-table-compact bs-dash-tab-res">' +
+      "<thead><tr><th>Tab</th><th>Storage</th><th>RAM est.</th><th>Activity</th></tr></thead><tbody>";
+    rows.forEach(function (r) {
+      var tot = r.store + r.ram;
+      var pct = Math.min(100, Math.round((tot / maxTot) * 100));
+      var act = settingsTabActivityLabel(r.flags);
+      var actCls = act === "live" || act === "survey" ? "bs-dash-tab-act-live" :
+        act === "poll" ? "bs-dash-tab-act-poll" : act === "open" ? "bs-dash-tab-act-open" : "";
+      var rowCls = r.flags.indexOf("open") >= 0 ? " bs-dash-tab-res-on" : "";
+      tableHtml += "<tr class=\"" + rowCls + "\">" +
+        "<td><b>" + escapeHtml(r.lab) + "</b>" +
+        (r.flags.indexOf("hidden") >= 0 ? ' <span class="bs-hint">off bar</span>' : "") + "</td>" +
+        '<td class="bs-dash-mono">' + escapeHtml(fmtHostBytes(r.store)) +
+        '<span class="bs-dash-tab-bar" style="width:' + pct + '%"></span></td>' +
+        '<td class="bs-dash-mono">' + escapeHtml(fmtHostBytes(r.ram)) + "</td>" +
+        '<td class="bs-dash-tab-act ' + actCls + '">' + escapeHtml(act) + "</td></tr>";
+    });
+    tableHtml += "</tbody></table></div>";
+    return head + settingsDashScrollBox("tb-tab-res", rows.length, tableHtml);
+  }
+
+  function settingsOwrxProcessTableHtml(d) {
+    var procs = d && d.remoteFull && d.remoteFull.owrx && d.remoteFull.owrx.processes;
+    if (!procs || !procs.length) return "";
+    var html = '<h4 class="bs-dash-subhead">OpenWebRX processes</h4>' +
+      '<div class="bs-dash-tab-res-wrap"><table class="bs-dash-table bs-dash-table-compact bs-dash-tab-res">' +
+      "<thead><tr><th>PID</th><th>RSS</th><th>CPU</th><th>Command</th></tr></thead><tbody>";
+    procs.forEach(function (p) {
+      html += "<tr>" +
+        '<td class="bs-dash-mono">' + escapeHtml(String(p.pid || "—")) + "</td>" +
+        '<td class="bs-dash-mono"><b>' + escapeHtml(p.rss_mb != null ? p.rss_mb + " MB" : "—") + "</b></td>" +
+        '<td class="bs-dash-mono">' + escapeHtml(p.cpu_pct != null ? p.cpu_pct + "%" : "—") + "</td>" +
+        '<td class="bs-dash-tab-cmd" title="' + escapeHtml(p.cmd || "") + '">' + escapeHtml(p.cmd || "—") + "</td></tr>";
+    });
+    html += "</tbody></table></div>";
+    html = settingsDashScrollBox("owrx-procs", procs.length, html) +
+      '<p class="bs-hint">From <code>hoststats.json</code> on the receiver (refreshed ~1 min). CPU sampled on main PID(s) only.</p>';
+    return html;
+  }
+
+  function settingsTbStatsRender(d) {
+    var el = $("bs-settings-tbstats-body");
+    if (!el || !d) return;
+    var peaksN = 0;
+    try { peaksN = hits && hits.length ? hits.length : 0; } catch (eP) {}
+    var logN = trafficLogRows.length;
+    var pinN = 0;
+    trafficLogRows.forEach(function (r) { if (r && r.pinned) pinN++; });
+    var lsKb = "—";
+    try {
+      var t = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k) t += (localStorage.getItem(k) || "").length;
+      }
+      lsKb = Math.round(t / 1024) + " KB";
+    } catch (eL) {}
+    var bmN = 0;
+    try { bmN = (loadedBookmarks && loadedBookmarks.length) || 0; } catch (eBm) {}
+    var watchN = 0;
+    try { watchN = sigWatchRules ? sigWatchRules.length : 0; } catch (eW) {}
+    var qsoN = 0;
+    try { qsoN = qsoRows ? qsoRows.length : 0; } catch (eQ) {}
+    var hidN = 0;
+    try { hidN = (S.hiddenTabs && S.hiddenTabs.length) || 0; } catch (eH) {}
+    var pub = false;
+    try { pub = isPublicReceiver(); } catch (ePub) {}
+    toolboxDashSetHtml(el,
+      '<div class="bs-dash-stat-grid">' +
+      settingsHostDashStat("Build", "<b>" + escapeHtml(String(Plugins.toolbox._version || "?")) + "</b>", "", null, "mint") +
+      settingsHostDashStat("Log", "<b>" + logN + "</b>", pinN ? pinN + " pinned" : "lines", null, "sky") +
+      settingsHostDashStat("Peaks", "<b>" + peaksN + "</b>", "stored", null, "violet") +
+      settingsHostDashStat("QSO pad", "<b>" + qsoN + "</b>", "contacts", null, "sky") +
+      settingsHostDashStat("Watch rules", "<b>" + watchN + "</b>", "patterns", null, "amber") +
+      settingsHostDashStat("Bookmarks", "<b>" + bmN + "</b>", "loaded", null, "mint") +
+      settingsHostDashStat("Hidden tabs", "<b>" + hidN + "</b>", "off in header", null, "slate") +
+      settingsHostDashStat("Public mode", "<b>" + (pub ? "On" : "Off") + "</b>", "visitor limits", null, pub ? "amber" : "slate") +
+      settingsHostDashStat("Mem · Digital", "<b>" + memoryDigitalRows.length + "</b>", "session buffer", null, "slate") +
+      settingsHostDashStat("Trace", "<b>" + memoryTraceSamples.length + "</b>", "samples", null, "slate") +
+      settingsHostDashStat("Storage", "<b>" + escapeHtml(lsKb) + "</b>", "localStorage", null, "amber") +
+      settingsHostDashStat("status.json", d.stAt ? "<b>OK</b>" : "—",
+        d.stAt ? new Date(d.stAt).toLocaleTimeString() : "", null, "mint") +
+      settingsHostDashStat("hoststats", d.remoteAt ? "<b>OK</b>" : "—",
+        d.remoteAt ? new Date(d.remoteAt).toLocaleTimeString() : "", null, "mint") +
+      "</div>" +
+      settingsTabResourcesTableHtml() +
+      '<p class="bs-hint">Counts above are totals. Tab table is per header tab in this browser.</p>');
+  }
+
+  function settingsDecoderExtractIpv4(text) {
+    var re = /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/g;
+    var out = [];
+    var seen = {};
+    var m;
+    var src = String(text || "");
+    while ((m = re.exec(src))) {
+      var ip = m[0];
+      if (ip === "0.0.0.0" || ip === "255.255.255.255") continue;
+      if (seen[ip]) continue;
+      seen[ip] = 1;
+      out.push(ip);
+    }
+    return out;
+  }
+
+  function settingsDecoderCountIps(text, map) {
+    settingsDecoderExtractIpv4(text).forEach(function (ip) {
+      map[ip] = (map[ip] || 0) + 1;
+    });
+  }
+
+  function settingsDecoderTopKeys(map, limit) {
+    return Object.keys(map || {}).sort(function (a, b) {
+      return (map[b] || 0) - (map[a] || 0) || String(a).localeCompare(String(b));
+    }).slice(0, limit || 4);
+  }
+
+  function settingsDecoderFormatIpChips(ips, map) {
+    if (!ips || !ips.length) return "";
+    return ips.map(function (ip) {
+      var n = map && map[ip] ? map[ip] : 0;
+      var extra = n > 1 ? ' title="' + n + ' lines"' : "";
+      return '<span class="bs-dash-dec-ip"' + extra + ">" + escapeHtml(ip) +
+        (n > 1 ? "<small>×" + n + "</small>" : "") + "</span>";
+    }).join("");
+  }
+
+  function settingsDecoderEntityHints(typeId, blob) {
+    var hints = [];
+    var src = String(blob || "");
+    if (typeId === "adsb" || typeId === "acars" || typeId === "hfdl" || typeId === "vdl") {
+      var reIc = /\b[0-9A-F]{6}\b/gi;
+      var seenI = {};
+      var mi;
+      while ((mi = reIc.exec(src))) {
+        var hx = mi[0].toUpperCase();
+        if (/^[0-9]+$/.test(hx)) continue;
+        if (seenI[hx]) continue;
+        seenI[hx] = 1;
+        hints.push(hx);
+        if (hints.length >= 3) break;
+      }
+      if (hints.length) return "ICAO " + hints.join(", ");
+    }
+    if (typeId === "ais" || typeId === "dsc") {
+      var reM = /\b\d{9}\b/g;
+      var seenM = {};
+      var mm;
+      while ((mm = reM.exec(src))) {
+        if (seenM[mm[0]]) continue;
+        seenM[mm[0]] = 1;
+        hints.push(mm[0]);
+        if (hints.length >= 3) break;
+      }
+      if (hints.length) return (typeId === "ais" ? "MMSI " : "ID ") + hints.join(", ");
+    }
+    var grids = [];
+    var reG = /\b[A-R]{2}\d{2}([a-x]{2})?\b/gi;
+    var mg;
+    var seenG = {};
+    while ((mg = reG.exec(src))) {
+      var g = mg[0].toUpperCase();
+      if (seenG[g]) continue;
+      seenG[g] = 1;
+      grids.push(g);
+      if (grids.length >= 2) break;
+    }
+    if (grids.length && (typeId === "ft8" || typeId === "js8" || typeId === "psk" || typeId === "packet")) {
+      return "Grid " + grids.join(", ");
+    }
+    return "";
+  }
+
+  function settingsDecoderPanelLines(text) {
+    return String(text || "").split(/\n+/).map(function (ln) {
+      return ln.replace(/\s+/g, " ").trim();
+    }).filter(function (ln) {
+      return ln.length > 5 && !/^(loading|waiting|no data|click to|openwebrx)/i.test(ln);
+    });
+  }
+
+  function settingsDecoderPanelVisible(el) {
+    if (!el) return false;
+    try {
+      var style = window.getComputedStyle ? getComputedStyle(el) : el.style;
+      if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+      if (el.offsetParent === null && style && style.display !== "block") return false;
+    } catch (e) {}
+    return true;
+  }
+
+  function settingsDecoderTypeLabelForPanel(panelId) {
+    panelId = String(panelId || "");
+    for (var i = 0; i < SETTINGS_DECODER_TYPES.length; i++) {
+      var t = SETTINGS_DECODER_TYPES[i];
+      if (t.panelRe && t.panelRe.test(panelId)) return t.label;
+    }
+    if (/openwebrx-panel-/.test(panelId)) {
+      return panelId.replace(/^openwebrx-panel-/, "").replace(/-message$/, "").replace(/-/g, " ");
+    }
+    return "—";
+  }
+
+  function settingsDecoderCollectPanels() {
+    var seen = {};
+    var out = [];
+    function push(el) {
+      if (!el || !el.id || seen[el.id]) return;
+      seen[el.id] = 1;
+      var text = String(el.innerText || el.textContent || "").replace(/\u00a0/g, " ").trim();
+      var lines = settingsDecoderPanelLines(text);
+      out.push({
+        id: el.id,
+        name: el.getAttribute("data-panel-name") || "",
+        visible: settingsDecoderPanelVisible(el),
+        lineCount: lines.length,
+        chars: text.length,
+        lines: lines.slice(-5),
+        typeLab: settingsDecoderTypeLabelForPanel(el.id)
+      });
+    }
+    try {
+      document.querySelectorAll(
+        "[id^='openwebrx-panel-'], #openwebrx-panel-digimodes, .openwebrx-message-panel"
+      ).forEach(push);
+    } catch (eQ) {}
+    try {
+      trafficLogPanels().forEach(function (p) {
+        var el = document.getElementById(p.panel);
+        if (el) push(el);
+      });
+    } catch (eT) {}
+    out.sort(function (a, b) {
+      if (a.visible !== b.visible) return a.visible ? -1 : 1;
+      return b.lineCount - a.lineCount || String(a.id).localeCompare(String(b.id));
+    });
+    return out;
+  }
+
+  function settingsDecoderRecentLogs(type, limit) {
+    var out = [];
+    for (var i = trafficLogRows.length - 1; i >= 0 && out.length < (limit || 3); i--) {
+      var r = trafficLogRows[i];
+      if (!r || !settingsDecoderRowMatches(type, r)) continue;
+      out.push(r);
+    }
+    return out;
+  }
+
+  function settingsDecoderLiveStackHtml() {
+    var mode = "";
+    var sec = "";
+    var digiCh = "";
+    try { mode = String(idCurrentMode() || ""); } catch (eM) {}
+    try {
+      var d = (typeof getDemodulators === "function" && getDemodulators()[0]) || null;
+      if (d && typeof d.get_secondary_demod === "function") sec = String(d.get_secondary_demod() || "");
+      else if (d && d.secondary_demod) sec = String(d.secondary_demod);
+    } catch (eS) {}
+    try {
+      var ch = $("openwebrx-digimode-select-channel");
+      if (ch) {
+        var w = ch.style && ch.style.width ? ch.style.width : "";
+        var op = ch.style && ch.style.opacity ? ch.style.opacity : "";
+        if (op && op !== "0" && w) digiCh = "PSK channel selector active";
+      }
+      var dm = $("openwebrx-digimode-content");
+      if (dm && settingsDecoderPanelVisible($("openwebrx-panel-digimodes"))) {
+        var dmLines = settingsDecoderPanelLines(dm.innerText || "");
+        if (dmLines.length) digiCh = (digiCh ? digiCh + " · " : "") + dmLines.length + " digi lines";
+      }
+    } catch (eD) {}
+    var metaLab = "";
+    var metaN = 0;
+    try {
+      if (idState && idState.meta) {
+        metaN = idState.meta.packets ? idState.meta.packets.length : 0;
+        if (idState.meta.last) {
+          var bits = [];
+          ["mode", "protocol", "callsign", "call", "flight", "icao", "mmsi", "tg", "talkgroup"].forEach(function (k) {
+            var v = idState.meta.last[k];
+            if (v != null && v !== "") bits.push(String(v));
+          });
+          if (bits.length) metaLab = bits.slice(0, 4).join(" · ");
+        }
+      }
+    } catch (eMeta) {}
+    var ingest = trafficLogPause ? "Paused" : "Running";
+    var primed = 0;
+    try { primed = Object.keys(trafficLogPanelPrimed || {}).length; } catch (eP) {}
+    return '<div class="bs-dash-dec-live">' +
+      '<div class="bs-dash-chip-grid">' +
+      settingsDashChip("Primary mode", mode ? "<b>" + escapeHtml(mode) + "</b>" : "—", "mint") +
+      settingsDashChip("Secondary demod", sec ? "<b>" + escapeHtml(sec) + "</b>" : "—", sec ? "violet" : "slate") +
+      settingsDashChip("Log ingest", "<b>" + escapeHtml(ingest) + "</b>", primed + " panels primed", trafficLogPause ? "amber" : "sky") +
+      settingsDashChip("Meta buffer", metaN ? "<b>" + metaN + "</b> pkt" : "—",
+        metaLab ? escapeHtml(metaLab.slice(0, 48)) : "Identify metadata", metaN ? "amber" : "slate") +
+      (digiCh ? settingsDashChip("Digimodes", escapeHtml(digiCh), "", "violet") : "") +
+      "</div></div>";
+  }
+
+  function settingsDecoderPanelsTableHtml(panels) {
+    if (!panels || !panels.length) {
+      return '<p class="bs-hint">No decoder panel elements on the page yet.</p>';
+    }
+    var openN = panels.filter(function (p) { return p.visible; }).length;
+    var tableHtml = '<table class="bs-dash-table bs-dash-table-compact bs-dash-dec-panels">' +
+      "<thead><tr><th>Panel</th><th>Type</th><th>Open</th><th>Lines</th><th>Preview</th></tr></thead><tbody>";
+    panels.forEach(function (p) {
+      var prev = p.lines.length ? p.lines[p.lines.length - 1] : "";
+      if (prev.length > 88) prev = prev.slice(0, 88) + "…";
+      tableHtml += "<tr class=\"" + (p.visible ? "bs-dash-dec-panel-on" : "") + "\">" +
+        '<td class="bs-dash-mono" title="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || p.id.replace(/^openwebrx-panel-/, "")) + "</td>" +
+        "<td>" + escapeHtml(p.typeLab) + "</td>" +
+        "<td>" + (p.visible ? "<b>yes</b>" : "—") + "</td>" +
+        '<td class="bs-dash-mono">' + p.lineCount + (p.chars ? " <span class=\"bs-hint\">(" + p.chars + "c)</span>" : "") + "</td>" +
+        "<td>" + (prev ? escapeHtml(prev) : '<span class="bs-hint">—</span>') + "</td></tr>";
+    });
+    tableHtml += "</tbody></table>";
+    var wrapInner = settingsDashScrollBox("dec-panels", panels.length,
+      '<div class="bs-dash-dec-panels-wrap">' + tableHtml + "</div>");
+    return '<h4 class="bs-dash-subhead">OpenWebRX decoder panels · <b>' + openN + "</b> open / " +
+      panels.length + " total</h4>" + wrapInner;
+  }
+
+  var SETTINGS_DECODER_TYPES = [
+    { id: "ft8", label: "FT8 / FT4 / WSPR", panelRe: /wsjt-message/i,
+      logRe: /^(FT8|WSJT|FT4|WSPR)$/i, textRe: /\b(FT8|FT4|WSPR|~)\b/i },
+    { id: "js8", label: "JS8", panelRe: /js8-message/i, logRe: /^JS8$/i, textRe: /\bJS8\b/i },
+    { id: "psk", label: "PSK / RTTY / Olivia", panelRe: /digimodes/i,
+      logRe: /^(PSK|PSK31|RTTY|OLIVIA|DIGI|BPSK|QPSK)$/i, textRe: /\b(PSK31|PSK63|RTTY|OLIVIA|BPSK|QPSK|FEC|VARA)\b/i },
+    { id: "packet", label: "APRS / Packet", panelRe: /packet-message/i, logRe: /^(APRS|PACKET)$/i, textRe: /\b(APRS|UNPROTO|AX\.25)\b/i },
+    { id: "cw", label: "CW / Skimmer", panelRe: /skimmer-message/i, logRe: /^(CW)$/i, textRe: /\b(CW|SKIMMER)\b/i },
+    { id: "hfdl", label: "HFDL", panelRe: /hfdl-message/i, logRe: /^HFDL$/i, textRe: /\bHFDL\b/i },
+    { id: "vdl", label: "VDL2", panelRe: /vdl2-message/i, logRe: /^VDL2$/i, textRe: /\bVDL\b/i },
+    { id: "acars", label: "ACARS", panelRe: /acars-message/i, logRe: /^ACARS$/i, textRe: /\bACARS\b/i },
+    { id: "adsb", label: "ADS-B", panelRe: /adsb-message/i, logRe: /^(ADS-?B)$/i, textRe: /\b(ADS-?B|ICAO|SQWK)\b/i },
+    { id: "ais", label: "AIS", panelRe: /ais-message/i, logRe: /^AIS$/i, textRe: /\b(AIS|MMSI|VDM)\b/i },
+    { id: "ism", label: "ISM / misc", panelRe: /ism-message/i, logRe: /^ISM$/i, textRe: /\bISM\b/i },
+    { id: "page", label: "POCSAG / Pager", panelRe: /(pocsag|page)-message/i, logRe: /^(PAGE|POCSAG)$/i, textRe: /\b(POCSAG|PAGER)\b/i },
+    { id: "dsc", label: "DSC (marine)", panelRe: /dsc-message/i, logRe: /^DSC$/i, textRe: /\bDSC\b/i },
+    { id: "sstv", label: "SSTV / Fax / Image", panelRe: /(sstv|fax)-message/i, logRe: /^(IMAGE|SSTV|FAX)$/i, textRe: /\b(SSTV|FAX|WEFAX)\b/i },
+    { id: "dmr", label: "DMR / D-Star / YSF / NXDN", panelRe: null,
+      logRe: /^(DMR|D-STAR|YSF|NXDN|META)$/i, textRe: /\b(TG|talkgroup|DMR|D-STAR|YSF|NXDN|CapCode)\b/i },
+    { id: "meta", label: "Decoder meta / RDS", panelRe: null, logRe: null, textRe: null, kind: "meta" },
+    { id: "id", label: "Identify guesses", panelRe: null, logRe: null, textRe: null, kind: "id" },
+    { id: "voice", label: "Voice / scan notes", panelRe: null, logRe: null, textRe: null, kinds: ["scan", "note", "busy", "peak"] }
+  ];
+
+  function settingsDecoderBlob(row) {
+    if (!row) return "";
+    return (String(row.badge || "") + " " + String(row.title || "") + " " +
+      String(row.detail || "") + " " + String(row.mode || "") + " " + String(row.kind || "")).toUpperCase();
+  }
+
+  function settingsDecoderRowMatches(type, row) {
+    if (!row) return false;
+    if (type.kind && row.kind === type.kind) return true;
+    if (type.kinds && type.kinds.indexOf(row.kind) >= 0) return true;
+    var blob = settingsDecoderBlob(row);
+    if (type.logRe && type.logRe.test(String(row.badge || "").trim())) return true;
+    if (type.textRe && type.textRe.test(blob)) return true;
+    return false;
+  }
+
+  function settingsDecoderPanelForType(type, panelMap) {
+    var keys = Object.keys(panelMap || {});
+    var hit = null;
+    keys.forEach(function (pid) {
+      if (type.panelRe && type.panelRe.test(pid)) hit = panelMap[pid];
+    });
+    return hit;
+  }
+
+  function settingsDecoderPreview(text, max) {
+    text = String(text || "").replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    var line = text.split(/\n/).filter(function (ln) {
+      return ln.trim().length > 5 && !/^(loading|waiting|no data)/i.test(ln.trim());
+    })[0] || text;
+    line = line.trim();
+    if (line.length > (max || 72)) line = line.slice(0, max || 72) + "…";
+    return line;
+  }
+
+  function settingsDecoderReportRender(d) {
+    var el = $("bs-settings-decoders-body");
+    if (!el) return;
+    d = d || null;
+    var panelMap = {};
+    try {
+      trafficLogPanels().forEach(function (p) { panelMap[p.panel] = p; });
+    } catch (eP) {}
+    var day0 = new Date();
+    day0.setHours(0, 0, 0, 0);
+    var t0 = day0.getTime();
+    var recentCut = Date.now() - 5 * 60 * 1000;
+    var rows = [];
+    var allIpMap = {};
+    SETTINGS_DECODER_TYPES.forEach(function (type) {
+      var today = 0;
+      var session = 0;
+      var recent5 = 0;
+      var lastAt = 0;
+      var lastLine = "";
+      var lastHz = 0;
+      var ipMap = {};
+      var callMap = {};
+      var textBlob = "";
+      trafficLogRows.forEach(function (r) {
+        if (!settingsDecoderRowMatches(type, r)) return;
+        session++;
+        if ((r.at || 0) >= t0) today++;
+        if ((r.at || 0) >= recentCut) recent5++;
+        var line = String(r.title || "") + " " + String(r.detail || "");
+        textBlob += line + "\n";
+        settingsDecoderCountIps(line, ipMap);
+        settingsDecoderCountIps(line, allIpMap);
+        lookupCallList(line).forEach(function (c) { callMap[c] = (callMap[c] || 0) + 1; });
+        if ((r.at || 0) >= lastAt) {
+          lastAt = r.at || 0;
+          lastLine = String(r.title || r.detail || "").trim();
+          lastHz = r.freqHz || 0;
+        }
+      });
+      var panel = settingsDecoderPanelForType(type, panelMap);
+      var panelLineCount = 0;
+      if (panel && panel.text) panelLineCount = settingsDecoderPanelLines(panel.text).length;
+      var panelLive = !!(panel && (panelLineCount > 0 || String(panel.text || "").trim().length > 12));
+      var panelPreview = panelLive ? settingsDecoderPreview(panel.text) : "";
+      var recentLogs = settingsDecoderRecentLogs(type, 3);
+      if (panel && panel.text) {
+        settingsDecoderCountIps(panel.text, ipMap);
+        settingsDecoderCountIps(panel.text, allIpMap);
+        textBlob += panel.text + "\n";
+        lookupCallList(panel.text).forEach(function (c) { callMap[c] = (callMap[c] || 0) + 1; });
+      }
+      var topIps = settingsDecoderTopKeys(ipMap, 4);
+      var topCalls = settingsDecoderTopKeys(callMap, 3);
+      var entityHint = settingsDecoderEntityHints(type.id, textBlob);
+      var state = "idle";
+      if (panelLive && (today > 0 || session > 0)) state = "live";
+      else if (panelLive) state = "panel";
+      else if (today > 0 || session > 0) state = "log";
+      rows.push({
+        type: type,
+        today: today,
+        session: session,
+        recent5: recent5,
+        lastAt: lastAt,
+        lastLine: lastLine,
+        lastHz: lastHz,
+        ipMap: ipMap,
+        topIps: topIps,
+        topCalls: topCalls,
+        entityHint: entityHint,
+        panelLive: panelLive,
+        panelId: panel ? panel.panel : "",
+        panelPreview: panelPreview,
+        panelLineCount: panelLineCount,
+        recentLogs: recentLogs,
+        callCount: Object.keys(callMap).length,
+        state: state
+      });
+    });
+    var panelInventory = settingsDecoderCollectPanels();
+    var activeN = rows.filter(function (r) { return r.state !== "idle"; }).length;
+    var listeners = settingsListenersMerged(d);
+    var listenIps = listeners.map(function (x) { return x.ip; }).filter(Boolean);
+    var recvIps = [];
+    try {
+      var rf = d && d.remoteFull;
+      if (rf && rf.ips && rf.ips.length) {
+        rf.ips.forEach(function (x) { if (x && x.addr) recvIps.push(x.addr); });
+      }
+    } catch (eRip) {}
+    var allReportIps = settingsDecoderTopKeys(allIpMap, 8);
+    var html = '<div class="bs-dash-decoder-summary">' +
+      "<span><b>" + activeN + "</b> of " + rows.length + " decoder channels active (panel and/or Log)</span>" +
+      '<span class="bs-hint">OpenWebRX panels → Toolbox Log ingest (same as the Log tab).</span></div>' +
+      settingsDecoderLiveStackHtml() +
+      settingsDecoderPanelsTableHtml(panelInventory);
+    if (recvIps.length || listenIps.length || allReportIps.length) {
+      html += '<div class="bs-dash-decoder-net">';
+      if (recvIps.length) {
+        html += '<div class="bs-dash-decoder-net-row"><span class="bs-dash-decoder-net-lab">Receiver</span>' +
+          '<div class="bs-dash-dec-ip-list">' +
+          recvIps.map(function (ip) {
+            return '<span class="bs-dash-dec-ip bs-dash-dec-ip-host" title="LAN address on hoststats">' +
+              escapeHtml(ip) + "</span>";
+          }).join("") + "</div></div>";
+      }
+      if (listenIps.length) {
+        html += '<div class="bs-dash-decoder-net-row"><span class="bs-dash-decoder-net-lab">Listeners</span>' +
+          '<div class="bs-dash-dec-ip-list">' +
+          listenIps.slice(0, 12).map(function (ip) {
+            var row = listeners.filter(function (x) { return x.ip === ip; })[0];
+            var tip = row ? (row.name || row.profile || row.since || "") : "";
+            return '<span class="bs-dash-dec-ip bs-dash-dec-ip-peer"' +
+              (tip ? ' title="' + escapeHtml(tip) + '"' : "") + ">" + escapeHtml(ip) + "</span>";
+          }).join("") +
+          (listenIps.length > 12 ? '<span class="bs-hint">+' + (listenIps.length - 12) + " more</span>" : "") +
+          "</div></div>";
+      }
+      if (allReportIps.length) {
+        html += '<div class="bs-dash-decoder-net-row"><span class="bs-dash-decoder-net-lab">IPs in reports</span>' +
+          '<div class="bs-dash-dec-ip-list">' +
+          settingsDecoderFormatIpChips(allReportIps, allIpMap) +
+          "</div></div>";
+      }
+      html += "</div>";
+    }
+    html += '<div class="bs-dash-decoder-grid">';
+    rows.forEach(function (r) {
+      var when = r.lastAt ? new Date(r.lastAt).toLocaleTimeString() : "—";
+      var mhz = r.lastHz > 0 ? fmtMhz(r.lastHz) : "—";
+      var stateLab = r.state === "live" ? "Live + Log" : r.state === "panel" ? "Panel open" :
+        r.state === "log" ? "Log only" : "Idle";
+      var stateCls = r.state === "idle" ? "bs-dash-dec-off" : "bs-dash-dec-on";
+      html += '<article class="bs-dash-dec-card ' + stateCls + '">' +
+        '<header class="bs-dash-dec-head">' +
+        '<span class="bs-dash-dec-dot" title="' + escapeHtml(stateLab) + '"></span>' +
+        "<b>" + escapeHtml(r.type.label) + "</b>" +
+        '<span class="bs-dash-dec-state">' + escapeHtml(stateLab) + "</span></header>" +
+        '<div class="bs-dash-dec-stats">' +
+        '<span>Today <b>' + r.today + "</b></span>" +
+        '<span>Session <b>' + r.session + "</b></span>" +
+        '<span>5 min <b>' + r.recent5 + "</b></span>" +
+        '<span>Last <b>' + escapeHtml(when) + "</b></span>" +
+        '<span>MHz <b class="bs-dash-mono">' + escapeHtml(mhz) + "</b></span>" +
+        (r.panelLineCount ? '<span>Panel <b>' + r.panelLineCount + "</b> ln</span>" : "") +
+        (r.callCount ? '<span>Calls <b>' + r.callCount + "</b></span>" : "") +
+        "</div>";
+      if (r.panelId) {
+        html += '<p class="bs-dash-dec-panel-id"><span>DOM</span> <code class="bs-dash-mono">' +
+          escapeHtml(r.panelId) + "</code></p>";
+      }
+      if (r.topIps.length) {
+        html += '<p class="bs-dash-dec-ips"><span>IPs</span> ' +
+          settingsDecoderFormatIpChips(r.topIps, r.ipMap) + "</p>";
+      }
+      if (r.topCalls.length) {
+        html += '<p class="bs-dash-dec-calls"><span>Calls</span> ' +
+          r.topCalls.map(function (c) {
+            return "<b>" + escapeHtml(c) + "</b>";
+          }).join(" · ") + "</p>";
+      }
+      if (r.entityHint) {
+        html += '<p class="bs-dash-dec-entity"><span>IDs</span> ' + escapeHtml(r.entityHint) + "</p>";
+      }
+      if (r.panelPreview) {
+        html += '<p class="bs-dash-dec-panel" title="' + escapeHtml(r.panelId) + '"><span>Panel</span> ' +
+          escapeHtml(r.panelPreview) + "</p>";
+      } else if (r.panelId && r.state !== "idle") {
+        html += '<p class="bs-dash-dec-panel bs-dash-dec-muted"><span>Panel</span> open, no text yet</p>';
+      }
+      if (r.recentLogs && r.recentLogs.length) {
+        var recentInner = "";
+        r.recentLogs.forEach(function (lg) {
+          var t = new Date(lg.at || 0).toLocaleTimeString();
+          var m = lg.freqHz > 0 ? fmtMhz(lg.freqHz) + " · " : "";
+          recentInner += "<li><span class=\"bs-dash-mono\">" + escapeHtml(t) + "</span> " + escapeHtml(m) +
+            escapeHtml(String(lg.title || lg.detail || "").slice(0, 72)) + "</li>";
+        });
+        html += settingsDashScrollBox("dec-recent-" + r.type.id, r.recentLogs.length,
+          '<ul class="bs-dash-dec-recent">' + recentInner + "</ul>");
+      } else if (r.lastLine) {
+        html += '<p class="bs-dash-dec-log"><span>Log</span> ' + escapeHtml(r.lastLine.slice(0, 90)) + "</p>";
+      } else if (r.state === "idle") {
+        html += '<p class="bs-dash-dec-log bs-dash-dec-muted"><span>Log</span> —</p>';
+      }
+      html += "</article>";
+    });
+    html += "</div>" +
+      '<p class="bs-hint bs-dash-foot">PSK/RTTY/Olivia use the <b>Digimodes</b> panel. <b>IPs in reports</b> are parsed from decoder text (packet, pager, ACARS, …). <b>Listeners</b> are who is connected to this receiver (same data as Listeners &amp; IPs). DMR/TG lines are <b>meta</b> in Log.</p>';
+    toolboxDashSetHtml(el, html);
+  }
+
+  var SETTINGS_NERD_OWRX_GLOBALS = [
+    "center_freq", "bandwidth", "mute", "smeter_level", "squelch", "step", "tuning_step",
+    "waterfall_setup_done", "canvasWidth", "winsize", "fft_size", "if_samp_rate", "shown_bw",
+    "zoom_level", "zoom_offset_px", "zoom_center_rel", "zoom_center_where", "zoom_ratio",
+    "secondary_demod_low_cut", "secondary_demod_high_cut", "secondary_demod_channel_freq",
+    "secondary_fft_size", "secondary_demod_waiting_for_set", "audio_compression",
+    "audio_buffer_maximal_length_sec", "currentprofile", "ws_url", "volumeBeforeMute",
+    "marker_hz", "tuning_step_default", "canvas_default_height"
+  ];
+
+  function settingsNerdPageGlobal(name) {
+    try {
+      return new Function("try { return " + name + "; } catch(e) { return undefined; }")();
+    } catch (e) { return undefined; }
+  }
+
+  function settingsNerdFmtVal(v) {
+    if (v === undefined) return "—";
+    if (v === null) return "null";
+    if (typeof v === "number" && !isFinite(v)) return String(v);
+    if (typeof v === "number" && Math.abs(v) > 1e6 && Math.abs(v) < 1e12) {
+      return v + " (" + (v / 1e6).toFixed(6) + " MHz)";
+    }
+    if (typeof v === "boolean" || typeof v === "number") return String(v);
+    if (typeof v === "string") return v.length > 120 ? v.slice(0, 120) + "…" : v;
+    try { return JSON.stringify(v).slice(0, 140); } catch (e) { return String(v); }
+  }
+
+  function settingsNerdKvTable(map, scrollKey) {
+    var keys = Object.keys(map || {}).sort();
+    if (!keys.length) return '<p class="bs-hint">—</p>';
+    var html = '<table class="bs-dash-table bs-dash-table-compact bs-dash-nerd-kv"><tbody>';
+    keys.forEach(function (k) {
+      html += "<tr><th>" + escapeHtml(k) + "</th><td class=\"bs-dash-mono\">" +
+        escapeHtml(settingsNerdFmtVal(map[k])) + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    return settingsDashScrollBox(scrollKey || "nerd-kv", keys.length, html);
+  }
+
+  function settingsNerdDemodDeep() {
+    var out = {};
+    try {
+      var list = typeof getDemodulators === "function" ? getDemodulators() : [];
+      out.demodulator_count = list ? list.length : 0;
+      var d = list && list[0];
+      if (d) {
+        ["modulation", "low_cut", "high_cut", "squelch", "secondary_demod", "deemphasis"].forEach(function (k) {
+          if (d[k] != null) out["demod." + k] = d[k];
+        });
+        if (typeof d.get_secondary_demod === "function") {
+          try { out["demod.get_secondary_demod()"] = d.get_secondary_demod(); } catch (eS) {}
+        }
+        if (typeof d.get_modulation === "function") {
+          try { out["demod.get_modulation()"] = d.get_modulation(); } catch (eM) {}
+        }
+      }
+    } catch (e) {}
+    try {
+      var p = window.UI && UI.getDemodulatorPanel && UI.getDemodulatorPanel();
+      if (p && typeof p.getMagicKey === "function") out.panel_magic_key = p.getMagicKey();
+    } catch (eP) {}
+    try {
+      var idp = settingsNerdPageGlobal("initial_demodulator_params");
+      if (idp && typeof idp === "object") {
+        Object.keys(idp).slice(0, 12).forEach(function (k) { out["init." + k] = idp[k]; });
+      }
+    } catch (eI) {}
+    return out;
+  }
+
+  function settingsNerdLogStats() {
+    var byKind = {};
+    var pinned = 0;
+    trafficLogRows.forEach(function (r) {
+      if (!r) return;
+      var k = r.kind || "?";
+      byKind[k] = (byKind[k] || 0) + 1;
+      if (r.pinned) pinned++;
+    });
+    return {
+      rows: trafficLogRows.length,
+      pinned: pinned,
+      pause: !!trafficLogPause,
+      panel_primed: Object.keys(trafficLogPanelPrimed || {}).length,
+      dedupe_seen: Object.keys(trafficLogSeen || {}).length,
+      line_seen: Object.keys(trafficLogLineSeen || {}).length,
+      by_kind: byKind
+    };
+  }
+
+  function settingsNerdToolboxBuffers() {
+    var audioB = 0;
+    var audioN = 0;
+    try { audioB = totalAudioBytes(); audioN = audioClips.length; } catch (eA) {}
+    return {
+      traffic_log_rows: trafficLogRows.length,
+      peaks_hits: hits ? hits.length : 0,
+      qso_rows: qsoRows ? qsoRows.length : 0,
+      watch_rules: sigWatchRules ? sigWatchRules.length : 0,
+      memory_digital: memoryDigitalRows.length,
+      memory_trace: memoryTraceSamples.length,
+      memory_markers: memoryMarkers ? memoryMarkers.length : 0,
+      audio_clips: audioN,
+      audio_bytes: audioB,
+      loaded_bookmarks: loadedBookmarks ? loadedBookmarks.length : 0,
+      survey_running: !!(surveyRunning || running)
+    };
+  }
+
+  function settingsNerdStatusSlim(st) {
+    if (!st || typeof st !== "object") return null;
+    return {
+      version: st.version,
+      max_clients: st.max_clients,
+      receiver: st.receiver,
+      sdrs: (st.sdrs || []).map(function (s) {
+        return {
+          name: s.name,
+          type: s.type,
+          profile_count: (s.profiles || []).length,
+          profiles_sample: (s.profiles || []).slice(0, 3).map(function (p) {
+            return { name: p.name, center_freq: p.center_freq, sample_rate: p.sample_rate };
+          })
+        };
+      })
+    };
+  }
+
+  function settingsNerdHostSlim(remote) {
+    if (!remote || typeof remote !== "object") return null;
+    var o = {};
+    ["at_iso", "hostname", "platform", "machine", "kernel", "python", "uptime_sec", "load",
+      "mem_total_mb", "mem_avail_mb", "mem_used_mb", "swap_used_mb", "toolbox_version", "toolbox_on_disk_kb"].forEach(function (k) {
+      if (remote[k] != null) o[k] = remote[k];
+    });
+    if (remote.cpu) o.cpu = remote.cpu;
+    if (remote.disk) o.disk = remote.disk;
+    if (remote.owrx) o.owrx = remote.owrx;
+    if (remote.ws_peers) o.ws_peers = remote.ws_peers;
+    if (remote.ips) o.ips = remote.ips;
+    return o;
+  }
+
+  function settingsNerdWsDeep() {
+    var w = readOwrxWsInfo();
+    var sock = null;
+    try {
+      if (typeof ws !== "undefined" && ws) sock = ws;
+      else if (window.ws) sock = window.ws;
+    } catch (e) {}
+    if (!sock) {
+      try { sock = settingsNerdPageGlobal("ws"); } catch (e2) {}
+    }
+    if (sock) {
+      try {
+        w.readyState = sock.readyState;
+        w.bufferedAmount = sock.bufferedAmount;
+        w.protocol = sock.protocol || w.protocol;
+        w.extensions = sock.extensions || "";
+        w.binaryType = sock.binaryType || "";
+      } catch (e3) {}
+    }
+    try { w.ws_url_global = settingsNerdPageGlobal("ws_url"); } catch (eU) {}
+    return w;
+  }
+
+  function settingsNerdNetInfo() {
+    var o = {};
+    try {
+      var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (c) {
+        ["effectiveType", "downlink", "rtt", "saveData", "type"].forEach(function (k) {
+          if (c[k] != null) o[k] = c[k];
+        });
+      }
+    } catch (e) {}
+    o.on_line = navigator.onLine;
+    o.visibility = document.visibilityState || "";
+    return o;
+  }
+
+  function settingsNerdPerfInfo(d) {
+    var o = {
+      toolbox_version: Plugins.toolbox._version,
+      page: location.pathname + location.search,
+      hash: (location.hash || "").slice(0, 80)
+    };
+    try {
+      if (performance.memory) {
+        o.js_heap_used = performance.memory.usedJSHeapSize;
+        o.js_heap_total = performance.memory.totalJSHeapSize;
+        o.js_heap_limit = performance.memory.jsHeapSizeLimit;
+      }
+    } catch (eM) {}
+    o.toolbox_xfer = d && d.tbXfer ? d.tbXfer : toolboxTransferBytes();
+    var res = [];
+    try {
+      performance.getEntriesByType("resource").forEach(function (e) {
+        if (!e || !e.name) return;
+        if (!/openwebrx|toolbox|ws|status\.json|hoststats/i.test(e.name)) return;
+        res.push({
+          name: e.name.replace(/^https?:\/\/[^/]+/, "").slice(0, 90),
+          dur_ms: Math.round(e.duration),
+          xfer: e.transferSize || 0
+        });
+      });
+    } catch (eR) {}
+    o.resources = res.slice(-16);
+    return o;
+  }
+
+  function settingsNerdOwrxGlobals() {
+    var map = {};
+    SETTINGS_NERD_OWRX_GLOBALS.forEach(function (k) {
+      var v = settingsNerdPageGlobal(k);
+      if (v !== undefined) map[k] = v;
+    });
+    try {
+      var wf = settingsNerdPageGlobal("wf_data");
+      if (wf && wf.length) map.wf_data_points = wf.length;
+    } catch (eW) {}
+    try {
+      var canv = settingsNerdPageGlobal("canvases");
+      if (canv && canv.length) map.waterfall_canvases = canv.length;
+    } catch (eC) {}
+    return map;
+  }
+
+  function settingsNerdMetaPackets() {
+    try {
+      if (!idState || !idState.meta) return { packets: 0, last: null, recent: [] };
+      var pk = idState.meta.packets || [];
+      return {
+        packets: pk.length,
+        last: idState.meta.last || null,
+        recent: pk.slice(-5)
+      };
+    } catch (e) { return { packets: 0, last: null, recent: [] }; }
+  }
+
+  function settingsNerdPanelDumps() {
+    return settingsDecoderCollectPanels().filter(function (p) {
+      return p.visible || p.lineCount > 0;
+    }).map(function (p) {
+      return {
+        id: p.id,
+        name: p.name,
+        lines: p.lines.slice(-14)
+      };
+    });
+  }
+
+  function settingsNerdBuildSnapshot(d) {
+    d = d || {};
+    return {
+      at: new Date().toISOString(),
+      toolbox: Plugins.toolbox._version,
+      status_slim: settingsNerdStatusSlim(d.status),
+      hoststats_slim: settingsNerdHostSlim(d.remoteFull),
+      owrx_globals: settingsNerdOwrxGlobals(),
+      demod: settingsNerdDemodDeep(),
+      websocket: settingsNerdWsDeep(),
+      network: settingsNerdNetInfo(),
+      perf: settingsNerdPerfInfo(d),
+      log: settingsNerdLogStats(),
+      toolbox_buffers: settingsNerdToolboxBuffers(),
+      meta: settingsNerdMetaPackets(),
+      decoder_panels: settingsNerdPanelDumps(),
+      footer_bars: settingsOwrxBarSnapshot(),
+      tune_hz: (function () {
+        try { return Math.round(Number(currentTuneHz()) || 0); } catch (e) { return 0; }
+      })(),
+      clients_bar: d.clients,
+      status_fetched_at: d.stAt ? new Date(d.stAt).toISOString() : null,
+      hoststats_fetched_at: d.remoteAt ? new Date(d.remoteAt).toISOString() : null
+    };
+  }
+
+  function settingsNerdPre(text, scrollKey) {
+    text = String(text || "");
+    if (text.length > 12000) text = text.slice(0, 12000) + "\n… truncated";
+    var n = settingsDashLineCount(text);
+    var cls = "bs-dash-nerd-pre";
+    var attrs = "";
+    if (n > SETTINGS_DASH_SCROLL_LINES) {
+      cls += " bs-dash-scroll-20";
+      if (scrollKey) attrs = ' data-scroll-key="' + escapeHtml(scrollKey) + '"';
+    }
+    return "<pre class=\"" + cls + "\"" + attrs + ">" + escapeHtml(text) + "</pre>";
+  }
+
+  function settingsSystemBuildExport(d) {
+    d = d || settingsHostStatsLastD || null;
+    if (!d) {
+      try { d = settingsHostStatsShared(); } catch (e) { d = {}; }
+    }
+    var logRows = [];
+    try {
+      logRows = trafficLogRows.slice(-400).map(function (r) {
+        if (!r) return null;
+        return {
+          at: r.at,
+          kind: r.kind,
+          badge: r.badge,
+          title: r.title,
+          detail: r.detail,
+          freqHz: r.freqHz,
+          mode: r.mode,
+          pinned: !!r.pinned
+        };
+      }).filter(Boolean);
+    } catch (eL) {}
+    var qso = [];
+    try { qso = (qsoRows || []).slice(); } catch (eQ) {}
+    return {
+      kind: "owrx-toolbox-system-export",
+      exported_at: new Date().toISOString(),
+      toolbox_version: Plugins.toolbox._version,
+      page_url: location.href,
+      user_agent: navigator.userAgent || "",
+      nerd: settingsNerdBuildSnapshot(d),
+      listeners: settingsListenersMerged(d),
+      owrx_clients_admin: d.owrxClients || [],
+      tune_trail: settingsTuneHist.slice(),
+      session_started_at: S.sessionStartedAt || null,
+      traffic_log: logRows,
+      decoder_archive: decoderArchiveRows.slice(-1200).map(function (r) {
+        if (!r) return null;
+        return {
+          at: r.at,
+          decoderMode: r.decoderMode,
+          badge: r.badge,
+          kind: r.kind,
+          title: r.title,
+          detail: r.detail,
+          freqHz: r.freqHz,
+          mode: r.mode,
+          call: r.call,
+          grid: r.grid
+        };
+      }).filter(Boolean),
+      qso_pad: qso,
+      decoder_panels: settingsDecoderCollectPanels()
+    };
+  }
+
+  function settingsSystemExportData() {
+    var d = settingsHostStatsLastD;
+    try {
+      if (!d) d = settingsHostStatsShared();
+    } catch (e) {}
+    var payload = settingsSystemBuildExport(d);
+    var text = "";
+    try {
+      text = JSON.stringify(payload, null, 2);
+      settingsSystemLastExportJson = text;
+    } catch (eJ) {
+      setStatus("Could not build export JSON.");
+      return;
+    }
+    try {
+      downloadFile("toolbox-system-export-" + Date.now() + ".json", text, "application/json");
+      setStatus("System data exported (" + Math.round(text.length / 1024) + " KB).");
+    } catch (eD) {
+      setStatus("Export download failed.");
+    }
+  }
+
+  function settingsSystemWireExportButtons() {
+    try {
+      Array.prototype.forEach.call(document.querySelectorAll(".bs-settings-export-data"), function (btn) {
+        if (!btn || btn._bsExportWired) return;
+        btn._bsExportWired = true;
+        btn.onclick = function () { settingsSystemExportData(); };
+      });
+    } catch (e) {}
+  }
+
+  function settingsNerdCopyDump() {
+    var text = settingsNerdLastJson || "{}";
+    function ok() { try { setStatus("Nerd JSON copied — paste into notes or a gist."); } catch (e) {} }
+    function fail() {
+      try { prompt("Copy nerd dump:", text); } catch (e) {}
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else fail();
+  }
+
+  function settingsNerdRender(d) {
+    var el = $("bs-settings-nerd-body");
+    if (!el) return;
+    var snap = settingsNerdBuildSnapshot(d);
+    try {
+      settingsNerdLastJson = JSON.stringify(snap, null, 2);
+      settingsSystemLastExportJson = JSON.stringify(settingsSystemBuildExport(d), null, 2);
+    } catch (eJ) {
+      settingsNerdLastJson = "{}";
+      settingsSystemLastExportJson = "{}";
+    }
+    var meta = settingsNerdMetaPackets();
+    var html =
+      '<div class="bs-dash-nerd-toolbar">' +
+      '<button type="button" class="bs-btn-util bs-settings-export-data" title="Download full system export JSON.">Export data</button>' +
+      '<button type="button" class="bs-btn-util bs-tiny" id="bs-settings-nerd-copy">Copy nerd JSON</button>' +
+      '<button type="button" class="bs-btn-util bs-tiny" id="bs-settings-export-copy" title="Copy full system export to clipboard.">Copy export</button>' +
+      '<button type="button" class="bs-btn-util bs-tiny" id="bs-settings-nerd-dl">Nerd JSON only</button>' +
+      '<span class="bs-hint">Export data = listeners + log + QSO + nerd snapshot. Refreshes ~2s while System is open.</span>' +
+      "</div>" +
+      '<div class="bs-dash-nerd-grid">' +
+      '<section class="bs-dash-nerd-section"><h5>RF · waterfall globals</h5>' +
+      settingsNerdKvTable(snap.owrx_globals, "nerd-owrx-globals") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Demodulator / digi</h5>' +
+      settingsNerdKvTable(snap.demod, "nerd-demod") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>WebSocket</h5>' +
+      settingsNerdKvTable(snap.websocket, "nerd-ws") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Network · browser</h5>' +
+      settingsNerdKvTable(snap.network, "nerd-net") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Perf · resources</h5>' +
+      settingsNerdKvTable({
+        js_heap_used: snap.perf.js_heap_used,
+        js_heap_total: snap.perf.js_heap_total,
+        js_heap_limit: snap.perf.js_heap_limit,
+        toolbox_xfer: snap.perf.toolbox_xfer
+      }, "nerd-perf-kv") +
+      (snap.perf.resources && snap.perf.resources.length
+        ? settingsNerdPre(JSON.stringify(snap.perf.resources, null, 2), "nerd-perf-res") : "") +
+      "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Toolbox log pipeline</h5>' +
+      settingsNerdPre(JSON.stringify(snap.log, null, 2), "nerd-log") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Toolbox buffers</h5>' +
+      settingsNerdKvTable(snap.toolbox_buffers, "nerd-buffers") + "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>status.json (slim)</h5>' +
+      settingsNerdPre(JSON.stringify(snap.status_slim, null, 2), "nerd-status") + "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>hoststats.json (slim)</h5>' +
+      settingsNerdPre(JSON.stringify(snap.hoststats_slim, null, 2), "nerd-hoststats") + "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>Identify · meta packets</h5>' +
+      settingsNerdPre(JSON.stringify(meta, null, 2), "nerd-meta") + "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>Decoder panel text (open / non-empty)</h5>';
+    if (snap.decoder_panels && snap.decoder_panels.length) {
+      snap.decoder_panels.forEach(function (p) {
+        html += '<p class="bs-dash-nerd-panel-id"><code>' + escapeHtml(p.id) + "</code></p>" +
+          settingsNerdPre(p.lines.join("\n"), "nerd-panel-" + p.id);
+      });
+    } else {
+      html += '<p class="bs-hint">No panel text yet — open decoder windows on the main page.</p>';
+    }
+    html += "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>Full nerd JSON</h5>' +
+      settingsNerdPre(settingsNerdLastJson, "nerd-full-json") +
+      "</section></div>";
+    toolboxDashSetHtml(el, html);
+    var copyBtn = $("bs-settings-nerd-copy");
+    if (copyBtn) copyBtn.onclick = settingsNerdCopyDump;
+    var dlBtn = $("bs-settings-nerd-dl");
+    if (dlBtn) {
+      dlBtn.onclick = function () {
+        try {
+          downloadFile("toolbox-nerd-" + Date.now() + ".json", settingsNerdLastJson, "application/json");
+          setStatus("Nerd-only JSON downloaded.");
+        } catch (e) {
+          setStatus("Download failed.");
+        }
+      };
+    }
+    var expCopy = $("bs-settings-export-copy");
+    if (expCopy) {
+      expCopy.onclick = function () {
+        var text = settingsSystemLastExportJson;
+        try {
+          if (!text || text === "{}") text = JSON.stringify(settingsSystemBuildExport(d), null, 2);
+        } catch (eB) { text = "{}"; }
+        function ok() { setStatus("System export copied to clipboard."); }
+        function fail() { try { prompt("Copy export:", text); } catch (e) {} }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(ok).catch(fail);
+        } else fail();
+      };
+    }
+    settingsSystemWireExportButtons();
+  }
+
+  function settingsConnStatsRender(d) {
+    var el = $("bs-settings-conn-body");
+    if (!el || !d) return;
+    var wsShort = d.ws.url ? d.ws.url.replace(/^wss?:\/\//, "") : (location.host + "/ws/");
+    var httpOrigin = location.origin || (location.protocol + "//" + location.host);
+    var tbUrl = "";
+    try { tbUrl = toolboxAssetUrl("toolbox.js").replace(/^https?:\/\/[^/]+/, ""); } catch (eT) {}
+    var netSpark = settingsHostSparkHtml(settingsHostNetHist, "sky");
+    var audSpark = settingsHostSparkHtml(settingsHostAudioHist, "violet");
+    var netPct = d.netKbps != null ? Math.min(100, Math.round((d.netKbps / 2000) * 100)) : 0;
+    var audPct = d.audKbps != null ? Math.min(100, Math.round((d.audKbps / 500) * 100)) : 0;
+    var cliPct = d.maxCli > 0 ? Math.min(100, Math.round((d.clients / d.maxCli) * 100)) : 0;
+    el.innerHTML =
+      '<div class="bs-dash-conn-board">' +
+      '<div class="bs-dash-conn-flow">' +
+      '<div class="bs-dash-node bs-dash-node-you">' +
+      '<span class="bs-dash-node-tag">You</span>' +
+      "<b>Browser tab</b>" +
+      settingsHostConnPill(true, browserPlatformLine().split(" · ")[0]) +
+      "</div>" +
+      '<div class="bs-dash-link bs-dash-link-down' + (d.ws.ok ? " bs-dash-link-live" : "") + '" title="OpenWebRX → browser (audio, waterfall, decoder text)">' +
+      '<span class="bs-dash-link-arrow">↓</span>' +
+      '<span class="bs-dash-link-title">From OpenWebRX</span>' +
+      '<span class="bs-dash-link-sub">' + escapeHtml(d.audTxt || "Audio stream") + "</span>" +
+      audSpark +
+      "</div>" +
+      '<div class="bs-dash-link bs-dash-link-up' + (d.ws.ok ? " bs-dash-link-live" : "") + '" title="Browser → OpenWebRX (tune, mode, profile)">' +
+      '<span class="bs-dash-link-arrow">↑</span>' +
+      '<span class="bs-dash-link-title">To OpenWebRX</span>' +
+      '<span class="bs-dash-link-sub">Tune · profile · mode (WebSocket)</span>' +
+      "</div>" +
+      '<div class="bs-dash-node bs-dash-node-owrx">' +
+      '<span class="bs-dash-node-tag">Host</span>' +
+      "<b>" + escapeHtml(d.hostLine.split(" · ")[0]) + "</b>" +
+      settingsHostConnPill(d.ws.ok, d.ws.stateLab) +
+      '<span class="bs-dash-node-sub">OpenWebRX ' + escapeHtml(d.ver) + "</span>" +
+      "</div>" +
+      "</div>" +
+      '<div class="bs-dash-conn-side">' +
+      '<div class="bs-dash-side-card bs-dash-side-ws">' +
+      "<h5>WebSocket</h5>" +
+      settingsHostConnPill(d.ws.ok, d.ws.stateLab) +
+      '<code class="bs-dash-code">' + escapeHtml(wsShort) + "</code>" +
+      settingsHostDashMeter(d.ws.ok ? 100 : 12, "Link", d.ws.ok ? "Connected" : d.ws.stateLab, d.ws.ok ? "mint" : "amber") +
+      "</div>" +
+      '<div class="bs-dash-side-card bs-dash-side-tb">' +
+      "<h5>Toolbox</h5>" +
+      settingsHostConnPill(!!Plugins.toolbox, "Plugin active") +
+      '<span class="bs-dash-side-line"><span>HTTP</span><b>' + escapeHtml(tbUrl || "/toolbox.js") + "</b></span>" +
+      '<span class="bs-dash-side-line"><span>Hooks</span><b>Same tab · Log / tune / status</b></span>' +
+      '<span class="bs-dash-side-line"><span>Loaded</span><b>' + escapeHtml(fmtHostBytes(d.tbXfer)) + "</b></span>" +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+      '<div class="bs-dash-conn-meters">' +
+      settingsHostDashMeter(netPct, "Network down", d.netKbps != null ? d.netKbps.toFixed(0) + " kbps" : "—", "sky") +
+      netSpark +
+      settingsHostDashMeter(audPct, "Audio down", d.audKbps != null ? d.audKbps.toFixed(0) + " kbps" : "—", "violet") +
+      audSpark +
+      settingsHostDashMeter(cliPct, "Listeners", escapeHtml(String(d.clients) + " / " + d.maxCli), "mint") +
+      settingsHostDashMeter(d.bufSec != null ? Math.min(100, Math.round(d.bufSec * 25)) : 0,
+        "Audio buffer", d.bufTxt ? escapeHtml(d.bufTxt.replace(/^Audio\s*/i, "")) : "—", "amber") +
+      "</div>" +
+      '<p class="bs-hint bs-dash-foot">Live bars mirror the OpenWebRX footer. Toolbox shares this page — no second socket; it reads decoder lines and fetches <code>status.json</code> / <code>hoststats.json</code> over HTTP.</p>';
+  }
+
+  function settingsHostStatsRender() {
+    try { settingsTuneHistSample(); } catch (eTu) {}
+    var scrollSaved = settingsSystemScrollCapture();
+    var d = settingsHostStatsShared();
+    settingsHostStatsLastD = d;
+    try { settingsSystemHeroRender(d); } catch (eH) {}
+    try { settingsListenersRender(d); } catch (eL) {}
+    try { settingsSessionRender(d); } catch (eS) {}
+    try { settingsRadioRender(d); } catch (eRad) {}
+    try { settingsOwrxInternalsRender(d); } catch (eOwrx) {}
+    try { settingsDecoderReportRender(d); } catch (eDec) {}
+    try { settingsTbStatsRender(d); } catch (eT) {}
+    try { settingsNerdRender(d); } catch (eNerd) {}
+    try { trafficLogIngestDigi(); } catch (eDig) {}
+    try { settingsSystemWireExportButtons(); } catch (eEx) {}
+    var el = $("bs-settings-host-body");
+    if (el) {
+    settingsConnStatsRender(d);
+    var cpuPct = d.owrxCpu != null ? d.owrxCpu : 0;
+    var heapPct = d.heapPct || 0;
+    var tbPct = d.tbHeapEst != null && d.heap ? Math.min(100, Math.round((d.tbHeapEst / d.heap.used) * 100)) : 0;
+    var pagePct = d.owrxHeapEst != null && d.heap ? Math.min(100, Math.round((d.owrxHeapEst / d.heap.used) * 100)) : 0;
+    toolboxDashSetHtml(el,
+      '<div class="bs-dash-host-grid">' +
+      '<div class="bs-dash-panel">' +
+      '<header class="bs-dash-panel-head">' +
+      '<span class="bs-dash-live-dot' + (d.ws.ok ? " bs-dash-live-on" : "") + '"></span>' +
+      "<h4>Receiver · compute</h4>" +
+      '<span class="bs-dash-panel-sub">' + escapeHtml(d.hostLine) + " · v" + escapeHtml(d.ver) + "</span>" +
+      "</header>" +
+      '<div class="bs-dash-stat-grid">' +
+      settingsHostDashStat("OWRX CPU", d.owrxCpu != null ? "<b>" + d.owrxCpu + "%</b>" : "—",
+        d.tempC != null ? d.tempC + "°C" : "status bar", cpuPct, d.owrxCpu > 85 ? "amber" : "mint") +
+      settingsHostDashStat("Host RAM used", d.hostMemTotal != null
+        ? "<b>" + (d.hostMemTotal - (d.hostMemAvail || 0)) + "</b> MB"
+        : "—", d.hostMemAvail != null ? d.hostMemAvail + " MB free" : "", d.hostRamPct, d.hostRamPct > 88 ? "amber" : "sky") +
+      settingsHostDashStat("OWRX process", d.owrxMem != null ? "<b>" + Math.round(d.owrxMem) + "</b> MB" : "—",
+        "RSS", d.owrxMemPct, "violet") +
+      settingsHostDashStat("Toolbox files", d.tbDisk != null ? "<b>" + d.tbDisk + "</b> KB" : "—",
+        "on server disk", null, "slate") +
+      "</div>" +
+      "</div>" +
+      '<div class="bs-dash-panel">' +
+      '<header class="bs-dash-panel-head"><h4>This tab · memory</h4>' +
+      '<span class="bs-dash-panel-sub">' + escapeHtml(browserPlatformLine()) + "</span></header>" +
+      '<div class="bs-dash-stat-grid">' +
+      settingsHostDashStat("JS heap", d.heap ? "<b>" + escapeHtml(fmtHostBytes(d.heap.used)) + "</b>" : "—",
+        d.heap && d.heap.total ? "of " + fmtHostBytes(d.heap.total) : "Chromium", heapPct, "sky") +
+      settingsHostDashStat("OpenWebRX UI", d.owrxHeapEst != null ? "<b>" + escapeHtml(fmtHostBytes(d.owrxHeapEst)) + "</b>" : "—",
+        "estimate", pagePct, "mint") +
+      settingsHostDashStat("Toolbox", d.tbHeapEst != null ? "<b>" + escapeHtml(fmtHostBytes(d.tbHeapEst)) + "</b>" : "—",
+        "estimate", tbPct, "violet") +
+      settingsHostDashStat("Downloaded", "<b>" + escapeHtml(fmtHostBytes(d.tbXfer)) + "</b>",
+        "toolbox.js + .css", null, "slate") +
+      "</div>" +
+      settingsOwrxProcessTableHtml(d) +
+      '<p class="bs-hint bs-dash-foot">Host RSS/CPU from <code>hoststats.json</code>. Browser split is approximate. Per-tab RAM is estimated; use the tab table under Toolbox in this tab.</p>' +
+      "</div></div>");
+    }
+    settingsSystemScrollRestore(scrollSaved);
+  }
+
   function restoreLogSubTab() {
     var name = firstVisibleExtraSub("log", "feed");
     try {
       var raw = extraOn("rememberSubs") ? window.localStorage.getItem("owrx_toolbox_lg_sub_v1") : null;
-      if (raw && { feed: 1, qso: 1, calls: 1, notes: 1, export: 1, dupes: 1 }[raw] && !isExtraSubHidden("log", raw)) name = raw;
+      if (raw && { feed: 1, qso: 1, calls: 1, archive: 1, notes: 1, export: 1, dupes: 1 }[raw] && !isExtraSubHidden("log", raw)) name = raw;
     } catch (e) {}
     setLogSubTab(name, { skipSave: true });
   }
@@ -9457,8 +12936,24 @@ Plugins.toolbox.init = function () {
         else trafficLogStartImport(ev);
       };
     }
+    if ($("bs-log-x-arch-csv") && !$("bs-log-x-arch-csv")._bsWired) {
+      $("bs-log-x-arch-csv")._bsWired = true;
+      $("bs-log-x-arch-csv").onclick = function () {
+        decoderArchiveFilter = "all";
+        decoderArchiveExport("csv");
+      };
+    }
+    if ($("bs-log-x-arch-json") && !$("bs-log-x-arch-json")._bsWired) {
+      $("bs-log-x-arch-json")._bsWired = true;
+      $("bs-log-x-arch-json").onclick = function () {
+        decoderArchiveFilter = "all";
+        decoderArchiveExport("json");
+      };
+    }
     var meta = $("bs-log-x-meta");
-    if (meta) meta.textContent = recentRows().length + " recent feed lines ready.";
+    if (meta) {
+      meta.textContent = recentRows().length + " feed lines · " + decoderArchiveRows.length + " archive lines.";
+    }
   }
 
   function logDupesOnTab() {
@@ -11464,6 +14959,16 @@ Plugins.toolbox.init = function () {
       d.decodeTabMigrated = true;
     } else if (!d.decodeTabMigrated) {
       d.decodeTabMigrated = true;
+    }
+    if (!d.memoryTabMigrated) {
+      d.memoryTabMigrated = true;
+    }
+    if (!d.memoryTabDefaultOnB159) {
+      if (Array.isArray(d.hiddenTabs)) {
+        var memHide = d.hiddenTabs.indexOf("memory");
+        if (memHide >= 0) d.hiddenTabs.splice(memHide, 1);
+      }
+      d.memoryTabDefaultOnB159 = true;
     }
     /* Drop removed Freq tab from saved hidden lists */
     d.hiddenTabs = d.hiddenTabs.filter(function (id) { return id !== "freq"; });
@@ -13482,17 +16987,64 @@ Plugins.toolbox.init = function () {
         '<p class="bs-hint">Letters used when Settings → Extras → Keyboard shortcuts is on. One letter each.</p>' +
         '<div class="bs-row">' + keyRows + "</div>",
         { id: "bs-key-remap-box",
-          help: "Remap Stop / Bookmarks / Hold / Skip shortcut letters." }) +
+          help: "Remap Stop / Bookmarks / Hold / Skip shortcut letters." })
+    );
+  }
+
+  function settingsAdvancedUrlsBlockHtml() {
+    return (
+      '<details class="bs-tab-opts bs-settings-advanced-urls" id="bs-settings-advanced-urls">' +
+      "<summary>Advanced URLs (optional)</summary>" +
+      '<p class="bs-hint">DIY homelab HTTP hooks — settings backup, peak alerts, Identify classifier, Audio STT. Skip unless you run your own server; turn on the matching item under <b>Extras</b> when you use a URL.</p>' +
       settingsBoxHtml("Settings sync URL",
-        '<p class="bs-hint">Optional LAN endpoint for your own backup. <b>Push</b> POSTs settings JSON; <b>Pull</b> GETs JSON and merges (same shape as Export settings). CORS must allow this origin.</p>' +
+        '<p class="bs-hint">Optional backup endpoint. <b>Push</b> POSTs settings JSON; <b>Pull</b> GETs and merges (Export settings shape). Homelab same-origin: <code>/owrx-toolbox-settings-sync</code> → stub on <code>:8787</code> (<code>tools/owrx-settings-sync-stub.py</code>).</p>' +
         '<div class="bs-row">' +
-        '<label style="flex:1" title="HTTP URL for settings sync.">URL <input type="url" id="bs-settings-sync-url" placeholder="http://192.168.x.x:8787/toolbox-settings" style="flex:1;min-width:140px"></label>' +
+        '<label style="flex:1" title="HTTP URL for settings sync.">URL <input type="url" id="bs-settings-sync-url" placeholder="/owrx-toolbox-settings-sync" style="flex:1;min-width:140px"></label>' +
+        '<button type="button" class="bs-tiny bs-btn-info" id="bs-settings-sync-test" title="GET the URL once (reachability / JSON).">Test</button>' +
         '<button type="button" class="bs-tiny bs-btn-export" id="bs-settings-sync-push" title="POST current settings JSON to the URL.">Push</button>' +
         '<button type="button" class="bs-tiny bs-btn-import" id="bs-settings-sync-pull" title="GET settings JSON from the URL and merge.">Pull</button>' +
         "</div>" +
         '<p class="bs-hint" id="bs-settings-sync-meta"></p>',
         { id: "bs-settings-sync-box", wide: true,
-          help: "Push / pull settings JSON to a LAN URL you run." })
+          help: "Push / pull settings JSON to a LAN URL you run." }) +
+      settingsBoxHtml("Peak webhook",
+        '<p class="bs-hint">Optional outbound notice for <b>your</b> automation — not used by OpenWebRX itself.</p>' +
+        '<p class="bs-hint">When a <b>band or range survey</b> finds a frequency that was not on the previous peak list (and it meets Min seen), Toolbox can send one small JSON <code>POST</code> to this URL. Typical uses: Home Assistant, ntfy, Discord/Slack incoming webhook, or a DIY logger on your LAN.</p>' +
+        '<div class="bs-row">' +
+        '<label title="HTTP POST JSON {freq, name, db, band} when a survey finds a brand-new peak. Empty = off. Network errors are ignored so scanning never stalls.">Notify URL <input type="url" id="bs-webhook" placeholder="/owrx-toolbox-peak-webhook" style="flex:1;min-width:140px"></label>' +
+        '<button type="button" class="bs-tiny bs-btn-info" id="bs-webhook-test" title="POST a sample peak JSON to this URL.">Test</button>' +
+        "</div>" +
+        '<p class="bs-hint" id="bs-webhook-meta"></p>' +
+        '<p class="bs-hint">Needs Settings → Extras → <b>Peak webhook</b>, plus Bands/Range <b>Notify new peak</b>. Homelab: <code>/owrx-toolbox-peak-webhook</code> or <code>:5057/peak</code>. Not every hop or revisit.</p>',
+        { extra: "homelabWebhook", cls: "bs-min-hide",
+          help: "Outbound HTTP POST when a survey discovers a brand-new peak. For your own Home Assistant / ntfy / DIY endpoint — Toolbox never requires a URL." }) +
+      settingsBoxHtml("Identify · external classifier",
+        diyDecodeLegalNoticeHtml("identify") +
+        '<div class="bs-row bs-id-ext-row" id="bs-id-ext-row">' +
+        '<label class="bs-id-ext-lab" title="Identify now POSTs fingerprint JSON to this URL when set. Live identify does not call out. Your own LLM / classifier service — lawful use only.">Classifier URL ' +
+        '<input type="url" id="bs-id-classifier-url" class="bs-id-classifier-url" placeholder="/owrx-toolbox-classify" autocomplete="off" spellcheck="false">' +
+        "</label>" +
+        '<button type="button" class="bs-btn-util" id="bs-id-classifier-test" title="POST a minimal fingerprint JSON to test the URL.">Test</button>' +
+        "</div>" +
+        '<p class="bs-hint bs-id-ext-exp">This <b>LLM URL</b> hook is <b>experimental and untested</b> — bring your own HTTP service for <b>your own testing</b>; Toolbox does not ship or support a bundled classifier/LLM backend.</p>' +
+        '<p class="bs-hint bs-id-ext-hint">Optional for <b>Identify now</b> only — <b>Live</b> stays local. Leave blank for heuristics. Enable under Settings → Extras → <b>Identify · external classifier</b>.</p>',
+        { id: "bs-id-classifier-box", wide: true, extra: "idExternal", cls: "bs-min-hide",
+          help: "DIY HTTP classifier URL for Identify now. Hidden until Settings → Extras → Identify · external classifier is on." }) +
+      settingsBoxHtml("Audio · STT webhook",
+        diyDecodeLegalNoticeHtml("audio") +
+        '<p class="bs-hint">Optional DIY HTTP endpoint on your homelab — <b>Whisper</b>, <b>faster-whisper</b>, <b>n8n</b>, <b>Home Assistant</b>, or an <b>Ollama</b> STT→LLM script. Toolbox POSTs JSON with WAV base64 + MHz/mode/time; expect JSON <code>{ transcript, summary? }</code> back. Enable under Settings → Extras → <b>Audio · STT webhook</b>.</p>' +
+        '<div class="bs-row">' +
+        '<label class="bs-audio-stt-url-lab" title="POST JSON { source, version, clip: { freqHz, mode, audioBase64, … } }. Audio leaves this browser only when you POST or tick Auto.">STT URL <input type="url" id="bs-audio-stt-url" class="bs-audio-stt-url" placeholder="/owrx-toolbox-transcribe" autocomplete="off" spellcheck="false"></label>' +
+        "</div>" +
+        '<p class="bs-hint bs-audio-stt-exp">This <b>STT / LLM URL</b> hook is <b>experimental and untested</b> — bring your own HTTP service for <b>your own testing</b>; Toolbox does not ship or support a bundled speech-to-text backend.</p>' +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label class="bs-chk" title="After voice analysis marks a clip as likely voice, POST it automatically."><input type="checkbox" id="bs-audio-stt-auto"> Auto transcribe voice clips</label>' +
+        '<button type="button" class="bs-btn-util" id="bs-audio-stt-test" title="POST the newest voice-likely clip (or newest clip) to test your endpoint.">Test</button>' +
+        "</div>" +
+        '<p class="bs-hint bs-audio-stt-contract">Contract: <code>POST</code> JSON · <code>clip.audioBase64</code> is WAV · response <code>{ &quot;transcript&quot;: &quot;…&quot;, &quot;summary&quot;: &quot;optional LLM blurb&quot; }</code> · CORS must allow the receiver origin · 45s timeout.</p>',
+        { wide: true, id: "bs-audio-stt-box", extra: "audioSttWebhook", cls: "bs-min-hide",
+          help: "Bring your own speech-to-text or STT+LLM service. Clip STT buttons on Audio still use this URL when the Extra is on." }) +
+      "</details>"
     );
   }
 
@@ -13596,6 +17148,7 @@ Plugins.toolbox.init = function () {
   }
 
   function fireWebhook(hit) {
+    if (!extraOn("homelabWebhook")) return;
     var url = String(S.webhookUrl || "").trim();
     if (!url || !hit) return;
     var payload = {
@@ -13788,6 +17341,9 @@ Plugins.toolbox.init = function () {
     range: "Range — scan a custom start–end MHz span.",
     analyzer: "Analyzer — live spectrum + waterfall hop view.",
     identify: "Identify — heuristic signal-type guess from waterfall shape, noise, bandplan, and digi panels. Optional DIY external classifier Extra (off by default).",
+    log: "Log — decoder feed, QSO pad, callsigns, export.",
+    watch: "Watch — alert when a callsign, flight, ship, or talkgroup appears in Log.",
+    memory: "Memory — Trace, Digital IDs, Bench. Enable here under Visible tabs.",
     more: "More — Spots, Space, Tune, Sky, Here, Sked, Read, Feeds. To add panes: Settings → General — More sections at the bottom. Guests: Settings → Public → More · … boxes.",
     peaks: "Peaks — ranked list of signals found by scans.",
     bookmarks: "Bookmarks — local and loaded frequencies; scan bookmarks.",
@@ -13799,6 +17355,7 @@ Plugins.toolbox.init = function () {
 
   var SETTINGS_ST_SUB_TIPS = {
     general: "General — install, visible tabs, Explore boxes, panel startup, appearance, layout, data, Extras, Jump FM, More sections, then SDR devices / profiles / hop budget / sync at the bottom.",
+    system: "System — receiver CPU/RAM, browser memory, WebSocket + audio/network traffic, Toolbox hooks (live while this sub-tab is open).",
     public: "Public / shared receiver mode and visitor allowlist — guest tabs, features, extras, and More · … boxes at the bottom for which More panes visitors may open."
   };
 
@@ -14399,6 +17956,8 @@ Plugins.toolbox.init = function () {
     S.hiddenTabs = S.hiddenTabs.filter(function (id) {
       return id !== "more" && id !== "decode";
     });
+    S.settingsSubSystem = true;
+    S.settingsSubPublic = true;
   }
 
   function applyWelcomePreset(preset) {
@@ -14456,11 +18015,13 @@ Plugins.toolbox.init = function () {
     try { fillMoreSubsForm(); } catch (eMoreF) {}
     try { fillExtraSubsForm(); } catch (eExF) {}
     try { syncWidebandUi(true); } catch (eWb) {}
+    try { fillSettingsForm(); } catch (eStF) {}
+    try { applyToolboxFindVisibility(); } catch (eFindWel) {}
     setStatus(preset === "full"
       ? "Everything — all main tabs, More sections & sub-tabs, default extras. Change anytime under Settings."
       : (preset === "survey"
         ? "Welcome — band survey layout. Turn more extras on under Settings → Extras."
-        : "Welcome — light layout for slower devices. Turn features on under Settings anytime."));
+        : "Welcome — light layout for slower devices. Header Find is on — turn features on under Settings anytime."));
   }
 
   function closeWelcomeWizard() {
@@ -14484,23 +18045,47 @@ Plugins.toolbox.init = function () {
     wrap.innerHTML =
       '<div class="bs-welcome-backdrop"></div>' +
       '<div class="bs-welcome-card">' +
-      '<h2 id="bs-welcome-wizard-title">Choose your Toolbox layout</h2>' +
-      '<p class="bs-hint">First setup on this browser (or after <b>Reset like new install</b>). Pick a starting point — change tabs, extras, and network budget anytime under Settings.</p>' +
-      '<p class="bs-hint bs-welcome-guide"><b>Which profile?</b> These are starting points only — there is no fixed limit on how many tabs, More panes, or extras each PC can handle. Try a preset, then turn more on or off under Settings and see what stays smooth on your hardware.</p>' +
-      '<ul class="bs-welcome-examples">' +
-      "<li><b>Light</b> — e.g. Raspberry Pi 3/4/5 (especially ≤4&nbsp;GB RAM), old Celeron/Atom mini‑PC, cheap laptop with 4&nbsp;GB, or any host where the OpenWebRX tab already feels sluggish.</li>" +
-      "<li><b>Survey</b> — typical desktop or NUC (e.g. Intel i3/i5 or Ryzen 3+, 8&nbsp;GB RAM), Pi 5 with 8&nbsp;GB used mainly for band scanning.</li>" +
-      "<li><b>Everything</b> — when you want all main tabs, More sections, and default extras enabled from the start; dial back if the UI stutters.</li>" +
-      "</ul>" +
-      '<div class="bs-welcome-choices">' +
-      '<button type="button" class="bs-btn-export bs-welcome-pick" data-welcome="lite">' +
-      "<b>Light</b><span>Fewer tabs &amp; extras · no More network fetches · capped stored peaks.</span></button>" +
-      '<button type="button" class="bs-btn-import bs-welcome-pick" data-welcome="survey">' +
-      "<b>Band survey</b><span>Bands, Range, Peaks, digi/heatmap — best for finding signals.</span></button>" +
-      '<button type="button" class="bs-btn-util bs-welcome-pick" data-welcome="full">' +
-      "<b>Everything</b><span>All main tabs, every More section &amp; sub-tab, Explore boxes, default extras.</span></button>" +
+      '<div class="bs-welcome-hero">' +
+      '<p class="bs-welcome-kicker">OpenWebRX Toolbox</p>' +
+      '<h2 id="bs-welcome-wizard-title">Choose your layout</h2>' +
+      '<p class="bs-welcome-lead">Starting points only — nothing is permanent. You can turn tabs, <b>More</b> panes, and <b>Extras</b> on or off anytime under <b>Settings</b>.</p>' +
       "</div>" +
-      '<p class="bs-hint bs-welcome-foot">Not sure? Start with <b>Light</b> and experiment. If you find a combo that works especially well (or badly) on your kit, optional feedback helps others — <a href="https://github.com/G4EA5/openwebrx-toolbox/issues" target="_blank" rel="noopener">GitHub issues</a> on the Toolbox repo.</p>' +
+      '<div class="bs-welcome-choices">' +
+      '<button type="button" class="bs-welcome-pick bs-welcome-pick--lite" data-welcome="lite">' +
+      '<span class="bs-welcome-pick-icon" aria-hidden="true">🌿</span>' +
+      '<span class="bs-welcome-pick-body">' +
+      "<strong>Light</strong>" +
+      '<span class="bs-welcome-pick-tag">Pi · 4&nbsp;GB · old laptop</span>' +
+      '<ul class="bs-welcome-pick-lines">' +
+      "<li>Main tabs trimmed — <b>Bands</b>, <b>Range</b>, Analyzer, Identify, Skip &amp; Decode hidden until you enable them.</li>" +
+      "<li><b>Network budget: More off</b> — no background fetches from More (DX, RBN, news, etc.).</li>" +
+      "<li>Heavy extras off (STT, webhooks, spectrum history, range tools…); stored peaks capped at <b>1,500</b>.</li>" +
+      "<li>Simpler chrome (lean UI, quieter surfaces) — best when the receiver tab already feels slow.</li>" +
+      "</ul></span></button>" +
+      '<button type="button" class="bs-welcome-pick bs-welcome-pick--survey" data-welcome="survey">' +
+      '<span class="bs-welcome-pick-icon" aria-hidden="true">📡</span>' +
+      '<span class="bs-welcome-pick-body">' +
+      "<strong>Band survey</strong>" +
+      '<span class="bs-welcome-pick-tag">Desktop · band scanning</span>' +
+      '<ul class="bs-welcome-pick-lines">' +
+      "<li>Shows <b>Bands</b>, <b>Range</b>, and <b>Peaks</b> — the core workflow for hunting signals across the dial.</li>" +
+      "<li>Survey extras on: <b>digi survey</b>, <b>occupancy heatmap</b>, <b>survey diff</b> (other heavy extras stay off).</li>" +
+      "<li><b>Full network budget</b> — More panes can fetch live data when you open them.</li>" +
+      "<li>Up to <b>3,000</b> stored peaks — good default for NUC / 8&nbsp;GB class machines.</li>" +
+      "</ul></span></button>" +
+      '<button type="button" class="bs-welcome-pick bs-welcome-pick--full" data-welcome="full">' +
+      '<span class="bs-welcome-pick-icon" aria-hidden="true">✨</span>' +
+      '<span class="bs-welcome-pick-body">' +
+      "<strong>Everything</strong>" +
+      '<span class="bs-welcome-pick-tag">Power PC · explore all</span>' +
+      '<ul class="bs-welcome-pick-lines">' +
+      "<li>All main tabs visible, including <b>More</b> and <b>Decode</b>; every More section &amp; sub-tab unlocked.</li>" +
+      "<li>Default <b>Extras</b> turned on (except Public/shared-receiver mode).</li>" +
+      "<li>All <b>Explore</b> boxes shown; <b>full network budget</b>; no peak storage cap.</li>" +
+      "<li>Pick this if you want the full Toolbox on first open — dial back under Settings if anything stutters.</li>" +
+      "</ul></span></button>" +
+      "</div>" +
+      '<p class="bs-welcome-foot">Not sure? <b>Light</b> is the safe default (header <b>Find</b> turns on too). <b>Band survey</b> if you mainly scan bands. You can reopen this anytime via <b>Simplify my panel</b> or <b>Choose layout profile</b> under Settings. Feedback on <a href="https://github.com/G4EA5/openwebrx-toolbox/issues" target="_blank" rel="noopener">GitHub issues</a>.</p>' +
       "</div>";
     document.body.appendChild(wrap);
     Array.prototype.forEach.call(wrap.querySelectorAll("[data-welcome]"), function (btn) {
@@ -15635,6 +19220,8 @@ Plugins.toolbox.init = function () {
       maxNoiseSamples: 40,
       keyRemap: null,
       settingsSyncUrl: "",
+      settingsSubSystem: true,
+      settingsSubPublic: true,
       uxFeel: uxFeelDefaults()
     };
   }
@@ -15967,6 +19554,92 @@ Plugins.toolbox.init = function () {
     setStatus("Band pack pins saved for “" + cur + "”.");
   }
 
+  function toolboxUrlFetchOpts(url) {
+    var cred = "omit";
+    try {
+      if (String(url || "").charAt(0) === "/" ||
+          (typeof URL !== "undefined" && new URL(url, location.href).origin === location.origin)) {
+        cred = "same-origin";
+      }
+    } catch (eCred) {}
+    return { credentials: cred, mode: "cors", cache: "no-store" };
+  }
+
+  function peakWebhookTestUrl() {
+    if ($("bs-webhook")) S.webhookUrl = ($("bs-webhook").value || "").trim();
+    var url = String(S.webhookUrl || "").trim();
+    var meta = $("bs-webhook-meta");
+    if (!url) {
+      setStatus("Set a Peak webhook URL first.");
+      if (meta) meta.textContent = "";
+      return;
+    }
+    if (meta) meta.textContent = "Testing POST…";
+    var payload = { freq: 14200000, name: "Toolbox test", db: -40, band: "test" };
+    fetch(url, Object.assign({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }, toolboxUrlFetchOpts(url))).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      if (meta) meta.textContent = "Test OK · " + new Date().toLocaleTimeString();
+      setStatus("Peak webhook test POST succeeded.");
+    }).catch(function () {
+      if (meta) meta.textContent = "Test failed (CORS / URL / server).";
+      setStatus("Peak webhook test failed.");
+    });
+  }
+
+  function settingsSyncTestUrl() {
+    readSdrControlFromForm();
+    var url = String(($("bs-settings-sync-url") && $("bs-settings-sync-url").value) || S.settingsSyncUrl || "").trim();
+    S.settingsSyncUrl = url;
+    var meta = $("bs-settings-sync-meta");
+    if (!url) {
+      setStatus("Set a Settings sync URL first.");
+      return;
+    }
+    if (meta) meta.textContent = "Testing GET…";
+    fetch(url, toolboxUrlFetchOpts(url)).then(function (r) {
+      if (!r.ok) throw new Error("http");
+      return r.json();
+    }).then(function (data) {
+      var n = data && typeof data === "object" ? Object.keys(data).length : 0;
+      if (meta) meta.textContent = "Test OK — " + n + " keys · " + new Date().toLocaleTimeString();
+      setStatus("Settings sync URL reachable (GET).");
+    }).catch(function () {
+      if (meta) meta.textContent = "Test failed (CORS / URL / JSON).";
+      setStatus("Settings sync test failed.");
+    });
+  }
+
+  function idClassifierTestUrl() {
+    if ($("bs-id-classifier-url")) S.idClassifierUrl = ($("bs-id-classifier-url").value || "").trim();
+    var url = String(S.idClassifierUrl || "").trim();
+    if (!url) {
+      setStatus("Set a Classifier URL first.");
+      return;
+    }
+    var body = JSON.stringify({
+      frequencyHz: 14200000,
+      fingerprint: null,
+      source: "openwebrx-toolbox",
+      version: Plugins.toolbox._version || 0
+    });
+    fetch(url, Object.assign({
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: body
+    }, toolboxUrlFetchOpts(url))).then(function (r) {
+      if (!r.ok) throw new Error("http");
+      return r.json();
+    }).then(function () {
+      setStatus("Classifier URL test OK.");
+    }).catch(function () {
+      setStatus("Classifier URL test failed — check URL, CORS, and stub.");
+    });
+  }
+
   function settingsSyncPush() {
     readSdrControlFromForm();
     var url = String(S.settingsSyncUrl || "").trim();
@@ -15983,12 +19656,11 @@ Plugins.toolbox.init = function () {
       return;
     }
     if ($("bs-settings-sync-meta")) $("bs-settings-sync-meta").textContent = "Pushing…";
-    fetch(url, {
+    fetch(url, Object.assign({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      cache: "no-store"
-    }).then(function (r) {
+      body: JSON.stringify(body)
+    }, toolboxUrlFetchOpts(url))).then(function (r) {
       if (!r.ok) throw new Error("http " + r.status);
       if ($("bs-settings-sync-meta")) $("bs-settings-sync-meta").textContent = "Pushed OK · " + new Date().toLocaleTimeString();
       setStatus("Settings pushed to sync URL.");
@@ -16006,7 +19678,7 @@ Plugins.toolbox.init = function () {
     }
     S.settingsSyncUrl = url;
     if ($("bs-settings-sync-meta")) $("bs-settings-sync-meta").textContent = "Pulling…";
-    fetch(url, { cache: "no-store" }).then(function (r) {
+    fetch(url, toolboxUrlFetchOpts(url)).then(function (r) {
       if (!r.ok) throw new Error("http");
       return r.json();
     }).then(function (data) {
@@ -16070,10 +19742,16 @@ Plugins.toolbox.init = function () {
     if ($("bs-sdr-pack-save")) $("bs-sdr-pack-save").onclick = saveSdrPackPinFromForm;
     if ($("bs-settings-sync-push")) $("bs-settings-sync-push").onclick = settingsSyncPush;
     if ($("bs-settings-sync-pull")) $("bs-settings-sync-pull").onclick = settingsSyncPull;
+    if ($("bs-settings-sync-test")) $("bs-settings-sync-test").onclick = settingsSyncTestUrl;
+    if ($("bs-webhook-test")) $("bs-webhook-test").onclick = peakWebhookTestUrl;
+    if ($("bs-id-classifier-test")) $("bs-id-classifier-test").onclick = idClassifierTestUrl;
   }
 
   function fillSettingsForm() {
     if ($("bs-remember-tab")) $("bs-remember-tab").checked = S.rememberTab !== false;
+    if ($("bs-st-show-system")) $("bs-st-show-system").checked = S.settingsSubSystem !== false;
+    if ($("bs-st-show-public")) $("bs-st-show-public").checked = S.settingsSubPublic !== false;
+    try { setSettingsSubTab(null, { skipSave: true, skipScroll: true }); } catch (eStVis) {}
     if ($("bs-default-tab")) {
       var defTab = S.defaultTab || "explore";
       if (TAB_IDS.indexOf(defTab) < 0 && defTab !== "last") defTab = "explore";
@@ -16244,6 +19922,15 @@ Plugins.toolbox.init = function () {
 
   function factoryReset() {
     openFactoryResetPop();
+  }
+
+  function simplifyMyPanel() {
+    try { applyWelcomePreset("lite"); } catch (eLite) {}
+    S.findInToolbox = true;
+    try { saveSettings(); } catch (eSave) {}
+    try { fillSettingsForm(); } catch (eFill) {}
+    try { applyToolboxFindVisibility(); } catch (eFind) {}
+    setStatus("Simplified — Light layout and header Find are on. Turn tabs back on under Visible tabs anytime.");
   }
 
   function runSetupWizardAgain() {
@@ -20058,7 +23745,7 @@ Plugins.toolbox.init = function () {
     var extras = issues.filter(function (x) { return x.level === "info"; }).length;
     try { refreshInstallVersionCompare(); } catch (eVer) {}
     if (!hard && !warns) {
-      setStatus("Install looks good. Top-bar Toolbox is this plugin (between Help and Status).");
+      setStatus("Install looks good — ready to use. Try Bands → tick Ham → Scan bands, or Help → Start in 3 minutes.");
     } else {
       setStatus((hard ? hard + " problem" + (hard === 1 ? "" : "s") + " to fix. " : "No blockers. ") +
         (warns ? warns + " note" + (warns === 1 ? "" : "s") + ". " : "") +
@@ -20086,7 +23773,7 @@ Plugins.toolbox.init = function () {
     }
     var html = "";
     if (!hard.length && !warns.length) {
-      html += "<p><b>Install looks good.</b> Top-bar <b>Toolbox</b> is this plugin (between Help and Status). Tick bands (or Air / VHF voice / All VHF / All UHF / Ham) and press Scan bands. Help is on the Help tab.</p>";
+      html += "<p><b>Install looks good.</b> Next: tick bands on the <b>Bands</b> tab (or press <b>Ham</b>) and <b>Scan bands</b>, or open <b>Help (?)</b> → <b>Start in 3 minutes</b>. Hover any control for a tip.</p>";
     }
     html += hard.concat(warns).map(renderIssueP).join("");
     if (showExtra && extras.length) {
@@ -20269,13 +23956,36 @@ Plugins.toolbox.init = function () {
       : "<li><b>Fast hops locked</b> — this public receiver keeps the ~11s profile gap. Same-band hops are still ~1s.</li>";
     return (
       "<h2>OpenWebRX Toolbox — help (v" + (Plugins.toolbox._version || "?") + ")</h2>" +
-      "<h3>First 30 seconds</h3>" +
+      "<h3>Start in 3 minutes</h3>" +
+      "<div class=\"bs-help-quickstart\">" +
+      "<div class=\"bs-help-qs-card\"><h4>Just listen</h4>" +
+      "<p>Explore, profile hop, bookmarks. Fewer tabs — good on a Pi or shared PC.</p>" +
+      "<p><button type=\"button\" class=\"bs-btn-util bs-help-qs-btn\" data-help-qs=\"listen\" title=\"Light layout + header Find (Settings has the same button).\">Simplify my panel</button></p></div>" +
+      "<div class=\"bs-help-qs-card\"><h4>Scan the bands</h4>" +
+      "<p>Tick bands → <b>Scan bands</b> → read <b>Peaks</b>. Survey extras on; heavy tabs optional.</p>" +
+      "<p><button type=\"button\" class=\"bs-btn-util bs-help-qs-btn\" data-help-qs=\"survey\" title=\"Band survey layout profile.\">Band survey layout</button> " +
+      "<button type=\"button\" class=\"bs-btn-info bs-help-qs-btn\" data-help-qs=\"bands\" title=\"Open the Bands tab.\">Open Bands</button></p></div>" +
+      "<div class=\"bs-help-qs-card\"><h4>Shared / public site</h4>" +
+      "<p>Trim what visitors see — <b>Settings → Public</b> allowlist + <b>Safe defaults</b>.</p>" +
+      "<p><button type=\"button\" class=\"bs-btn-util bs-help-qs-btn\" data-help-qs=\"public\" title=\"Open Settings → Public.\">Public settings</button></p></div>" +
+      "</div>" +
+      "<h3>How tips work</h3>" +
+      "<ul>" +
+      "<li><b>Hover</b> any button, label, or tick box — a short explanation appears (one at a time).</li>" +
+      "<li><b>Brown ?</b> on a boxed section — a few sentences about that whole area.</li>" +
+      "<li><b>Header Find</b> (magnifier) — search settings by keyword: <code>visible tabs</code>, <code>gain</code>, <code>record</code>, <code>simplify</code>, …</li>" +
+      "<li><b>Status line</b> at the bottom of the panel — confirms actions (scan started, settings saved, …).</li>" +
+      "</ul>" +
+      "<h3>First install — then first 30 seconds</h3>" +
+      "<p><b>On the radio host (once):</b> edit <code>plugins/receiver/init.js</code> and add <code>Plugins.load(…)</code> — CDN or local <code>toolbox</code>. Not bash. Full walkthrough: " +
+      "<a href=\"https://github.com/G4EA5/openwebrx-toolbox/blob/main/docs/FIRST-INSTALL.md\" target=\"_blank\" rel=\"noopener\">FIRST-INSTALL.md</a> on GitHub.</p>" +
       "<ol>" +
-      "<li>Hard-refresh this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) after install or update.</li>" +
-      "<li>Click <b>Toolbox</b> in the top bar (between <b>Help</b> and <b>Status</b>).</li>" +
-      "<li>Open <b>Settings</b> and click <b>Check install</b>. Green = ready. Red or yellow shows the fix on that tab.</li>" +
-      "<li>Tick bands (or a preset) and press <b>Scan bands</b> — or use <b>Range</b> / <b>Explore</b>.</li>" +
-      "<li>Hover any control for a tip (one tip at a time). Drag panel edges or the corner to resize (floating), or drag the <b>right edge</b> when side-docked — size is remembered in this browser. Use <b>S</b> (side dock, default left ~35%) so OpenWebRX is not covered. Title-bar <b>D</b> detaches Toolbox into its own window — drag that window onto another monitor if you like (turn side dock off first if D is disabled).</li>" +
+      "<li><b>Hard-refresh</b> this receiver page (<b>Ctrl+Shift+R</b> / Mac <b>Cmd+Shift+R</b>) — required after install or update.</li>" +
+      "<li>Click <b>Toolbox</b> in the top bar (between stock <b>Help</b> and <b>Status</b>). Missing? Look for <b>TB</b> on the frequency bar.</li>" +
+      "<li><b>Settings → Check install</b>. Green = ready. Red/yellow = follow the message on that screen, then check again.</li>" +
+      "<li>Too many tabs? <b>Settings → Simplify my panel</b> or pick <b>Light</b> in the layout wizard.</li>" +
+      "<li><b>Bands</b> — tick profiles (or <b>Ham</b>), then <b>Scan bands</b>. Results on <b>Peaks</b>.</li>" +
+      "<li>Resize: drag panel edges. <b>S</b> = side dock. <b>D</b> = detach to another monitor.</li>" +
       "</ol>" +
       '<p><button type="button" class="bs-btn-info" id="bs-help-check" title="Run the same checks as Check install on the panel.">Check install now</button> ' +
       '<button type="button" class="bs-btn-util" id="bs-copy-diag" title="Copy browser/OS/page checks for troubleshooting (Mac cache issues, wrong page, etc.).">Copy diagnostic report</button></p>' +
@@ -20319,22 +24029,18 @@ Plugins.toolbox.init = function () {
       "</ul>" +
 
       "<h3>Install (manual — no installer)</h3>" +
-      "<p>There is <b>no installer</b> and no zip from Settings. " +
-      "You edit <code>plugins/receiver/init.js</code> on the radio host. Needs <b>OpenWebRX+</b> with the plugins API. " +
-      "Full steps: <a href=\"https://github.com/G4EA5/openwebrx-toolbox#install\" target=\"_blank\" rel=\"noopener\">README → Install</a>. " +
-      "Frozen <b>v440</b>: <a href=\"https://github.com/G4EA5/openwebrx-toolbox/tree/main/v440\" target=\"_blank\" rel=\"noopener\">v440/</a> folder on GitHub.</p>" +
-      "<p><b>Not a shell command.</b> The <code>(async () =&gt; { … Plugins.load(…) })();</code> snippet is <b>JavaScript</b> for <code>init.js</code> — do <b>not</b> paste it into bash (you will get a syntax error). " +
-      "It also does <b>not</b> download files into a folder. The browser loads <code>toolbox.js</code> and matching <code>toolbox.css</code> from the CDN when the receiver page opens. " +
-      "To save the files on disk, use <code>git clone</code> or <code>curl</code> (see README Option B).</p>" +
+      "<p><b>Start here:</b> <a href=\"https://github.com/G4EA5/openwebrx-toolbox/blob/main/docs/FIRST-INSTALL.md\" target=\"_blank\" rel=\"noopener\">FIRST-INSTALL.md</a> — server vs browser, CDN vs local, checklist, troubleshooting.</p>" +
+      "<p>Short version: edit <code>init.js</code> on the <b>radio host</b> → hard-refresh the receiver in the <b>browser</b> → <b>Toolbox</b> → <b>Check install</b>. Needs <b>OpenWebRX+</b> (plugins API). Also: " +
+      "<a href=\"https://github.com/G4EA5/openwebrx-toolbox#install\" target=\"_blank\" rel=\"noopener\">README → Install</a>. " +
+      "Frozen <b>v440</b>: <a href=\"https://github.com/G4EA5/openwebrx-toolbox/tree/main/v440\" target=\"_blank\" rel=\"noopener\">v440/</a>.</p>" +
+      "<p><b>Not a shell command.</b> <code>Plugins.load(…)</code> is <b>JavaScript</b> inside <code>init.js</code> — not bash. CDN load does not copy files onto the server; the browser fetches JS/CSS when the page opens. For files on disk, use README Option B (<code>git clone</code> + copy <code>toolbox.js</code> / <code>toolbox.css</code>).</p>" +
+      "<ol>" +
+      "<li><b>CDN (easiest)</b> — on the host, inside <code>init.js</code>:<br>" +
+      "<code>(async () =&gt; { await Plugins.load(\"https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js\"); })();</code></li>" +
+      "<li><b>Local</b> — copy <code>toolbox.js</code> + <code>toolbox.css</code> to <code>htdocs/plugins/receiver/toolbox/</code>, then <code>await Plugins.load(\"toolbox\");</code> in <code>init.js</code>.</li>" +
+      "<li><b>Browser</b> — hard-refresh → <b>Check install</b> → scan or Explore.</li>" +
+      "</ol>" +
       "<ul>" +
-      "<li><b>Easiest — CDN</b> — paste into <code>init.js</code> on the radio host (not the terminal):<br>" +
-      "<code>(async () =&gt; { await Plugins.load(\"https://cdn.jsdelivr.net/gh/G4EA5/openwebrx-toolbox@main/toolbox.js\"); })();</code><br>" +
-      "OpenWebRX+ then loads JS + CSS from that CDN folder in the browser. Hard-refresh (<b>Ctrl+Shift+R</b>). Pin a release/tag instead of <code>@main</code> for production when you can.</li>" +
-      "<li><b>Local copy</b> — clone or pull " +
-      "<a href=\"https://github.com/G4EA5/openwebrx-toolbox\" target=\"_blank\" rel=\"noopener\">github.com/G4EA5/openwebrx-toolbox</a>, " +
-      "copy <code>toolbox.js</code> + <code>toolbox.css</code> into <code>htdocs/plugins/receiver/toolbox/</code>, then " +
-      "<code>await Plugins.load(\"toolbox\");</code> in <code>init.js</code>. Typical Debian path: " +
-      "<code>/usr/lib/python3/dist-packages/htdocs/plugins/receiver/</code>.</li>" +
       "<li><b>Never load Band Survey and Toolbox together</b> — remove any <code>band_survey</code> load lines.</li>" +
       "<li><b>After OpenWebRX+ package upgrades</b> — <code>init.js</code> (and a local toolbox folder) may be reset. Put the load line back, re-copy files if needed, then hard-refresh.</li>" +
       "<li><b>Public / shared mode</b> — for every visitor, set <code>TOOLBOX_ALLOW_OWNER_OVERRIDE = false</code> in host <code>toolbox.js</code> (optional <code>TOOLBOX_PUBLIC_POLICY</code> with <code>moreSubs</code> for guest More panes). Or soft-enable via Toolbox <b>Settings → Public</b> → <b>Public / shared receiver</b> while logged in as OpenWebRX admin (when your host has no General checkbox). Guests cannot edit Settings.</li>" +
@@ -20349,7 +24055,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Explore LCD</b> — hover a digit and scroll the mouse wheel to nudge that place value (Shift ×10).</li>" +
       "</ul>" +
       "<h3>Title bar tabs</h3>" +
-      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> · <b>Identify</b> (heuristics + optional DIY classifier Extra) · <b>Log</b> (decoder feed, QSO pad, callsigns) · <b>Watch</b> (alerts, groups, snooze) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>More</b> (Spots / Space / Tune / Sky / Here / Sked / Read / <b>Feeds</b> — your panes under <b>Settings → General → More sections</b>; guests under <b>Settings → Public</b>) · <b>Settings</b> (<b>General</b> · <b>Public</b>; edit needs OpenWebRX <b>admin</b> login). Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Hide tabs under <b>Settings → General → Visible tabs</b> or <b>Choose layout profile</b>. Drag the title bar to move the floating panel. Use title-bar <b>D</b> to detach into its own window and drag that window to another screen.</p>" +
+      "<p><b>Explore</b> · <b>Bands</b> · <b>Range</b> · <b>Analyzer</b> · <b>Identify</b> (heuristics + optional DIY classifier Extra) · <b>Log</b> (decoder feed, QSO pad, callsigns) · <b>Watch</b> (alerts, groups, snooze) · <b>Memory</b> (Trace / Digital IDs / Bench — hidden until you enable the tab) · <b>Peaks</b> · <b>Bookmarks</b> · <b>Audio</b> · <b>Skip</b> · <b>More</b> (Spots / Space / Tune / Sky / Here / Sked / Read / <b>Feeds</b> — your panes under <b>Settings → General → More sections</b>; guests under <b>Settings → Public</b>) · <b>Settings</b> (<b>General</b> · <b>Public</b>; edit needs OpenWebRX <b>admin</b> login). Help is the brown <b>?</b> next to <b>M</b> in the header. Explore is first and opens by default. Hide tabs under <b>Settings → General → Visible tabs</b> or <b>Choose layout profile</b>. Drag the title bar to move the floating panel. Use title-bar <b>D</b> to detach into its own window and drag that window to another screen.</p>" +
       "<h3>Toolbar (top strip — can hide in Settings)</h3>" +
       "<ul>" +
       "<li><b>Scan bands</b> / <b>Fresh scan</b> / <b>Stop</b> — boxed <b>Scan bands</b> strip at the top of the Bands tab (same style as Presets / Band list).</li>" +
@@ -20505,7 +24211,8 @@ Plugins.toolbox.init = function () {
       "</ul>" +
       "<h3>Settings tab</h3>" +
       "<p>Panel-wide preferences only. Scan options live on Bands / Range; bookmark scan on Bookmarks; peak limits on Peaks; clip cap on Audio.</p>" +
-      "<p><b>Settings sub-tabs</b> — <b>General</b> (panel prefs, tabs, extras, <b>More sections</b>, then SDR devices / profiles / hop budget / sync at the bottom), <b>Public</b> (shared mode + visitor allowlist). OpenWebRX admin login required to edit.</p>" +
+      "<p><b>Settings sub-tabs</b> — <b>General</b> (panel prefs, tabs, extras, <b>More sections</b>, SDR/sync at the bottom), <b>System</b> (host + session dashboard), <b>Public</b> (shared mode + visitor allowlist). Panel startup can hide System/Public. Public editing needs OpenWebRX admin.</p>" +
+      "<p><b>DIY HTTP hooks</b> — Peak webhook, Settings sync, Identify classifier, Audio STT: use <b>Test</b> on each URL box. Homelab same-origin paths <code>/owrx-toolbox-peak-webhook</code>, <code>/owrx-toolbox-settings-sync</code>, <code>/owrx-toolbox-classify</code>, <code>/owrx-toolbox-transcribe</code> proxy to local stubs (<code>tools/*-stub.py</code>).</p>" +
       "<p><b>Extras</b> (General) — optional features and UI sections, mostly <b>on by default</b>. Opt-in extras stay off until you tick them (<b>Jump · FM broadcast</b>, Audio STT webhook, Explore tuner gain, …). <b>Public / shared receiver mode</b> is on the <b>Public</b> sub-tab (not in Extras). Untick an extra to hide it; <b>Add all extras</b> turns default-on features back on without enabling opt-ins.</p>" +
       "<p><b>Panel &amp; UI</b></p><ul>" +
       "<li><b>Open panel on startup</b> — open Toolbox when OpenWebRX loads (waits for band profiles). Off by default (forced off once in v480 so the receiver can paint first); side dock does not override this. Re-tick in Settings if you want it.</li>" +
@@ -20543,6 +24250,7 @@ Plugins.toolbox.init = function () {
       "<li><b>What it is for</b> — tell another system on your network when a <b>band or range survey</b> finds a frequency that was not on the previous peak list (a “new” peak). Typical uses: Home Assistant / Node-RED automation, <code>ntfy</code> push, Discord/Slack incoming webhook, or a tiny DIY script that logs activity.</li>" +
       "<li><b>When it fires</b> — only for new peaks that also meet Min seen, and only if “notify on new peak” / After-scan actions are enabled. It does <b>not</b> fire for every hop, every revisit, Identify, or bookmark scans.</li>" +
       "<li><b>What is sent</b> — one HTTP <code>POST</code> with JSON <code>{freq, name, db, band}</code> (Hz, label if known, strongest dB, profile/band id). Failures are ignored so a dead URL cannot break scanning.</li>" +
+      "<li><b>Test</b> — <b>Test</b> button on the URL box, or same-origin <code>/owrx-toolbox-peak-webhook</code> (homelab stub <code>:5057</code>). Needs Extras → <b>Peak webhook</b> for live survey POSTs.</li>" +
       "</ul>" +
       "<h3>Scan behaviour</h3>" +
       "<ul>" +
@@ -20609,6 +24317,34 @@ Plugins.toolbox.init = function () {
     }
     if ($("bs-copy-diag")) {
       $("bs-copy-diag").onclick = function () { copyDiagnosticReport(); };
+    }
+    var helpPane = document.querySelector("#bs-tab-help .bs-help-pane");
+    if (helpPane && !helpPane._bsHelpQsWired) {
+      helpPane._bsHelpQsWired = true;
+      helpPane.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".bs-help-qs-btn");
+        if (!btn || !helpPane.contains(btn)) return;
+        var q = btn.getAttribute("data-help-qs") || "";
+        if (q === "listen") {
+          try { simplifyMyPanel(); } catch (eS) {}
+          try { switchTab("explore", true); } catch (eTab) {}
+          return;
+        }
+        if (q === "survey") {
+          try { applyWelcomePreset("survey"); } catch (eSur) {}
+          try { switchTab("bands", true); } catch (eTab2) {}
+          setStatus("Band survey layout — tick bands, then Scan bands.");
+          return;
+        }
+        if (q === "bands") {
+          try { switchTab("bands", true); } catch (eTab3) {}
+          return;
+        }
+        if (q === "public") {
+          try { switchTab("settings", true); } catch (eTab4) {}
+          try { setSettingsSubTab("public"); } catch (eSt) {}
+        }
+      });
     }
   }
 
@@ -34859,6 +38595,11 @@ Plugins.toolbox.init = function () {
     if (name === "watch") {
       try { sigWatchMarkSeen(); } catch (eWatchSeen) {}
     }
+    if (name === "memory") {
+      try { memoryOnTab(); } catch (eMemOn) {}
+    } else {
+      try { memoryOffTab(); } catch (eMemOff) {}
+    }
     if (name === "more") {
       try { moreOnTab(); } catch (eMore) {}
     }
@@ -34917,7 +38658,11 @@ Plugins.toolbox.init = function () {
     if (name === "skip") {
       try { renderBookmarkPane(); } catch (eSkip) { updateTabLabels(); }
     }
+    if (name !== "settings") {
+      try { settingsHostStatsOffTab(); } catch (eHostOff) {}
+    }
     if (name === "settings") {
+      try { settingsHostStatsSyncTab(); } catch (eHostOn) {}
       try {
         if (!isOwrxAdmin() || (Date.now() - owrxAdminProbeAt) > 12000) {
           refreshOwrxAdmin();
@@ -34957,6 +38702,11 @@ Plugins.toolbox.init = function () {
     }
     try { applyTabBoxLayout(name); } catch (eTabLay) {}
     try { injectBoxHelpButtons($("bs-tab-" + name) || $("bs-panel")); } catch (eHelpSw) {}
+    try {
+      requestAnimationFrame(function () {
+        refreshTabScrollBackToTopHosts($("bs-tab-" + name) || $("bs-panel"));
+      });
+    } catch (eBtt) {}
   }
 
   /** Ident: full UI except Signal metadata (opt-in — was freezing the tab). */
@@ -42828,6 +46578,8 @@ Plugins.toolbox.init = function () {
     if ($("bs-quiet-start")) S.quietStart = $("bs-quiet-start").value || "";
     if ($("bs-quiet-end")) S.quietEnd = $("bs-quiet-end").value || "";
     if ($("bs-remember-tab")) S.rememberTab = $("bs-remember-tab").checked;
+    if ($("bs-st-show-system")) S.settingsSubSystem = !!$("bs-st-show-system").checked;
+    if ($("bs-st-show-public")) S.settingsSubPublic = !!$("bs-st-show-public").checked;
     if ($("bs-default-tab")) {
       var defRaw = $("bs-default-tab").value || "explore";
       if (TAB_IDS.indexOf(defRaw) < 0 && defRaw !== "last") defRaw = "explore";
@@ -44977,7 +48729,8 @@ Plugins.toolbox.init = function () {
       { wide: true, collapsible: true, open: true, id: "bs-bd-presets" }) +
       tabBoxHtml("Band list",
       '<div class="bs-bands-wrap" id="bs-bands-wrap">' +
-      '<p class="bs-hint">Click a row to tick it for Scan bands. Double-click a row to open that band on the radio. Click a column heading to sort; click it again to reverse. Scroll this pane to see every band.</p>' +
+      '<p class="bs-hint" id="bs-bands-start-hint"><b>New?</b> Tick one or more bands below (or press <b>Ham</b> / <b>Air</b>), then <b>Scan bands</b> in the toolbar. Double-click a row to tune that band.</p>' +
+      '<p class="bs-hint">Click a row to tick it for Scan bands. Click a column heading to sort; click it again to reverse.</p>' +
       '<div class="bs-row bs-light-strip" id="bs-bands-recent-wrap" hidden>' +
       '<span class="bs-opt-lab">Recent</span>' +
       '<div class="bs-ex-light-chips" id="bs-bands-recent"></div>' +
@@ -46880,7 +50633,7 @@ Plugins.toolbox.init = function () {
       "</div>" +
       '<p class="bs-hint" id="bs-news-feed-url-line">RSS for this source: <a id="bs-news-feed-url" href="#" target="_blank" rel="noopener noreferrer"></a> <span class="bs-hint">(copy into <b>Feeds → Yours</b> to add your own)</span></p>' +
       '<div class="bs-more-list bs-link-list" id="bs-news-list"></div>' +
-      '<p class="bs-hint">Headlines open in a new tab. Fetches only while this pane is open (via rss2json).</p>',
+      '<p class="bs-hint">Headlines open in a new tab. Fetches only while this pane is open (receiver <code>/owrx-toolbox-rss</code> proxy when installed).</p>',
       { wide: true, id: "bs-news-box", cls: "bs-news-box",
         help: "ARRL, RSGB, AMSAT, AMSAT-UK, Newsline, DX World, RTL-SDR, and AmateurRadio.com headlines. RSS URL for the selected chip only. Opens in a new tab. Fetches only while open." });
   }
@@ -49576,7 +53329,97 @@ Plugins.toolbox.init = function () {
     });
   }
 
-  /* News — society / ham RSS via rss2json (CORS). */
+  /* News / custom feeds — RSS via same-origin proxy, then CORS helpers (rss2json often blocked). */
+  function toolboxRssSameOriginUrl(feedUrl) {
+    try {
+      var u = new URL("/owrx-toolbox-rss", window.location.origin);
+      u.searchParams.set("url", String(feedUrl || "").trim());
+      return u.href;
+    } catch (eU) {
+      return "";
+    }
+  }
+
+  function toolboxParseRssXml(xmlText) {
+    var items = [];
+    try {
+      var doc = new DOMParser().parseFromString(String(xmlText || ""), "text/xml");
+      var nodes = doc.querySelectorAll("item");
+      if (!nodes.length) nodes = doc.querySelectorAll("entry");
+      Array.prototype.forEach.call(nodes, function (node) {
+        var titleEl = node.querySelector("title");
+        var title = titleEl ? String(titleEl.textContent || "").replace(/\s+/g, " ").trim() : "";
+        var link = "";
+        var linkEl = node.querySelector("link[href]") || node.querySelector("link");
+        if (linkEl) link = linkEl.getAttribute("href") || String(linkEl.textContent || "").trim();
+        if (!link) {
+          var guid = node.querySelector("guid, id");
+          if (guid) link = String(guid.textContent || "").trim();
+        }
+        var pubEl = node.querySelector("pubDate, published, updated, date");
+        var pubDate = pubEl ? String(pubEl.textContent || "").trim() : "";
+        if (title) items.push({ title: title, link: link, pubDate: pubDate });
+      });
+    } catch (eP) {}
+    return items;
+  }
+
+  function toolboxNormalizeRssItems(rawItems, fallbackUrl) {
+    return (rawItems || []).map(function (it) {
+      var when = String(it.pubDate || it.published || it.updated || "").replace(/ \+0000$/, "").slice(0, 22);
+      return {
+        title: String(it.title || "Untitled").replace(/\s+/g, " ").trim(),
+        link: String(it.link || it.url || fallbackUrl || ""),
+        when: when
+      };
+    }).filter(function (it) { return it.title; });
+  }
+
+  function toolboxFetchRssJson(feedUrl) {
+    feedUrl = String(feedUrl || "").trim();
+    function fromSameOrigin() {
+      var api = toolboxRssSameOriginUrl(feedUrl);
+      if (!api) return Promise.reject(new Error("no-origin"));
+      return fetch(api, { cache: "no-store", credentials: "same-origin" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("http");
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || data.status !== "ok" || !Array.isArray(data.items)) throw new Error("bad");
+          return data.items;
+        });
+    }
+    function fromAllOrigins() {
+      var ao = "https://api.allorigins.win/raw?url=" + encodeURIComponent(feedUrl);
+      return fetch(ao, { cache: "no-store" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("http");
+          return r.text();
+        })
+        .then(function (txt) {
+          var items = toolboxParseRssXml(txt);
+          if (!items.length) throw new Error("empty");
+          return items;
+        });
+    }
+    function fromRss2Json() {
+      var api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feedUrl);
+      return fetch(api, { cache: "no-store" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("http");
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || data.status !== "ok") throw new Error("bad");
+          return data.items || [];
+        });
+    }
+    return fromSameOrigin()
+      .catch(function () { return fromAllOrigins(); })
+      .catch(function () { return fromRss2Json(); });
+  }
+
   var NEWS_FEEDS = {
     arrl: { name: "ARRL", url: "https://www.arrl.org/news/rss" },
     rsgb: { name: "RSGB", url: "https://rsgb.org/main/feed/" },
@@ -49664,23 +53507,10 @@ Plugins.toolbox.init = function () {
     newsBusy = true;
     newsError = "";
     newsPaint();
-    var api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
-    fetch(api, { cache: "no-store" })
-      .then(function (r) {
-        if (!r.ok) throw new Error("http");
-        return r.json();
-      })
-      .then(function (data) {
+    toolboxFetchRssJson(feed.url)
+      .then(function (raw) {
         if (gen !== newsGen) return;
-        if (!data || data.status !== "ok") throw new Error("bad");
-        var items = (data.items || []).slice(0, 12).map(function (it) {
-          var when = String(it.pubDate || "").replace(/ \+0000$/, "").slice(0, 22);
-          return {
-            title: String(it.title || "Untitled").replace(/\s+/g, " ").trim(),
-            link: String(it.link || feed.url),
-            when: when
-          };
-        });
+        var items = toolboxNormalizeRssItems(raw, feed.url).slice(0, 12);
         newsCache[newsFeedId] = { at: Date.now(), items: items };
         newsBusy = false;
         newsError = items.length ? "" : "Feed was empty.";
@@ -49689,7 +53519,7 @@ Plugins.toolbox.init = function () {
       .catch(function () {
         if (gen !== newsGen) return;
         newsBusy = false;
-        newsError = "News feed did not answer (CORS or network).";
+        newsError = "News feed did not answer — try Refresh (rss2json is often blocked; use this receiver’s /owrx-toolbox-rss proxy when installed).";
         newsPaint();
       });
   }
@@ -49914,23 +53744,10 @@ Plugins.toolbox.init = function () {
     if (fetchId === customFeedPick) customFeedError = "";
     customFeedsPaintList();
     var feedUrl = String(feed.url || "").trim();
-    var api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feedUrl);
-    fetch(api, { cache: "no-store" })
-      .then(function (r) {
-        if (!r.ok) throw new Error("http");
-        return r.json();
-      })
-      .then(function (data) {
+    toolboxFetchRssJson(feedUrl)
+      .then(function (raw) {
         if (gen !== customFeedGen) return;
-        if (!data || data.status !== "ok") throw new Error("bad");
-        var items = (data.items || []).slice(0, 16).map(function (it) {
-          var when = String(it.pubDate || "").replace(/ \+0000$/, "").slice(0, 22);
-          return {
-            title: String(it.title || "Untitled").replace(/\s+/g, " ").trim(),
-            link: String(it.link || feedUrl),
-            when: when
-          };
-        });
+        var items = toolboxNormalizeRssItems(raw, feedUrl).slice(0, 16);
         customFeedCache[fetchId] = { at: Date.now(), items: items };
         customFeedBusy = false;
         customFeedBusyId = "";
@@ -49944,7 +53761,7 @@ Plugins.toolbox.init = function () {
         customFeedBusy = false;
         customFeedBusyId = "";
         if (fetchId === customFeedPick) {
-          customFeedError = "Feed did not answer (bad URL, CORS, or network).";
+          customFeedError = "Feed did not answer — check URL or use a receiver with /owrx-toolbox-rss installed.";
         }
         customFeedsPaintList();
       });
@@ -54084,6 +57901,92 @@ Plugins.toolbox.init = function () {
     );
   }
 
+  function panelTabHtml_memory() {
+    return (
+      '<div class="bs-tab-pane" id="bs-tab-memory" data-tab="memory" role="tabpanel">' +
+      '<div class="bs-tab-stack bs-mem-stack">' +
+      '<div class="bs-mem-subs" id="bs-mem-subs" role="tablist" aria-label="Memory sections">' +
+      '<button type="button" class="bs-mem-sub bs-mem-sub-on" data-mem-sub="trace" role="tab" aria-selected="true" title="S-meter trace at current MHz (lazy).">Trace</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="digital" role="tab" aria-selected="false" title="TG / radio ID history from decoder meta.">Digital</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="bench" role="tab" aria-selected="false" title="Shared receiver status snapshot.">Bench</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="today" role="tab" aria-selected="false" title="Log counts since local midnight.">Today</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="recent" role="tab" aria-selected="false" title="Last lines from Log (read-only).">Recent</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="markers" role="tab" aria-selected="false" title="Pin MHz + note in this browser.">Markers</button>' +
+      '<button type="button" class="bs-mem-sub" data-mem-sub="export" role="tab" aria-selected="false" title="Trace CSV, digital JSON, markers JSON.">Export</button>' +
+      "</div>" +
+      '<div class="bs-mem-subpane bs-mem-sub-on" data-mem-sub="trace" role="tabpanel">' +
+      tabBoxHtml("Trace",
+      '<p class="bs-hint bs-mem-trace-hint-off" id="bs-mem-trace-hint">Turn on <b>Settings → Extras → Memory · Trace sampling</b> to record levels every 5s while this sub-tab is open.</p>' +
+      '<canvas id="bs-mem-trace-canvas" class="bs-mem-trace-canvas" width="400" height="120" aria-label="Signal level trace"></canvas>' +
+      '<p class="bs-hint" id="bs-mem-trace-meta">Open Trace — samples every 5s while audio is running.</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-info" id="bs-mem-trace-now" title="Add one S-meter point now (good for testing).">Sample now</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-mem-trace-clear">Clear trace</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-mem-trace-csv">Export CSV</button>' +
+      "</div>" +
+      '<p class="bs-hint">Session-only graph (not saved across reload). Like desktop “signal history” for web SDRs.</p>',
+      { wide: true, id: "bs-mem-trace-box", cls: "bs-mem-box bs-box-list",
+        help: "Rolling S-meter samples at your current tune. Sampling only while Trace is open and the Trace sampling extra is on." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="digital" role="tabpanel" hidden>' +
+      tabBoxHtml("Digital IDs",
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-mem-digital-clear">Clear list</button>' +
+      "</div>" +
+      '<div class="bs-mem-digital-list" id="bs-mem-digital-list"></div>' +
+      '<p class="bs-hint">Captures DMR / meta decoder lines only while Digital is open. Click a row to tune.</p>',
+      { wide: true, id: "bs-mem-digital-box", cls: "bs-mem-box bs-box-list",
+        help: "Rolling talkgroup / radio ID history — answers the OpenWebRX wish for a TG log." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="bench" role="tabpanel" hidden>' +
+      tabBoxHtml("Bench",
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-mem-bench-refresh">Refresh status</button>' +
+      "</div>" +
+      '<div id="bs-mem-bench-body"><p class="bs-hint">Open Bench to fetch receiver status (same origin).</p></div>',
+      { wide: true, id: "bs-mem-bench-box", cls: "bs-mem-box bs-box-list",
+        help: "Light shared-WebSDR snapshot from /status.json — listeners and profile." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="today" role="tabpanel" hidden>' +
+      tabBoxHtml("Today",
+      '<div id="bs-mem-today-body"><p class="bs-hint">Counts from the Log feed since local midnight.</p></div>',
+      { wide: true, id: "bs-mem-today-box", cls: "bs-mem-box bs-box-list",
+        help: "Session stats from the same data as Log — digi, peaks, scans, busiest MHz." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="recent" role="tabpanel" hidden>' +
+      tabBoxHtml("Recent",
+      '<div class="bs-mem-digital-list" id="bs-mem-recent-list"></div>' +
+      '<p class="bs-hint">Mirror of the last ~100 Log lines. Updates while Recent is open. Click to tune.</p>',
+      { wide: true, id: "bs-mem-recent-box", cls: "bs-mem-box bs-box-list",
+        help: "Quick scroll of decoder / ID / peak lines without opening the Log tab." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="markers" role="tabpanel" hidden>' +
+      tabBoxHtml("Markers",
+      '<div class="bs-row bs-mem-marker-form">' +
+      '<input type="text" id="bs-mem-marker-note" class="bs-mem-marker-note" placeholder="Note (optional)…" maxlength="120" title="Saved with current MHz.">' +
+      '<button type="button" class="bs-tiny bs-primary" id="bs-mem-marker-add">Mark now</button>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-mem-markers-clear">Clear all</button>' +
+      "</div>" +
+      '<div class="bs-mem-digital-list" id="bs-mem-markers-list"></div>' +
+      '<p class="bs-hint">Stored in this browser (localStorage). Click a marker to tune.</p>',
+      { wide: true, id: "bs-mem-markers-box", cls: "bs-mem-box bs-box-list",
+        help: "Bookmark frequencies you care about — separate from Log pins and QSO pad." }) +
+      "</div>" +
+      '<div class="bs-mem-subpane" data-mem-sub="export" role="tabpanel" hidden>' +
+      tabBoxHtml("Export",
+      '<p class="bs-hint">One place for Memory exports. Digital list only fills while the Digital sub-tab has been open this session.</p>' +
+      '<div class="bs-row bs-mem-export-btns">' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-mem-export-trace">Trace CSV</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-mem-export-digital">Digital JSON</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-mem-export-markers">Markers JSON</button>' +
+      "</div>",
+      { wide: true, id: "bs-mem-export-box", cls: "bs-mem-box",
+        help: "Download trace samples, captured digital IDs, and saved markers." }) +
+      "</div>" +
+      "</div></div>"
+    );
+  }
+
   function panelTabHtml_log() {
     return (
       '<div class="bs-tab-pane" id="bs-tab-log" data-tab="log" role="tabpanel">' +
@@ -54092,6 +57995,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-lg-sub bs-lg-sub-on" data-lg-sub="feed" role="tab" aria-selected="true" title="Decoder lines, identify guesses, peaks, and notes.">Log</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="qso" role="tab" aria-selected="false" title="Contacts you worked. Export as ADIF.">QSO pad</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="calls" role="tab" aria-selected="false" title="Callsigns pulled from decoder lines.">Callsigns</button>' +
+      '<button type="button" class="bs-lg-sub" data-lg-sub="archive" role="tab" aria-selected="false" title="Saved decoder lines by mode — FT8, CW, RTTY, PSK, APRS, ADS-B, meta, …">Archive</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="notes" role="tab" aria-selected="false" title="Free-text notepad in this browser.">Notes</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="export" role="tab" aria-selected="false" title="Copy feed / ADIF / CSV of recent lines.">Export</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="dupes" role="tab" aria-selected="false" title="Calls heard 2+ times today.">Dupes</button>' +
@@ -54173,6 +58077,40 @@ Plugins.toolbox.init = function () {
       { wide: true, id: "bs-log-calls-box", cls: "bs-log-box",
         help: "Callsigns pulled from decoder lines. Click for QRZCQ lookup; click again to tune where it was heard." }) +
       "</div>" +
+      '<div class="bs-lg-subpane" data-lg-sub="archive" role="tabpanel" hidden>' +
+      tabBoxHtml("Decoder archive",
+      '<p class="bs-hint" id="bs-dec-arch-stat">0 saved</p>' +
+      '<div class="bs-log-tools">' +
+      '<input type="search" id="bs-dec-arch-q" class="bs-log-q" placeholder="Search call, grid, text, MHz…" title="Filter the archive.">' +
+      '<div class="bs-log-chips" id="bs-dec-arch-chips">' +
+      '<button type="button" class="bs-tiny bs-log-chip bs-on" data-dec-arch-mode="all">All</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="ft8">FT8</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="js8">JS8</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="cw">CW</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="rtty">RTTY</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="psk">PSK</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="packet">Packet</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="adsb">ADS-B</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="ais">AIS</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="acars">ACARS</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="hfdl">HFDL</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="page">Pager</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="meta">Meta</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dec-arch-mode="other">Other</button>' +
+      "</div>" +
+      '<div class="bs-log-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-dec-arch-csv" title="Download archive as CSV (current mode filter).">CSV</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-dec-arch-json" title="Download archive as JSON.">JSON</button>' +
+      '<button type="button" class="bs-tiny bs-btn-import" id="bs-dec-arch-import" title="Merge a previous archive JSON. Shift-click to paste.">Import</button>' +
+      '<input type="file" id="bs-dec-arch-file" accept=".json,application/json" hidden>' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-dec-arch-clear" title="Delete all saved decoder lines in this browser.">Clear archive</button>' +
+      "</div></div>" +
+      '<div class="bs-log-feed bs-dec-arch-feed" id="bs-dec-arch-feed"></div>' +
+      '<p class="bs-hint bs-log-foot">Up to <b>' + DECODER_ARCHIVE_MAX + "</b> lines in <code>localStorage</code>. " +
+      "Filled automatically from decoder/meta Log lines. RTTY and PSK are inferred from digimode panel text. Export uses the mode chip.</p>",
+      { wide: true, id: "bs-log-archive-box", cls: "bs-log-box",
+        help: "Saved decoder traffic by mode. Filter, search, export CSV/JSON. Browser-local archive alongside the 400-line Log feed." }) +
+      "</div>" +
       '<div class="bs-lg-subpane" data-lg-sub="notes" role="tabpanel" hidden>' +
       tabBoxHtml("Notes",
       '<textarea id="bs-log-notepad" class="bs-extra-notepad" rows="12" maxlength="20000" placeholder="Scratch pad — stays in this browser." title="Free-text notes."></textarea>' +
@@ -54193,8 +58131,10 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-tiny bs-btn-export" id="bs-log-x-adif" title="Download QSO pad as ADIF.">ADIF (QSO)</button>' +
       '<button type="button" class="bs-tiny bs-btn-export" id="bs-log-x-calls" title="Copy today\'s callsigns.">Copy calls</button>' +
       '<button type="button" class="bs-tiny bs-btn-import" id="bs-log-x-import" title="Merge a previous Log CSV or JSON export. Shift-click to paste.">Import</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-log-x-arch-csv" title="Download full decoder archive as CSV.">Archive CSV</button>' +
+      '<button type="button" class="bs-tiny bs-btn-export" id="bs-log-x-arch-json" title="Download full decoder archive as JSON.">Archive JSON</button>' +
       "</div>" +
-      '<p class="bs-hint" id="bs-log-x-meta">One place for quick exports from the feed and logbook.</p>',
+      '<p class="bs-hint" id="bs-log-x-meta">One place for quick exports from the feed, logbook, and decoder archive.</p>',
       { wide: true, id: "bs-log-export-box", cls: "bs-log-box",
         help: "Copy feed / ADIF / CSV of recent lines. Import merges a previous Log export (Shift-click to paste)." }) +
       "</div>" +
@@ -54379,6 +58319,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-settings-stack" id="bs-settings-stack">' +
       '<div class="bs-st-subs" id="bs-st-subs" role="tablist" aria-label="Settings sections">' +
       '<button type="button" class="bs-st-sub bs-st-sub-on" data-st-sub="general" role="tab" aria-selected="true">General</button>' +
+      '<button type="button" class="bs-st-sub" data-st-sub="system" role="tab" aria-selected="false" title="CPU, memory, WebSocket, and traffic.">System</button>' +
       '<button type="button" class="bs-st-sub" data-st-sub="public" role="tab" aria-selected="false">Public</button>' +
       "</div>" +
       '<div class="bs-st-subpane bs-st-sub-on" data-st-sub="general" role="tabpanel" id="bs-settings-general-pane">' +
@@ -54393,8 +58334,10 @@ Plugins.toolbox.init = function () {
         { id: "bs-factory-box", danger: true }) +
       settingsBoxHtml("Layout profile",
         '<p class="bs-hint">Pick <b>Light</b>, <b>Band survey</b>, or <b>Everything</b> — this sets which <b>main tabs</b> and extras are on (Settings → Visible tabs to fine-tune). Does not delete peaks, bookmarks, or audio.</p>' +
+        '<p class="bs-hint">Not sure? <b>Light</b> is the safe default — you can turn Range, Analyzer, and More back on anytime.</p>' +
         '<div class="bs-row">' +
-        '<button type="button" class="bs-primary" id="bs-show-welcome-wizard" title="Open layout chooser — Light, Band survey, or Everything.">Choose layout profile…</button>' +
+        '<button type="button" class="bs-primary" id="bs-show-welcome-wizard" title="Pick a starter layout: Light (simple), Band survey (scanning), or Everything (all tabs). You can change tabs later.">Choose layout profile…</button>' +
+        '<button type="button" class="bs-btn-util" id="bs-simplify-panel" title="Easier panel: Light layout, fewer tabs, header Find on. Your peaks and bookmarks stay — restore tabs under Visible tabs.">Simplify my panel</button>' +
         "</div>",
         { id: "bs-layout-profile-box", wide: true,
           help: "Light / Survey / Everything presets for tabs, More panes, extras, and network budget." }) +
@@ -54403,11 +58346,11 @@ Plugins.toolbox.init = function () {
         (Plugins.toolbox._version || "?") +
         "</b> · Latest available: <span class=\"bs-install-unknown\">checking…</span></p>" +
         '<div class="bs-row" id="bs-settings-check">' +
-        '<button type="button" class="bs-btn-info" id="bs-check" title="Check that this page can run Toolbox and show any fix on this tab.">Check install</button>' +
+        '<button type="button" class="bs-btn-info" id="bs-check" title="Run install checks in this browser. Green = Toolbox loaded. Use after first install or a hard-refresh (Ctrl+Shift+R).">Check install</button>' +
         '<button type="button" class="bs-primary" id="bs-update-toolbox" title="Update Toolbox from GitHub. CDN @main: reload. Local / pinned: download zip to copy onto the radio host.">Update Toolbox</button>' +
         '<a class="bs-btn-export" id="bs-github-repo" href="https://github.com/G4EA5/openwebrx-toolbox" target="_blank" rel="noopener" title="Open the Toolbox GitHub repo (clone or pull for updates).">GitHub repo</a>' +
         '</div>' +
-        '<p class="bs-hint" id="bs-update-hint">Update checks GitHub. CDN installs can reload the newest build; local installs download <code>toolbox.js</code> + <code>toolbox.css</code> for you to copy onto the radio (this browser cannot write host files).</p>' +
+        '<p class="bs-hint" id="bs-update-hint">After first install: <b>Check install</b> should be green. Updates: CDN <code>@main</code> reloads this page; local installs get a zip to copy onto the host (the browser cannot edit server files). Wiki: <a href="https://github.com/G4EA5/openwebrx-toolbox/blob/main/docs/FIRST-INSTALL.md" target="_blank" rel="noopener">First install guide</a>.</p>' +
         '<p class="bs-hint" id="bs-update-status"></p>' +
         '<div id="bs-health" class="bs-health" hidden></div>',
         { id: "bs-install-box", extra: "installCheck", cls: "bs-min-hide",
@@ -54423,6 +58366,7 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Show or hide the Identify tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="identify" checked> Identify</label>' +
         '<label class="bs-chk" title="Show or hide the Log tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="log" checked> Log</label>' +
         '<label class="bs-chk" title="Show or hide the Watch tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="watch" checked> Watch</label>' +
+        '<label class="bs-chk" title="Memory — Trace, Digital IDs, and Bench (lazy sub-tabs)."><input type="checkbox" class="bs-tab-vis" data-tab="memory"> Memory</label>' +
         '<label class="bs-chk" title="Show or hide the Peaks tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="peaks" checked> Peaks</label>' +
         '<label class="bs-chk" title="Show or hide the Bookmarks tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="bookmarks" checked> Bookmarks</label>' +
         '<label class="bs-chk" title="Show or hide the Audio tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="audio" checked> Audio</label>' +
@@ -54464,6 +58408,11 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Click the main Start OpenWebRX+ play button when the page loads so you do not have to. Some browsers still block audio until you click once."><input type="checkbox" id="bs-autostart-owrx"> Auto-click Start OpenWebRX+</label>' +
         '<label class="bs-chk" title="Remember the last tab you used between sessions."><input type="checkbox" id="bs-remember-tab"> Remember last tab</label>' +
         "</div>" +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label class="bs-chk" title="Show the System sub-tab (CPU, memory, WebSocket, host stats)."><input type="checkbox" id="bs-st-show-system" checked> Show System sub-tab</label>' +
+        '<label class="bs-chk" title="Show the Public sub-tab (shared mode and visitor allowlist). Still requires OpenWebRX admin to edit."><input type="checkbox" id="bs-st-show-public" checked> Show Public sub-tab</label>' +
+        "</div>" +
+        '<p class="bs-hint">General is always shown. Turn off System or Public to hide those buttons on the Settings bar.</p>' +
         '<div class="bs-row">' +
         '<label title="Which tab to show when the panel opens. Default is Explore. Last used follows Remember last tab.">Default tab <select id="bs-default-tab">' +
         '<option value="explore">Always Explore</option><option value="last">Last used</option>' +
@@ -54506,7 +58455,7 @@ Plugins.toolbox.init = function () {
         '<p class="bs-hint">Panel scale applies to <b>tab content</b> (Explore, Bands, Settings, …). <b>Main tab size</b> is the header row only (factory default is <b>Default</b>). Purple <b>100</b> cycles panel scale. Minimal: <b>M</b> / <b>F</b>.</p>' +
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="Show the Bands / Bookmarks scan strip when idle. Stop and status still appear while a scan is running even when this is off."><input type="checkbox" id="bs-show-scan-strip" checked> Show scan strip</label>' +
-        '<label class="bs-chk" title="Show the Find button in the Toolbox header. Search controls by keyword. Off until you tick this."><input type="checkbox" id="bs-find-in-toolbox"> Find in Toolbox</label>' +
+        '<label class="bs-chk" title="Show the magnifier in the Toolbox header. Type keywords like gain, record, visible tabs, or simplify — jumps to matching settings."><input type="checkbox" id="bs-find-in-toolbox"> Find in Toolbox</label>' +
         '<label class="bs-chk" title="Show the M button in the Toolbox header. It switches the current tab between Minimal and Full view. Off until you tick this."><input type="checkbox" id="bs-minimal-button"> Minimal button</label>' +
         '<label class="bs-chk" title="Hide OpenWebRX\u2019s floating receiver panel (modes, volume, squelch, etc.). Audio stays on — use Explore for those controls. Default off."><input type="checkbox" id="bs-hide-stock-rx"> Hide stock receiver panel</label>' +
         "</div>" +
@@ -54612,41 +58561,50 @@ Plugins.toolbox.init = function () {
       sdrControlSettingsHtml() +
       "</div>" +
       '<div class="bs-settings-webhooks" id="bs-settings-webhooks">' +
-      settingsBoxHtml("Peak webhook",
-        '<p class="bs-hint">Optional outbound notice for <b>your</b> automation — not used by OpenWebRX itself.</p>' +
-        '<p class="bs-hint">When a <b>band or range survey</b> finds a frequency that was not on the previous peak list (and it meets Min seen), Toolbox can send one small JSON <code>POST</code> to this URL. Typical uses: Home Assistant, ntfy, Discord/Slack incoming webhook, or a DIY logger on your LAN.</p>' +
-        '<div class="bs-row">' +
-        '<label title="HTTP POST JSON {freq, name, db, band} when a survey finds a brand-new peak. Empty = off. Network errors are ignored so scanning never stalls.">Notify URL <input type="url" id="bs-webhook" placeholder="https://homeassistant.local/api/webhook/…" style="flex:1;min-width:140px"></label>' +
-        "</div>" +
-        '<p class="bs-hint">Needs Settings → Extras → <b>Peak webhook</b>, plus After-scan “notify on new peak”. Does not fire on every hop or revisit.</p>',
-        { extra: "homelabWebhook", cls: "bs-min-hide",
-          help: "Outbound HTTP POST when a survey discovers a brand-new peak. For your own Home Assistant / ntfy / DIY endpoint — Toolbox never requires a URL." }) +
-      settingsBoxHtml("Identify · external classifier",
-        diyDecodeLegalNoticeHtml("identify") +
-        '<div class="bs-row bs-id-ext-row" id="bs-id-ext-row">' +
-        '<label class="bs-id-ext-lab" title="Identify now POSTs fingerprint JSON to this URL when set. Live identify does not call out. Your own LLM / classifier service — lawful use only.">Classifier URL ' +
-        '<input type="url" id="bs-id-classifier-url" class="bs-id-classifier-url" placeholder="http://127.0.0.1:5055/classify" autocomplete="off" spellcheck="false">' +
-        "</label>" +
-        "</div>" +
-        '<p class="bs-hint bs-id-ext-exp">This <b>LLM URL</b> hook is <b>experimental and untested</b> — bring your own HTTP service for <b>your own testing</b>; Toolbox does not ship or support a bundled classifier/LLM backend.</p>' +
-        '<p class="bs-hint bs-id-ext-hint">Optional for <b>Identify now</b> only — <b>Live</b> stays local. Leave blank for heuristics. Enable under Settings → Extras → <b>Identify · external classifier</b>.</p>',
-        { id: "bs-id-classifier-box", wide: true, extra: "idExternal", cls: "bs-min-hide",
-          help: "DIY HTTP classifier URL for Identify now. Hidden until Settings → Extras → Identify · external classifier is on." }) +
-      settingsBoxHtml("Audio · STT webhook",
-        diyDecodeLegalNoticeHtml("audio") +
-        '<p class="bs-hint">Optional DIY HTTP endpoint on your homelab — <b>Whisper</b>, <b>faster-whisper</b>, <b>n8n</b>, <b>Home Assistant</b>, or an <b>Ollama</b> STT→LLM script. Toolbox POSTs JSON with WAV base64 + MHz/mode/time; expect JSON <code>{ transcript, summary? }</code> back. Enable under Settings → Extras → <b>Audio · STT webhook</b>.</p>' +
-        '<div class="bs-row">' +
-        '<label class="bs-audio-stt-url-lab" title="POST JSON { source, version, clip: { freqHz, mode, audioBase64, … } }. Audio leaves this browser only when you POST or tick Auto.">STT URL <input type="url" id="bs-audio-stt-url" class="bs-audio-stt-url" placeholder="/owrx-toolbox-transcribe" autocomplete="off" spellcheck="false"></label>' +
-        "</div>" +
-        '<p class="bs-hint bs-audio-stt-exp">This <b>STT / LLM URL</b> hook is <b>experimental and untested</b> — bring your own HTTP service for <b>your own testing</b>; Toolbox does not ship or support a bundled speech-to-text backend.</p>' +
-        '<div class="bs-row bs-chk-grid">' +
-        '<label class="bs-chk" title="After voice analysis marks a clip as likely voice, POST it automatically."><input type="checkbox" id="bs-audio-stt-auto"> Auto transcribe voice clips</label>' +
-        '<button type="button" class="bs-btn-util" id="bs-audio-stt-test" title="POST the newest voice-likely clip (or newest clip) to test your endpoint.">Test</button>' +
-        "</div>" +
-        '<p class="bs-hint bs-audio-stt-contract">Contract: <code>POST</code> JSON · <code>clip.audioBase64</code> is WAV · response <code>{ &quot;transcript&quot;: &quot;…&quot;, &quot;summary&quot;: &quot;optional LLM blurb&quot; }</code> · CORS must allow the receiver origin · 45s timeout.</p>',
-        { wide: true, id: "bs-audio-stt-box", extra: "audioSttWebhook", cls: "bs-min-hide",
-          help: "Bring your own speech-to-text or STT+LLM service. Clip STT buttons on Audio still use this URL when the Extra is on." }) +
+      settingsAdvancedUrlsBlockHtml() +
       "</div>" +
+      "</div>" +
+      '<div class="bs-st-subpane" data-st-sub="system" role="tabpanel" id="bs-settings-system-pane" hidden>' +
+      settingsBoxHtml("Host machine",
+        '<div id="bs-settings-system-hero" class="bs-dash-hero-root"></div>',
+        { id: "bs-settings-system-hero-box", wide: true, cls: "bs-dash-box bs-dash-hero-box",
+          help: "CPU model, cores, RAM, disk, load, uptime, LAN IPs, OpenWebRX + Toolbox build on the receiver." }) +
+      settingsBoxHtml("Listeners & IPs",
+        '<div id="bs-settings-listeners-body"></div>',
+        { id: "bs-settings-listeners-box", wide: true, cls: "bs-dash-box",
+          help: "Who is connected: admin /clients table when logged in, plus TCP peers from hoststats." }) +
+      settingsBoxHtml("Your session",
+        '<div id="bs-settings-session-body"></div>',
+        { id: "bs-settings-session-box", wide: true, cls: "bs-dash-box",
+          help: "Current MHz, mode, profile, toolbox session time, and your tune trail in this tab." }) +
+      settingsBoxHtml("Radio & SDR",
+        '<div id="bs-settings-radio-body"></div>',
+        { id: "bs-settings-radio-box", wide: true, cls: "bs-dash-box",
+          help: "Live tune, profile, span, S-meter, decoder volume today, and any running Toolbox survey job." }) +
+      settingsBoxHtml("OpenWebRX internals",
+        '<div id="bs-settings-owrx-body" class="bs-dash-owrx-root"></div>',
+        { id: "bs-settings-owrx-box", wide: true, cls: "bs-dash-box",
+          help: "status.json receiver/SDRs, live demod & waterfall, WebSocket, footer meters, open decoder panels." }) +
+      settingsBoxHtml("Decoder reporting",
+        '<div id="bs-settings-decoders-body"></div>',
+        { id: "bs-settings-decoders-box", wide: true, cls: "bs-dash-box",
+          help: "FT8, PSK/RTTY, APRS, ACARS, ADS-B, AIS, pager, DMR meta, Identify, … — live OpenWebRX panels vs Log lines." }) +
+      settingsBoxHtml("Toolbox in this tab",
+        '<div id="bs-settings-tbstats-body"></div>',
+        { id: "bs-settings-tbstats-box", wide: true, cls: "bs-dash-box",
+          help: "Per Toolbox tab storage and RAM estimates, plus log/peaks counters and status.json / hoststats freshness." }) +
+      settingsBoxHtml("Host & load",
+        '<div id="bs-settings-host-body" class="bs-dash-host-root"><p class="bs-hint">Live CPU and memory samples while System is open.</p></div>',
+        { id: "bs-settings-host-box", wide: true, cls: "bs-settings-host-box bs-dash-box",
+          help: "Receiver host (OpenWebRX process + optional hoststats.json) and this browser tab (JS heap, Toolbox estimate)." }) +
+      settingsBoxHtml("Connections",
+        '<div id="bs-settings-conn-body" class="bs-dash-conn-root"><p class="bs-hint">WebSocket and HTTP traffic map.</p></div>',
+        { id: "bs-settings-conn-box", wide: true, cls: "bs-settings-conn-box bs-dash-box",
+          help: "Live WebSocket link, audio/network downlink, listeners, and how Toolbox attaches to the same tab." }) +
+      settingsBoxHtml("Nerd vault",
+        '<div id="bs-settings-nerd-body" class="bs-dash-nerd-root"></div>',
+        { id: "bs-settings-nerd-box", wide: true, cls: "bs-dash-box bs-dash-nerd-box",
+          help: "Deep OWRX globals, demod/waterfall/FFT, WS wire, log pipeline, meta packets, panel raw text, copyable JSON." }) +
       "</div>" +
       '<div class="bs-st-subpane" data-st-sub="public" role="tabpanel" id="bs-settings-public-pane" hidden>' +
       '<div class="bs-settings-public-block" id="bs-settings-public-block">' +
@@ -54713,7 +58671,7 @@ Plugins.toolbox.init = function () {
   /** Built only after Settings → Visible tabs enables them (not on first panel open). */
   var EXPERIMENTAL_TABS = ["analyzer", "identify"];
   /** Stub on first open — inject HTML when the user opens the tab (faster first paint). */
-  var DEFERRED_COLD_TABS = ["bookmarks", "audio", "skip", "help", "more"];
+  var DEFERRED_COLD_TABS = ["bookmarks", "audio", "skip", "help", "more", "memory"];
 
   function isExperimentalTab(name) {
     return EXPERIMENTAL_TABS.indexOf(name) >= 0;
@@ -55140,6 +59098,10 @@ Plugins.toolbox.init = function () {
       try { bindSigWatch(); } catch (eWatchBind) {}
       try { sigWatchRender(); } catch (eWatchR) {}
     }
+    if (name === "memory") {
+      try { bindMemoryTab(); } catch (eMemBind) {}
+      try { memoryOnTab(); } catch (eMemOn) {}
+    }
     if (name === "more") {
       try { bindMoreTab(); } catch (eMoreBind) {}
       try { moreOnTab(); } catch (eMore) {}
@@ -55174,6 +59136,11 @@ Plugins.toolbox.init = function () {
     try { applyExtrasUi(); } catch (eExUi) {}
     try { applyPublicPolicyUi(); } catch (ePubUi) {}
     try { applyUxFeel(); } catch (eUx) {}
+    try {
+      requestAnimationFrame(function () {
+        refreshTabScrollBackToTopHosts(pane);
+      });
+    } catch (eBttDef) {}
   }
 
   /** Audio tab controls — re-run after cold Audio HTML inject. */
@@ -55948,6 +59915,51 @@ Plugins.toolbox.init = function () {
       existing = null;
     }
     if (existing && !$("bs-st-subs")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-st-show-system")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-settings-sync-url") && !$("bs-settings-sync-test")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-settings-sync-url") && !$("bs-settings-advanced-urls")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-layout-profile-box") && !$("bs-simplify-panel")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-tab-memory") && $("bs-mem-trace-canvas") &&
+        (!$("bs-mem-trace-now") || !$("bs-mem-export-box") || !$("bs-mem-marker-add"))) {
+      /* B172+: stale Memory HTML (Trace Sample now, Markers, Export sub-tab, …). */
+      var memPaneMig = $("bs-tab-memory");
+      if (memPaneMig && memPaneMig.parentNode) {
+        var wrapMemMig = document.createElement("div");
+        wrapMemMig.innerHTML = panelTabHtml_memory();
+        var newMemMig = wrapMemMig.firstElementChild;
+        if (newMemMig) {
+          memPaneMig.parentNode.replaceChild(newMemMig, memPaneMig);
+        }
+      }
+    }
+    if (existing && $("bs-tab-log") && $("bs-lg-subs") && !$("bs-log-archive-box")) {
+      /* B173: stale Log HTML (Decoder archive + Export / Dupes sub-tabs). */
+      var logPaneMig = $("bs-tab-log");
+      if (logPaneMig && logPaneMig.parentNode) {
+        var wrapLogMig = document.createElement("div");
+        wrapLogMig.innerHTML = panelTabHtml_log();
+        var newLogMig = wrapLogMig.firstElementChild;
+        if (newLogMig) {
+          logPaneMig.parentNode.replaceChild(newLogMig, logPaneMig);
+        }
+      }
+    }
+    if (existing && $("bs-webhook") && !$("bs-webhook-test")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -56838,6 +60850,7 @@ Plugins.toolbox.init = function () {
     bindHelpTabActions();
     try { bindSettingsScrollPin(); } catch (ePin) {}
     try { bindPanelTabScrollPin(); } catch (eTabPin) {}
+    try { bindTabScrollBackToTop(panel); } catch (eTabBtt) {}
     Array.prototype.forEach.call(document.querySelectorAll("#bs-settings .bs-extra-tog"), function (inp) {
       inp.onchange = function () {
         if (inp.disabled) return;
@@ -57314,6 +61327,7 @@ Plugins.toolbox.init = function () {
     try { trafficLogRender(); } catch (eLogR0) {}
     try { bindSigWatch(); } catch (eWatchBind0) {}
     try { sigWatchRender(); } catch (eWatchR0) {}
+    try { bindMemoryTab(); } catch (eMemBind0) {}
     try { bindBookmarksTabControls(); } catch (eBmBind0) {}
     try { bindAudioTabControls(); } catch (eAudBind0) {}
     $("bs-filter").oninput = filterBands;
@@ -57370,6 +61384,13 @@ Plugins.toolbox.init = function () {
       window._bs_startup_owrx_done = false;
       runStartupOwrxStart();
     };
+    function onSettingsSubVisChange() {
+      readForm();
+      saveSettings();
+      setSettingsSubTab(null, { skipSave: true });
+    }
+    if ($("bs-st-show-system")) $("bs-st-show-system").onchange = onSettingsSubVisChange;
+    if ($("bs-st-show-public")) $("bs-st-show-public").onchange = onSettingsSubVisChange;
     [
       "bs-remember-tab", "bs-switch-peaks", "bs-notify-done", "bs-sound-peak", "bs-copy-done",
       "bs-sched-idle", "bs-pause-tune", "bs-find-in-toolbox", "bs-minimal-button", "bs-hide-stock-rx", "bs-mute-on-tab",
@@ -57636,6 +61657,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-factory-reset")) $("bs-factory-reset").onclick = factoryReset;
     if ($("bs-new-install-reset")) $("bs-new-install-reset").onclick = runNewInstallReset;
     if ($("bs-show-welcome-wizard")) $("bs-show-welcome-wizard").onclick = runSetupWizardAgain;
+    if ($("bs-simplify-panel")) $("bs-simplify-panel").onclick = simplifyMyPanel;
     try { bindSmeterCalSettings(); } catch (eSmCal) {}
     if ($("bs-settings-file")) {
       $("bs-settings-file").onchange = function () {
@@ -58297,6 +62319,7 @@ Plugins.toolbox.init = function () {
     if (name === "identify") return panelTabHtml_identify();
     if (name === "log") return panelTabHtml_log();
     if (name === "watch") return panelTabHtml_watch();
+    if (name === "memory") return panelTabHtml_memory();
     if (name === "more") return panelTabHtml_more();
     if (name === "peaks") return panelTabHtml_peaks();
     if (name === "bookmarks") return panelTabHtml_bookmarks();

@@ -1,0 +1,3175 @@
+{
+  "version": 2,
+  "updated": "2026-10-18",
+  "about": "Amateur prefix allocations by country/entity with approximate first/last use years, plus licence classes (Foundation/Intermediate/Full and national equivalents) where curated. Based on ITU Article 19 blocks, national licensing history, and DXCC entity changes. Not a legal document — verify critical details with national regulators.",
+  "continentLabels": {
+    "AF": "Africa",
+    "AS": "Asia",
+    "EU": "Europe",
+    "NA": "North America",
+    "SA": "South America",
+    "OC": "Oceania",
+    "AN": "Antarctica",
+    "EU/AS": "Europe / Asia"
+  },
+  "entries": [
+    {
+      "country": "United Kingdom",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 223,
+      "summary": "Ofcom issues Foundation, Intermediate, and Full (Advanced) licences. Callsign structure depends on level and home nation (England, Scotland, Wales, NI, Crown Dependencies).",
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "G, M, 2E/2M/2W/2I, M3/M6/M7, GM, GW, GI, GD, GJ, GU, MM, MW, MI, MD, MJ, MG",
+          "note": "ITU block G*; regional second letter/digit in legacy G calls — see Callsign series below."
+        }
+      ],
+      "licences": [
+        {
+          "level": "Foundation",
+          "start": 2002,
+          "end": null,
+          "callsigns": "M3xxx, M6xxx, M7xxx (England); MM6/M7 (Scotland); MW6/M7 (Wales); MI6/M7 (NI); similar on GD/GJ/GU",
+          "privileges": "10 W PEP (most bands); Foundation band plan — limited HF (e.g. 80/40/20/15/10 m segments), VHF/UHF.",
+          "note": "M7 is the current Foundation issue block (replacing M6 for new licences)."
+        },
+        {
+          "level": "Intermediate",
+          "start": 1991,
+          "end": null,
+          "callsigns": "2E0xxx (England), 2M0xxx (Scotland), 2W0xxx (Wales), 2I0xxx (Northern Ireland)",
+          "privileges": "50 W PEP; wider HF than Foundation but not all Full bands; cannot operate on all Advanced-only segments.",
+          "note": "Leading 2 marks Intermediate; nation letter E/M/W/I as per Full."
+        },
+        {
+          "level": "Full (Advanced)",
+          "start": 1991,
+          "end": null,
+          "callsigns": "M0, MM0, MW0, MI0, MD0, MJ0, MG0 + suffix; legacy G… calls remain valid",
+          "privileges": "Up to 400 W PEP on UK amateur bands; all allocations in the UK amateur licence schedule.",
+          "note": "New Full issues use M+0; Scotland/Wales/NI use MM0, MW0, MI0, etc."
+        },
+        {
+          "level": "Legacy Full (Class A)",
+          "start": 1920,
+          "end": null,
+          "callsigns": "G + digit + suffix (e.g. G3VZL, G4EA5) — retained for life",
+          "privileges": "Treated as Full; original Class A/B distinctions abolished but callsigns kept.",
+          "note": "Second digit G1–G8 indicated regional issue block (see series table), not Foundation/Intermediate."
+        },
+        {
+          "level": "Legacy Class B (historical)",
+          "start": 1920,
+          "end": 2003,
+          "callsigns": "2-letter regional prefixes (e.g. G3… with restricted privileges in early decades)",
+          "privileges": "Historically restricted HF; merged into modern licence framework by 2003 reform.",
+          "note": "Superseded by Foundation / Intermediate / Full structure."
+        }
+      ],
+      "callsignSeries": [
+        {
+          "series": "G1",
+          "start": 1920,
+          "end": null,
+          "meaning": "London area (historical primary issue)",
+          "note": "Still seen on grandfathered G1 calls."
+        },
+        {
+          "series": "G2",
+          "start": 1920,
+          "end": null,
+          "meaning": "England — North (historical)",
+          "note": ""
+        },
+        {
+          "series": "G3",
+          "start": 1920,
+          "end": null,
+          "meaning": "England — general / most common today",
+          "note": "Many UK HF operators hold G3/G4 calls."
+        },
+        {
+          "series": "G4",
+          "start": 1920,
+          "end": null,
+          "meaning": "England — Midlands / general",
+          "note": ""
+        },
+        {
+          "series": "G5",
+          "start": 1920,
+          "end": null,
+          "meaning": "Wales (historical block)",
+          "note": "Modern Wales also GW/MW."
+        },
+        {
+          "series": "G6",
+          "start": 1920,
+          "end": null,
+          "meaning": "Scotland (historical block)",
+          "note": "Modern Scotland GM/MM."
+        },
+        {
+          "series": "G7",
+          "start": 1920,
+          "end": null,
+          "meaning": "Scotland / north (historical)",
+          "note": ""
+        },
+        {
+          "series": "G8",
+          "start": 1920,
+          "end": null,
+          "meaning": "Northern Ireland (historical block)",
+          "note": "Modern NI GI/MI."
+        },
+        {
+          "series": "M0",
+          "start": 1996,
+          "end": null,
+          "meaning": "England Full (new issue)",
+          "note": ""
+        },
+        {
+          "series": "2E0",
+          "start": 1991,
+          "end": null,
+          "meaning": "England Intermediate",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "United States",
+      "continent": "NA",
+      "cq": "3-5",
+      "itu": "6-8",
+      "dxcc": 291,
+      "periods": [
+        {
+          "start": 1912,
+          "end": null,
+          "prefixes": "K, N, W, A, AA-AL, KH6, KL7, KP4, …",
+          "note": "FCC amateur service; Alaska, Hawaii, Pacific/ Caribbean insular areas use separate blocks."
+        }
+      ],
+      "summary": "FCC three-class system: Technician, General, Extra. Exam Element credits (formerly written tests). Vanity calls follow group rules by class.",
+      "licences": [
+        {
+          "level": "Technician",
+          "start": 1951,
+          "end": null,
+          "callsigns": "Group C/D: district K/W/N + 3 letters (e.g. K1ABC); any unassigned block",
+          "privileges": "All privileges above 30 MHz; HF on specified segments (expanded over time — Tech HF bands).",
+          "note": "Entry-level; Element 2 + Element 3 (or credit) for General/Extra path."
+        },
+        {
+          "level": "General",
+          "start": 1912,
+          "end": null,
+          "callsigns": "Same pool as Technician; historically distinguished by exam, not prefix",
+          "privileges": "Most HF amateur bands; not all Extra-only segments (e.g. some 80/75/20/15 edges).",
+          "note": "Requires Technician + General exam credits (Elements 2+3)."
+        },
+        {
+          "level": "Extra",
+          "start": 1952,
+          "end": null,
+          "callsigns": "Group A/B preferred: 1×2, 2×1, 1×3 (e.g. K1A, AA1A, W1AW); shorter = older Extra",
+          "privileges": "All US amateur bands and modes; maximum spectrum access.",
+          "note": "Merged Advanced/Extra 2012; Element 4 exam."
+        },
+        {
+          "level": "Novice",
+          "start": 1951,
+          "end": 2000,
+          "callsigns": "K/W/N + 2×3 with N or W as second letter in some eras",
+          "privileges": "Limited HF/VHF; CW/digital segments; no longer issued.",
+          "note": "Ended 2000; many holders upgraded."
+        },
+        {
+          "level": "Advanced (historical)",
+          "start": 1952,
+          "end": 2012,
+          "callsigns": "Group B 2×2, 2×3",
+          "privileges": "Between General and Extra; merged into Extra class 2012.",
+          "note": "Grandfathered Extra privileges for holders."
+        }
+      ],
+      "callsignSeries": [
+        {
+          "series": "1×2",
+          "start": 1912,
+          "end": null,
+          "meaning": "Extra / long-time Extra vanity (e.g. W1AW)",
+          "note": "Scarce."
+        },
+        {
+          "series": "2×1",
+          "start": 1912,
+          "end": null,
+          "meaning": "Extra only (e.g. K1A)",
+          "note": ""
+        },
+        {
+          "series": "1×3",
+          "start": 1946,
+          "end": null,
+          "meaning": "Extra, General, Technician new issues",
+          "note": "Most common today."
+        },
+        {
+          "series": "2×2",
+          "start": 1978,
+          "end": null,
+          "meaning": "Advanced-era block; now Extra-eligible",
+          "note": ""
+        },
+        {
+          "series": "KH6 / KL7 / KP4",
+          "start": 1920,
+          "end": null,
+          "meaning": "Hawaii, Alaska, Puerto Rico districts",
+          "note": "Separate DXCC entities."
+        }
+      ]
+    },
+    {
+      "country": "Canada",
+      "continent": "NA",
+      "cq": "1-5",
+      "itu": "2-4",
+      "dxcc": 1,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "VA-VE, VO, VY, CY, XF",
+          "note": "ISED; VO Newfoundland/Labrador."
+        }
+      ],
+      "licences": [
+        {
+          "level": "Basic",
+          "start": 1919,
+          "end": null,
+          "callsigns": "VA–VE, VO, CY, XF + 2–3 letters",
+          "privileges": "HF/VHF per Basic qualification; some bands need Honours.",
+          "note": "ISED."
+        },
+        {
+          "level": "Basic + Honours",
+          "start": 1990,
+          "end": null,
+          "callsigns": "Same prefix blocks",
+          "privileges": "Full HF amateur spectrum in Canada.",
+          "note": "Higher exam pass."
+        }
+      ]
+    },
+    {
+      "country": "Mexico",
+      "continent": "NA",
+      "cq": "6",
+      "itu": 10,
+      "dxcc": 50,
+      "periods": [
+        {
+          "start": 1926,
+          "end": null,
+          "prefixes": "XE, XF, XG",
+          "note": "IFT amateur licences."
+        }
+      ]
+    },
+    {
+      "country": "Cuba",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 70,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "CO, CM, CL",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bahamas",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 60,
+      "periods": [
+        {
+          "start": 1954,
+          "end": null,
+          "prefixes": "C6",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Jamaica",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 82,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "6Y",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Dominican Republic",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 72,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "HI",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Haiti",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 78,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "HH",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Puerto Rico",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 202,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "KP3, KP4, WP4",
+          "note": "US territory; KP4 common."
+        }
+      ]
+    },
+    {
+      "country": "US Virgin Islands",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 285,
+      "periods": [
+        {
+          "start": 1956,
+          "end": null,
+          "prefixes": "KP2, NP2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bermuda",
+      "continent": "NA",
+      "cq": 5,
+      "itu": 11,
+      "dxcc": 64,
+      "periods": [
+        {
+          "start": 1938,
+          "end": null,
+          "prefixes": "VP9",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Greenland",
+      "continent": "NA",
+      "cq": 40,
+      "itu": 18,
+      "dxcc": 237,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "OX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Saint Pierre & Miquelon",
+      "continent": "NA",
+      "cq": 5,
+      "itu": 9,
+      "dxcc": 277,
+      "periods": [
+        {
+          "start": 1946,
+          "end": null,
+          "prefixes": "FP",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "England (UK)",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 223,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "G, M, 2E",
+          "note": "Ofcom; includes Wales/England/Man/Jersey/Guernsey variants."
+        }
+      ],
+      "summary": "See United Kingdom entry for Foundation / Intermediate / Full and G1–G8 series."
+    },
+    {
+      "country": "Scotland",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 279,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "GM, MM, 2M",
+          "note": ""
+        }
+      ],
+      "summary": "UK licence classes — callsigns use GM/MM (Full), 2M0 (Intermediate), M7/MM6 (Foundation).",
+      "licences": [
+        {
+          "level": "Foundation",
+          "start": 2002,
+          "end": null,
+          "callsigns": "MM6, MM7, M6…",
+          "privileges": "As UK Foundation.",
+          "note": ""
+        },
+        {
+          "level": "Intermediate",
+          "start": 1991,
+          "end": null,
+          "callsigns": "2M0xxx",
+          "privileges": "As UK Intermediate.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1991,
+          "end": null,
+          "callsigns": "GM, MM0",
+          "privileges": "As UK Full.",
+          "note": "Legacy GM/G8 calls."
+        }
+      ]
+    },
+    {
+      "country": "Wales",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 294,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "GW, MW, 2W",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Foundation",
+          "start": 2002,
+          "end": null,
+          "callsigns": "MW6, MW7",
+          "privileges": "As UK Foundation.",
+          "note": ""
+        },
+        {
+          "level": "Intermediate",
+          "start": 1991,
+          "end": null,
+          "callsigns": "2W0xxx",
+          "privileges": "As UK Intermediate.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1991,
+          "end": null,
+          "callsigns": "GW, MW0",
+          "privileges": "As UK Full.",
+          "note": "Legacy GW/G5."
+        }
+      ]
+    },
+    {
+      "country": "Northern Ireland",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 265,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "GI, MI, 2I",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Foundation",
+          "start": 2002,
+          "end": null,
+          "callsigns": "MI6, MI7",
+          "privileges": "As UK Foundation.",
+          "note": ""
+        },
+        {
+          "level": "Intermediate",
+          "start": 1991,
+          "end": null,
+          "callsigns": "2I0xxx",
+          "privileges": "As UK Intermediate.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1991,
+          "end": null,
+          "callsigns": "GI, MI0",
+          "privileges": "As UK Full.",
+          "note": "Legacy GI/G8."
+        }
+      ]
+    },
+    {
+      "country": "Isle of Man",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 114,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "GD",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Jersey",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 122,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "GJ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Guernsey",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 106,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "GU",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Ireland",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 245,
+      "periods": [
+        {
+          "start": 1926,
+          "end": null,
+          "prefixes": "EI, EJ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "France",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 227,
+      "periods": [
+        {
+          "start": 1921,
+          "end": null,
+          "prefixes": "F, TM, TK (Corsica)",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Certificat d'initiation",
+          "start": 1997,
+          "end": null,
+          "callsigns": "F1xxx / F4xxx style by region",
+          "privileges": "Limited bands/power.",
+          "note": "ANFR."
+        },
+        {
+          "level": "Licence",
+          "start": 1921,
+          "end": null,
+          "callsigns": "F, TM, TK (Corsica)",
+          "privileges": "Full national amateur allocation.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Germany",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 28,
+      "dxcc": 230,
+      "periods": [
+        {
+          "start": 1923,
+          "end": null,
+          "prefixes": "DA-DR, DL, Y2-Y9 (DDR era ended 1990)",
+          "note": "BNetzA; Y2-Y9 was East Germany."
+        }
+      ],
+      "licences": [
+        {
+          "level": "Klasse E (Einführung)",
+          "start": 2005,
+          "end": null,
+          "callsigns": "DO…, DN… (training prefixes vary)",
+          "privileges": "Entry-level power/band limits.",
+          "note": "Bundesnetzagentur."
+        },
+        {
+          "level": "Klasse A (Zugang)",
+          "start": 2005,
+          "end": null,
+          "callsigns": "DA–DR, DL, DF, DG… by Land",
+          "privileges": "Full CEPT-aligned privileges.",
+          "note": "Replaced older Class 1/2 structure."
+        }
+      ]
+    },
+    {
+      "country": "East Germany (DDR)",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 28,
+      "dxcc": 216,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1952,
+          "end": 1990,
+          "prefixes": "Y2-Y9, DM",
+          "note": "Merged into unified Germany; DM club stations."
+        }
+      ]
+    },
+    {
+      "country": "Italy",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 248,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "I, IS (Sardinia), IT (Sicily)",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Foundation (ES)",
+          "start": 2005,
+          "end": null,
+          "callsigns": "IØ / IWØ blocks for new entrants",
+          "privileges": "Limited segments.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1924,
+          "end": null,
+          "callsigns": "I, IS, IT",
+          "privileges": "Full bands.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Spain",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 37,
+      "dxcc": 281,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "EA-EE, EH (Ceuta/Melilla)",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Novice / entry",
+          "start": 1992,
+          "end": null,
+          "callsigns": "EA–EE regional + suffix",
+          "privileges": "Restricted power.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1924,
+          "end": null,
+          "callsigns": "EA–EE",
+          "privileges": "Full allocation.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Portugal",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 37,
+      "dxcc": 272,
+      "periods": [
+        {
+          "start": 1926,
+          "end": null,
+          "prefixes": "CT, CU (Azores), CR (Madeira)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Belgium",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 209,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "ON, OO, OP, OQ, OR, OS, OT",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "ON3 (Foundation)",
+          "start": 2008,
+          "end": null,
+          "callsigns": "ON3…",
+          "privileges": "Entry.",
+          "note": ""
+        },
+        {
+          "level": "ON (Full)",
+          "start": 1924,
+          "end": null,
+          "callsigns": "ON, OO, OP, OQ, OR, OS, OT",
+          "privileges": "Full.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Netherlands",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 263,
+      "periods": [
+        {
+          "start": 1923,
+          "end": null,
+          "prefixes": "PA-PI, PJ (Caribbean)",
+          "note": "PJ2/4/7 split from Netherlands Antilles."
+        }
+      ],
+      "licences": [
+        {
+          "level": "F (Foundation)",
+          "start": 2005,
+          "end": null,
+          "callsigns": "PD…, PF… novice blocks",
+          "privileges": "Entry level.",
+          "note": ""
+        },
+        {
+          "level": "Full (N/F licence)",
+          "start": 1923,
+          "end": null,
+          "callsigns": "PA–PI",
+          "privileges": "Full CEPT.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Netherlands Antilles",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 362,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1958,
+          "end": 2010,
+          "prefixes": "PJ",
+          "note": "Dissolved; now Curaçao, Bonaire, Sint Maarten, Caribbean Netherlands."
+        }
+      ]
+    },
+    {
+      "country": "Luxembourg",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 254,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "LX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Switzerland",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 28,
+      "dxcc": 287,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "HB, HB0 (Liechtenstein)",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "HB3 (entry)",
+          "start": 2000,
+          "end": null,
+          "callsigns": "HB3…",
+          "privileges": "Entry.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1924,
+          "end": null,
+          "callsigns": "HB, HB0",
+          "privileges": "Full.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Austria",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 28,
+      "dxcc": 206,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "OE",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Bewerber / entry",
+          "start": 2005,
+          "end": null,
+          "callsigns": "OE… training",
+          "privileges": "Limited.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1924,
+          "end": null,
+          "callsigns": "OE",
+          "privileges": "Full.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Czech Republic",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 503,
+      "periods": [
+        {
+          "start": 1993,
+          "end": null,
+          "prefixes": "OK, OL",
+          "note": "Split from Czechoslovakia."
+        }
+      ],
+      "licences": [
+        {
+          "level": "OK entry",
+          "start": 2004,
+          "end": null,
+          "callsigns": "OL… learner",
+          "privileges": "Limited.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1993,
+          "end": null,
+          "callsigns": "OK, OL",
+          "privileges": "Full.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Slovakia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 504,
+      "periods": [
+        {
+          "start": 1993,
+          "end": null,
+          "prefixes": "OM",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Czechoslovakia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 216,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1923,
+          "end": 1992,
+          "prefixes": "OK, OL, OM",
+          "note": "OK Czech lands; OM Slovakia before split."
+        }
+      ]
+    },
+    {
+      "country": "Poland",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 269,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "SP, SQ, SN, SO, SR, HF",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Entry / SWL path",
+          "start": 2004,
+          "end": null,
+          "callsigns": "SP, SQ, SN, SO, SR, HF",
+          "privileges": "By exam tier.",
+          "note": ""
+        },
+        {
+          "level": "Full",
+          "start": 1924,
+          "end": null,
+          "callsigns": "SP + district digit",
+          "privileges": "Full bands.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Hungary",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 239,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "HA, HG",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Romania",
+      "continent": "EU",
+      "cq": 20,
+      "itu": 28,
+      "dxcc": 275,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "YO, YP",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bulgaria",
+      "continent": "EU",
+      "cq": 20,
+      "itu": 28,
+      "dxcc": 212,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "LZ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Greece",
+      "continent": "EU",
+      "cq": 20,
+      "itu": 28,
+      "dxcc": 236,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "SV, J4, SZ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Turkey",
+      "continent": "AS",
+      "cq": 20,
+      "itu": 39,
+      "dxcc": 390,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "TA, TB, TC, YM",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Russia (European)",
+      "continent": "EU",
+      "cq": 16,
+      "itu": 19,
+      "dxcc": 130,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "RA, RU, RD, RF, RG, RI, RJ, RK, RL, RM, RN, RO, RP, RQ, RR, RS, RT, RV, RW, RX, RZ",
+          "note": "Successor to USSR European part."
+        }
+      ]
+    },
+    {
+      "country": "Russia (Asiatic)",
+      "continent": "AS",
+      "cq": 18,
+      "itu": 19,
+      "dxcc": 150,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "UA, UI, UJ-UM, US-UZ, RA9, RA0, RK9, RK0",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Soviet Union (USSR)",
+      "continent": "EU/AS",
+      "cq": "16-18",
+      "itu": 19,
+      "dxcc": 130,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1924,
+          "end": 1991,
+          "prefixes": "UA-UI, UK-UM, US-UZ, RA-RZ, UW-UX",
+          "note": "Split into successor states 1991-1993."
+        }
+      ]
+    },
+    {
+      "country": "Ukraine",
+      "continent": "EU",
+      "cq": 16,
+      "itu": 29,
+      "dxcc": 288,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "UR, UT, UU, UX, EM-EN",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Belarus",
+      "continent": "EU",
+      "cq": 16,
+      "itu": 29,
+      "dxcc": 27,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "EU, EV, EW",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Lithuania",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 29,
+      "dxcc": 146,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "LY",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Latvia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 29,
+      "dxcc": 145,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "YL",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Estonia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 29,
+      "dxcc": 52,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "ES",
+          "note": "Not Spain ES; Estonian ES prefix."
+        }
+      ]
+    },
+    {
+      "country": "Finland",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 18,
+      "dxcc": 224,
+      "periods": [
+        {
+          "start": 1921,
+          "end": null,
+          "prefixes": "OH, OF, OG, OI, OJ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Sweden",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 18,
+      "dxcc": 284,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "SM, SA, SB, SC, SD, SE, SF, SG, SH, SI, SJ, SK, SL",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Norway",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 18,
+      "dxcc": 266,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "LA, LB, LC, LD, LE, LF, LG, LH, LI, LJ, LK, LL, LN",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Denmark",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 18,
+      "dxcc": 221,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "OZ, OX, OY, OV",
+          "note": "OY Faroe, OX Greenland."
+        }
+      ]
+    },
+    {
+      "country": "Iceland",
+      "continent": "EU",
+      "cq": 40,
+      "itu": 18,
+      "dxcc": 242,
+      "periods": [
+        {
+          "start": 1928,
+          "end": null,
+          "prefixes": "TF",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Serbia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 296,
+      "periods": [
+        {
+          "start": 2006,
+          "end": null,
+          "prefixes": "YU, YT",
+          "note": "YU legacy from Yugoslavia."
+        }
+      ]
+    },
+    {
+      "country": "Croatia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 497,
+      "periods": [
+        {
+          "start": 1992,
+          "end": null,
+          "prefixes": "9A",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Slovenia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 499,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "S5",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bosnia & Herzegovina",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 501,
+      "periods": [
+        {
+          "start": 1992,
+          "end": null,
+          "prefixes": "E7",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "North Macedonia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 502,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "Z3",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Montenegro",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 514,
+      "periods": [
+        {
+          "start": 2006,
+          "end": null,
+          "prefixes": "4O",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Kosovo",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 522,
+      "periods": [
+        {
+          "start": 2012,
+          "end": null,
+          "prefixes": "Z6",
+          "note": "Recognised by some DXCC lists."
+        }
+      ]
+    },
+    {
+      "country": "Yugoslavia",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 296,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1929,
+          "end": 2003,
+          "prefixes": "YU, YT, YZ, 4O, 9A, S5, E7, Z3",
+          "note": "Successors took over prefixes gradually."
+        }
+      ]
+    },
+    {
+      "country": "Japan",
+      "continent": "AS",
+      "cq": 25,
+      "itu": 45,
+      "dxcc": 339,
+      "periods": [
+        {
+          "start": 1926,
+          "end": null,
+          "prefixes": "JA-JS, JE-JN, 7J-8N, JD (Ogasawara)",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Fourth class (4級)",
+          "start": 1950,
+          "end": null,
+          "callsigns": "JA/JS/JE… + long suffix",
+          "privileges": "VHF/UHF centric historically.",
+          "note": ""
+        },
+        {
+          "level": "First class (1級)",
+          "start": 1950,
+          "end": null,
+          "callsigns": "JA/JS 2×2 / 2×3",
+          "privileges": "Full HF.",
+          "note": "Reformed several times — check MIC."
+        }
+      ]
+    },
+    {
+      "country": "China",
+      "continent": "AS",
+      "cq": 23,
+      "itu": 44,
+      "dxcc": 318,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "BA-BT, BY, BH, BG",
+          "note": "Mainland; B* series."
+        }
+      ]
+    },
+    {
+      "country": "Taiwan",
+      "continent": "AS",
+      "cq": 24,
+      "itu": 44,
+      "dxcc": 386,
+      "periods": [
+        {
+          "start": 1927,
+          "end": null,
+          "prefixes": "BV, BU, BX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Hong Kong",
+      "continent": "AS",
+      "cq": 24,
+      "itu": 44,
+      "dxcc": 321,
+      "periods": [
+        {
+          "start": 1949,
+          "end": null,
+          "prefixes": "VR, VS",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "South Korea",
+      "continent": "AS",
+      "cq": 25,
+      "itu": 44,
+      "dxcc": 137,
+      "periods": [
+        {
+          "start": 1952,
+          "end": null,
+          "prefixes": "HL, DS, 7L-7Z, D7-D9",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "North Korea",
+      "continent": "AS",
+      "cq": 25,
+      "itu": 44,
+      "dxcc": 344,
+      "periods": [
+        {
+          "start": 1953,
+          "end": null,
+          "prefixes": "P5, HM",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "India",
+      "continent": "AS",
+      "cq": 22,
+      "itu": 41,
+      "dxcc": 324,
+      "periods": [
+        {
+          "start": 1921,
+          "end": null,
+          "prefixes": "VU, VT, VV, VY, A8",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Pakistan",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 41,
+      "dxcc": 372,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "AP, AS",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bangladesh",
+      "continent": "AS",
+      "cq": 22,
+      "itu": 41,
+      "dxcc": 23,
+      "periods": [
+        {
+          "start": 1971,
+          "end": null,
+          "prefixes": "S2, S3",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Thailand",
+      "continent": "AS",
+      "cq": 26,
+      "itu": 49,
+      "dxcc": 382,
+      "periods": [
+        {
+          "start": 1929,
+          "end": null,
+          "prefixes": "HS, E2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Vietnam",
+      "continent": "AS",
+      "cq": 26,
+      "itu": 49,
+      "dxcc": 293,
+      "periods": [
+        {
+          "start": 1957,
+          "end": null,
+          "prefixes": "XV, 3W",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Indonesia",
+      "continent": "OC",
+      "cq": 28,
+      "itu": 54,
+      "dxcc": 327,
+      "periods": [
+        {
+          "start": 1928,
+          "end": null,
+          "prefixes": "YB-YH, YI",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Malaysia",
+      "continent": "AS",
+      "cq": 28,
+      "itu": 54,
+      "dxcc": 299,
+      "periods": [
+        {
+          "start": 1952,
+          "end": null,
+          "prefixes": "9M, 9M2, 9M6",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Singapore",
+      "continent": "AS",
+      "cq": 28,
+      "itu": 54,
+      "dxcc": 381,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "9V, S9",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Philippines",
+      "continent": "OC",
+      "cq": 27,
+      "itu": 50,
+      "dxcc": 375,
+      "periods": [
+        {
+          "start": 1922,
+          "end": null,
+          "prefixes": "DU, DW, DY, 4D-4F",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Australia",
+      "continent": "OC",
+      "cq": 29,
+      "itu": 55,
+      "dxcc": 150,
+      "periods": [
+        {
+          "start": 1912,
+          "end": null,
+          "prefixes": "VK, AX, VI, VH",
+          "note": "ACMA; VK9 external territories."
+        }
+      ],
+      "licences": [
+        {
+          "level": "Foundation",
+          "start": 2005,
+          "end": null,
+          "callsigns": "VKxFxxx (F in suffix position)",
+          "privileges": "Limited bands/power.",
+          "note": "ACMA."
+        },
+        {
+          "level": "Standard",
+          "start": 2005,
+          "end": null,
+          "callsigns": "VKx… standard issue",
+          "privileges": "Most bands.",
+          "note": ""
+        },
+        {
+          "level": "Advanced",
+          "start": 2005,
+          "end": null,
+          "callsigns": "VKx… shorter / earlier blocks",
+          "privileges": "Full spectrum including some Standard-only exclusions reversed.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "New Zealand",
+      "continent": "OC",
+      "cq": 32,
+      "itu": 60,
+      "dxcc": 170,
+      "periods": [
+        {
+          "start": 1923,
+          "end": null,
+          "prefixes": "ZL, ZM, ZN",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Brazil",
+      "continent": "SA",
+      "cq": 11,
+      "itu": 12,
+      "dxcc": 108,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "PP-PT, PU, PY, ZV-ZZ",
+          "note": ""
+        }
+      ],
+      "licences": [
+        {
+          "level": "Classe C",
+          "start": 1962,
+          "end": null,
+          "callsigns": "PU, PY, ZV",
+          "privileges": "VHF/UHF focus.",
+          "note": ""
+        },
+        {
+          "level": "Classe A / B",
+          "start": 1962,
+          "end": null,
+          "callsigns": "PP–PT",
+          "privileges": "HF privileges by class.",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Argentina",
+      "continent": "SA",
+      "cq": 13,
+      "itu": 13,
+      "dxcc": 100,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "LU, LW, LO, LR",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Chile",
+      "continent": "SA",
+      "cq": 12,
+      "itu": 12,
+      "dxcc": 112,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "CE, CA, CB, CC, CD, XQ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Peru",
+      "continent": "SA",
+      "cq": 10,
+      "itu": 12,
+      "dxcc": 136,
+      "periods": [
+        {
+          "start": 1928,
+          "end": null,
+          "prefixes": "OA-OC",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Colombia",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 9,
+      "dxcc": 116,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "HK, HJ, HK0 (San Andrés)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Venezuela",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 9,
+      "dxcc": 148,
+      "periods": [
+        {
+          "start": 1934,
+          "end": null,
+          "prefixes": "YV, YY",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Ecuador",
+      "continent": "SA",
+      "cq": 10,
+      "itu": 12,
+      "dxcc": 120,
+      "periods": [
+        {
+          "start": 1929,
+          "end": null,
+          "prefixes": "HC, HD, HE",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Uruguay",
+      "continent": "SA",
+      "cq": 13,
+      "itu": 13,
+      "dxcc": 144,
+      "periods": [
+        {
+          "start": 1929,
+          "end": null,
+          "prefixes": "CX, CV",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Paraguay",
+      "continent": "SA",
+      "cq": 11,
+      "itu": 12,
+      "dxcc": 132,
+      "periods": [
+        {
+          "start": 1932,
+          "end": null,
+          "prefixes": "ZP",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bolivia",
+      "continent": "SA",
+      "cq": 10,
+      "itu": 12,
+      "dxcc": 104,
+      "periods": [
+        {
+          "start": 1935,
+          "end": null,
+          "prefixes": "CP",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "South Africa",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 462,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "ZS, ZR, ZT, ZU",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Egypt",
+      "continent": "AF",
+      "cq": 34,
+      "itu": 38,
+      "dxcc": 478,
+      "periods": [
+        {
+          "start": 1934,
+          "end": null,
+          "prefixes": "SU, 6A-6Z",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Morocco",
+      "continent": "AF",
+      "cq": 33,
+      "itu": 37,
+      "dxcc": 446,
+      "periods": [
+        {
+          "start": 1923,
+          "end": null,
+          "prefixes": "CN",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Algeria",
+      "continent": "AF",
+      "cq": 33,
+      "itu": 37,
+      "dxcc": 400,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "7X, 7Y",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Tunisia",
+      "continent": "AF",
+      "cq": 33,
+      "itu": 37,
+      "dxcc": 474,
+      "periods": [
+        {
+          "start": 1935,
+          "end": null,
+          "prefixes": "3V",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Kenya",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 48,
+      "dxcc": 430,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "5Z, 4X",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Nigeria",
+      "continent": "AF",
+      "cq": 35,
+      "itu": 46,
+      "dxcc": 450,
+      "periods": [
+        {
+          "start": 1933,
+          "end": null,
+          "prefixes": "5N",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Israel",
+      "continent": "AS",
+      "cq": 20,
+      "itu": 39,
+      "dxcc": 336,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "4X, 4Z",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Iran",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 40,
+      "dxcc": 330,
+      "periods": [
+        {
+          "start": 1928,
+          "end": null,
+          "prefixes": "EP, 9B",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Saudi Arabia",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 39,
+      "dxcc": 378,
+      "periods": [
+        {
+          "start": 1955,
+          "end": null,
+          "prefixes": "HZ, 7Z",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "United Arab Emirates",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 39,
+      "dxcc": 391,
+      "periods": [
+        {
+          "start": 1976,
+          "end": null,
+          "prefixes": "A6",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Antarctica (generic)",
+      "continent": "AN",
+      "cq": 39,
+      "itu": 67,
+      "dxcc": 13,
+      "periods": [
+        {
+          "start": 1957,
+          "end": null,
+          "prefixes": "CE9, VK0, DP, OR, RI1, ZS8, …",
+          "note": "National bases use parent country prefixes."
+        }
+      ]
+    },
+    {
+      "country": "Rhodesia / Zimbabwe",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 53,
+      "dxcc": 452,
+      "periods": [
+        {
+          "start": 1923,
+          "end": 1980,
+          "prefixes": "VP2, Z2",
+          "note": "Rhodesia era."
+        },
+        {
+          "start": 1980,
+          "end": null,
+          "prefixes": "Z2",
+          "note": "Zimbabwe."
+        }
+      ]
+    },
+    {
+      "country": "Tangier",
+      "continent": "AF",
+      "cq": 33,
+      "itu": 37,
+      "dxcc": 424,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1927,
+          "end": 1956,
+          "prefixes": "CN8",
+          "note": "International zone; merged with Morocco."
+        }
+      ]
+    },
+    {
+      "country": "Palestine",
+      "continent": "AS",
+      "cq": 20,
+      "itu": 39,
+      "dxcc": 510,
+      "periods": [
+        {
+          "start": 2012,
+          "end": null,
+          "prefixes": "E4",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Monaco",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 260,
+      "periods": [
+        {
+          "start": 1949,
+          "end": null,
+          "prefixes": "3A",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Andorra",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 27,
+      "dxcc": 203,
+      "periods": [
+        {
+          "start": 1984,
+          "end": null,
+          "prefixes": "C3",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "San Marino",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 278,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "T7",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Vatican City",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 295,
+      "periods": [
+        {
+          "start": 1936,
+          "end": null,
+          "prefixes": "HV",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Malta",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 257,
+      "periods": [
+        {
+          "start": 1929,
+          "end": null,
+          "prefixes": "9H",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Cyprus",
+      "continent": "EU",
+      "cq": 20,
+      "itu": 39,
+      "dxcc": 215,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "5B, C3 (Turkish north)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Alaska",
+      "continent": "NA",
+      "cq": 1,
+      "itu": 1,
+      "dxcc": 6,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "KL, AL, NL, WL",
+          "note": "US state; KL primary."
+        }
+      ]
+    },
+    {
+      "country": "Hawaii",
+      "continent": "OC",
+      "cq": 31,
+      "itu": 61,
+      "dxcc": 110,
+      "periods": [
+        {
+          "start": 1920,
+          "end": null,
+          "prefixes": "KH6, NH6, WH6",
+          "note": "US state."
+        }
+      ]
+    },
+    {
+      "country": "Albania",
+      "continent": "EU",
+      "cq": 15,
+      "itu": 28,
+      "dxcc": 201,
+      "periods": [
+        {
+          "start": 1932,
+          "end": null,
+          "prefixes": "ZA",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Moldova",
+      "continent": "EU",
+      "cq": 16,
+      "itu": 29,
+      "dxcc": 259,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "ER",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Georgia",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 29,
+      "dxcc": 63,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "4L",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Armenia",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 29,
+      "dxcc": 14,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "EK",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Azerbaijan",
+      "continent": "AS",
+      "cq": 21,
+      "itu": 29,
+      "dxcc": 18,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "4J, 4K",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Kazakhstan",
+      "continent": "AS",
+      "cq": 17,
+      "itu": 29,
+      "dxcc": 130,
+      "periods": [
+        {
+          "start": 1991,
+          "end": null,
+          "prefixes": "UN-UR",
+          "note": "Often counted with Russia DXCC in some lists."
+        }
+      ]
+    },
+    {
+      "country": "Mongolia",
+      "continent": "AS",
+      "cq": 23,
+      "itu": 32,
+      "dxcc": 363,
+      "periods": [
+        {
+          "start": 1961,
+          "end": null,
+          "prefixes": "JT, JV",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Nepal",
+      "continent": "AS",
+      "cq": 22,
+      "itu": 42,
+      "dxcc": 369,
+      "periods": [
+        {
+          "start": 1952,
+          "end": null,
+          "prefixes": "9N",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Sri Lanka",
+      "continent": "AS",
+      "cq": 22,
+      "itu": 41,
+      "dxcc": 315,
+      "periods": [
+        {
+          "start": 1924,
+          "end": null,
+          "prefixes": "4S, 8Q",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Myanmar",
+      "continent": "AS",
+      "cq": 26,
+      "itu": 49,
+      "dxcc": 309,
+      "periods": [
+        {
+          "start": 1938,
+          "end": null,
+          "prefixes": "XY, XZ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Cambodia",
+      "continent": "AS",
+      "cq": 26,
+      "itu": 49,
+      "dxcc": 318,
+      "periods": [
+        {
+          "start": 1956,
+          "end": null,
+          "prefixes": "XU",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Laos",
+      "continent": "AS",
+      "cq": 26,
+      "itu": 49,
+      "dxcc": 143,
+      "periods": [
+        {
+          "start": 1959,
+          "end": null,
+          "prefixes": "XW",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Brunei",
+      "continent": "OC",
+      "cq": 28,
+      "itu": 54,
+      "dxcc": 345,
+      "periods": [
+        {
+          "start": 1958,
+          "end": null,
+          "prefixes": "V8",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Fiji",
+      "continent": "OC",
+      "cq": 32,
+      "itu": 56,
+      "dxcc": 176,
+      "periods": [
+        {
+          "start": 1938,
+          "end": null,
+          "prefixes": "3D2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Papua New Guinea",
+      "continent": "OC",
+      "cq": 28,
+      "itu": 51,
+      "dxcc": 163,
+      "periods": [
+        {
+          "start": 1936,
+          "end": null,
+          "prefixes": "P2, P4",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "New Caledonia",
+      "continent": "OC",
+      "cq": 32,
+      "itu": 56,
+      "dxcc": 162,
+      "periods": [
+        {
+          "start": 1938,
+          "end": null,
+          "prefixes": "FK, TX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "French Polynesia",
+      "continent": "OC",
+      "cq": 32,
+      "itu": 63,
+      "dxcc": 175,
+      "periods": [
+        {
+          "start": 1958,
+          "end": null,
+          "prefixes": "FO, TX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Réunion",
+      "continent": "AF",
+      "cq": 39,
+      "itu": 53,
+      "dxcc": 453,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "FR, TO",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Mauritius",
+      "continent": "AF",
+      "cq": 39,
+      "itu": 53,
+      "dxcc": 165,
+      "periods": [
+        {
+          "start": 1949,
+          "end": null,
+          "prefixes": "3B8",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Madagascar",
+      "continent": "AF",
+      "cq": 39,
+      "itu": 53,
+      "dxcc": 438,
+      "periods": [
+        {
+          "start": 1938,
+          "end": null,
+          "prefixes": "5R, 5S",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Namibia",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 464,
+      "periods": [
+        {
+          "start": 1990,
+          "end": null,
+          "prefixes": "V5",
+          "note": "Former South West Africa."
+        }
+      ]
+    },
+    {
+      "country": "South West Africa",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 464,
+      "historical": true,
+      "periods": [
+        {
+          "start": 1951,
+          "end": 1990,
+          "prefixes": "V5",
+          "note": "Now Namibia."
+        }
+      ]
+    },
+    {
+      "country": "Liberia",
+      "continent": "AF",
+      "cq": 35,
+      "itu": 46,
+      "dxcc": 434,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "EL",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Ghana",
+      "continent": "AF",
+      "cq": 35,
+      "itu": 46,
+      "dxcc": 424,
+      "periods": [
+        {
+          "start": 1957,
+          "end": null,
+          "prefixes": "9G",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Ivory Coast",
+      "continent": "AF",
+      "cq": 35,
+      "itu": 46,
+      "dxcc": 428,
+      "periods": [
+        {
+          "start": 1959,
+          "end": null,
+          "prefixes": "TU",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Senegal",
+      "continent": "AF",
+      "cq": 35,
+      "itu": 46,
+      "dxcc": 456,
+      "periods": [
+        {
+          "start": 1959,
+          "end": null,
+          "prefixes": "6W",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Ethiopia",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 48,
+      "dxcc": 414,
+      "periods": [
+        {
+          "start": 1934,
+          "end": null,
+          "prefixes": "ET, 9E",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Somalia",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 48,
+      "dxcc": 460,
+      "periods": [
+        {
+          "start": 1945,
+          "end": null,
+          "prefixes": "6O, T5",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Tanzania",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 53,
+      "dxcc": 470,
+      "periods": [
+        {
+          "start": 1964,
+          "end": null,
+          "prefixes": "5H, 9H (Zanzibar legacy)",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Uganda",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 48,
+      "dxcc": 286,
+      "periods": [
+        {
+          "start": 1962,
+          "end": null,
+          "prefixes": "5X",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Rwanda",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 48,
+      "dxcc": 454,
+      "periods": [
+        {
+          "start": 1962,
+          "end": null,
+          "prefixes": "9X",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Zambia",
+      "continent": "AF",
+      "cq": 36,
+      "itu": 53,
+      "dxcc": 482,
+      "periods": [
+        {
+          "start": 1964,
+          "end": null,
+          "prefixes": "9J",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Malawi",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 53,
+      "dxcc": 440,
+      "periods": [
+        {
+          "start": 1964,
+          "end": null,
+          "prefixes": "7Q",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Mozambique",
+      "continent": "AF",
+      "cq": 37,
+      "itu": 53,
+      "dxcc": 442,
+      "periods": [
+        {
+          "start": 1975,
+          "end": null,
+          "prefixes": "C9",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Angola",
+      "continent": "AF",
+      "cq": 36,
+      "itu": 52,
+      "dxcc": 402,
+      "periods": [
+        {
+          "start": 1975,
+          "end": null,
+          "prefixes": "D2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Botswana",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 406,
+      "periods": [
+        {
+          "start": 1968,
+          "end": null,
+          "prefixes": "A2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Lesotho",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 432,
+      "periods": [
+        {
+          "start": 1966,
+          "end": null,
+          "prefixes": "7P",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Swaziland / Eswatini",
+      "continent": "AF",
+      "cq": 38,
+      "itu": 57,
+      "dxcc": 468,
+      "periods": [
+        {
+          "start": 1968,
+          "end": null,
+          "prefixes": "3DA",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Costa Rica",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 76,
+      "periods": [
+        {
+          "start": 1932,
+          "end": null,
+          "prefixes": "TI, TE",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Panama",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 88,
+      "periods": [
+        {
+          "start": 1932,
+          "end": null,
+          "prefixes": "HP, HO",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Nicaragua",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 86,
+      "periods": [
+        {
+          "start": 1934,
+          "end": null,
+          "prefixes": "YN",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Honduras",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 80,
+      "periods": [
+        {
+          "start": 1935,
+          "end": null,
+          "prefixes": "HR",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "El Salvador",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 74,
+      "periods": [
+        {
+          "start": 1935,
+          "end": null,
+          "prefixes": "YS, HU",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Guatemala",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 76,
+      "periods": [
+        {
+          "start": 1935,
+          "end": null,
+          "prefixes": "TG, TD",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Belize",
+      "continent": "NA",
+      "cq": 7,
+      "itu": 11,
+      "dxcc": 66,
+      "periods": [
+        {
+          "start": 1981,
+          "end": null,
+          "prefixes": "V3",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Trinidad & Tobago",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 90,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "9Y",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Barbados",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 62,
+      "periods": [
+        {
+          "start": 1951,
+          "end": null,
+          "prefixes": "8P",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Aruba",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 11,
+      "dxcc": 91,
+      "periods": [
+        {
+          "start": 1986,
+          "end": null,
+          "prefixes": "P4",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Curaçao",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 11,
+      "dxcc": 517,
+      "periods": [
+        {
+          "start": 2010,
+          "end": null,
+          "prefixes": "PJ2",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bonaire",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 11,
+      "dxcc": 515,
+      "periods": [
+        {
+          "start": 2010,
+          "end": null,
+          "prefixes": "PJ4",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Sint Maarten",
+      "continent": "NA",
+      "cq": 8,
+      "itu": 11,
+      "dxcc": 519,
+      "periods": [
+        {
+          "start": 2010,
+          "end": null,
+          "prefixes": "PJ7",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Suriname",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 12,
+      "dxcc": 140,
+      "periods": [
+        {
+          "start": 1945,
+          "end": null,
+          "prefixes": "PZ",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Guyana",
+      "continent": "SA",
+      "cq": 9,
+      "itu": 12,
+      "dxcc": 129,
+      "periods": [
+        {
+          "start": 1947,
+          "end": null,
+          "prefixes": "8R",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Falkland Islands",
+      "continent": "SA",
+      "cq": 13,
+      "itu": 13,
+      "dxcc": 141,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "VP8",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "South Georgia",
+      "continent": "AN",
+      "cq": 13,
+      "itu": 13,
+      "dxcc": 141,
+      "periods": [
+        {
+          "start": 1955,
+          "end": null,
+          "prefixes": "VP8",
+          "note": "VP8 South Sandwich / South Georgia."
+        }
+      ]
+    },
+    {
+      "country": "Svalbard",
+      "continent": "EU",
+      "cq": 40,
+      "itu": 18,
+      "dxcc": 259,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "JW",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Jan Mayen",
+      "continent": "EU",
+      "cq": 40,
+      "itu": 18,
+      "dxcc": 259,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "JX",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Bear Island",
+      "continent": "EU",
+      "cq": 40,
+      "itu": 18,
+      "dxcc": 259,
+      "periods": [
+        {
+          "start": 1930,
+          "end": null,
+          "prefixes": "3Y",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "Liechtenstein",
+      "continent": "EU",
+      "cq": 14,
+      "itu": 28,
+      "dxcc": 251,
+      "periods": [
+        {
+          "start": 1948,
+          "end": null,
+          "prefixes": "HB0",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "country": "North Korea (historical block)",
+      "continent": "AS",
+      "cq": 25,
+      "itu": 44,
+      "dxcc": 344,
+      "periods": [
+        {
+          "start": 1953,
+          "end": null,
+          "prefixes": "P5",
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

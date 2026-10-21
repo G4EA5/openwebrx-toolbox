@@ -7,5 +7,8 @@ if [[ "$branch" != "main" ]]; then
   echo "On $branch — checkout main first or push that branch and open a PR." >&2
   exit 1
 fi
+bash ./verify-publish-tree.sh
+echo "Tracked files to be pushed:"
+git ls-files | sed 's/^/  /'
 git push origin main
 echo "Pushed main. Verify: git log -1 --oneline origin/main"
