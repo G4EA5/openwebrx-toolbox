@@ -1,8 +1,10 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B138** (current). Check install and the Help tab show the running build (e.g. `B138`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B174** (current). Check install and the Help tab show the running build (e.g. `B174`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
+
+**First time installing?** Use **[FIRST-INSTALL.md](FIRST-INSTALL.md)** — plain steps for `init.js`, hard-refresh, and **Check install** (CDN and local copy). The in-panel **Help** tab repeats the same story with **Start in 3 minutes** and hover tips on every control.
 
 ---
 
@@ -11,15 +13,34 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B138** | Current era (`toolbox-vB138` tag on GitHub) |
+| **B1…B174** | Current era (`toolbox-vB174` tag on GitHub when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB138/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB174/toolbox.js` (or `@main` for latest).
+
+---
+
+## Recent (B146–B174)
+
+- **B146+** — **Settings → System** sub-tab: host CPU/RAM, listeners, session, OpenWebRX internals (`hoststats.json` when present).
+- **B162** — Fix **Settings → Public** sub-tab (scroll + pane visibility).
+- **B163–B164** — Homelab test stubs: peak webhook (`:5057`), settings sync (`:8787`); repo `tools/owrx-*-stub.py`.
+- **B165** — **Panel startup**: optional **Show System / Public** sub-tabs (on by default).
+- **B166** — **Test** on Peak webhook, Settings sync, and Classifier URL boxes; peak webhook respects **Extras → Peak webhook**; homelab same-origin proxies `/owrx-toolbox-{classify,transcribe,settings-sync,peak-webhook}`.
+- **B167** — **Light** layout profile hides **System** settings sub-tab; **Everything** shows System + Public again.
+- **B168** — **↑ Back to top** on scrollable tab panes when content overflows.
+- **B169** — **Simplify my panel**, Help quickstart, **Advanced URLs** collapsed section; **Find** on for new installs.
+- **B170** — Install wiki + clearer Help / hover text (see link at top of this page).
+- **B171** — **Log** tab feed scrolls inside the pane again.
+- **B172** — **Memory → Trace** draws a grid, explains status, **Sample now**; trace sampling on by default.
+- **B173** — Cached **Memory** / **Log** panes upgrade when sub-tabs or buttons are missing.
+- **B174** — **More → News** / **Feeds** RSS works again (`/owrx-toolbox-rss` on hosts with the proxy).
 
 ---
 
 ## Settings & install
 
+- **B170** — **[FIRST-INSTALL.md](FIRST-INSTALL.md)** wiki + README install refresh; Help and hover copy tuned for new users.
 - **B1** — Watch **Groups → Arm** buttons work when a group is empty (status tip instead of dead click).
 - **B3** — Version eras (B after v965); **Main tab size** default **Default**; detach (**D**) documented for second monitor.
 - **B32** — **Settings → Update Toolbox** (CDN `@main` reload or zip for local copies).

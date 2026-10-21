@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB138)
+# OpenWebRX Toolbox (vB174)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -17,11 +17,18 @@ range), counts real waterfall peaks, ranks the busiest, and can bookmark them in
 the plugin talks to the OpenWebRX+ UI, not to USB hardware. See
 [SDR hardware](#sdr-hardware-hackrf-rtl-sdr-airspy-lime--).
 
-### Manual install — there is no installer
+### First install (start here)
 
-There is **no installer** — only a manual edit of `init.js` to install the first time.
-You edit **one file** on the radio host: `plugins/receiver/init.js`. Later updates:
-Settings → **Update Toolbox** (see [Routine update](#routine-update-already-installed)).
+**New to Toolbox?** Read **[First install (plain English)](docs/FIRST-INSTALL.md)** — server vs browser, CDN vs local copy, hard-refresh, and **Check install**.
+
+There is **no installer app** — you edit **one file** on the radio host (`plugins/receiver/init.js`) the first time. Everything after that happens in the browser (Toolbox button → Settings). Later updates: **Update Toolbox** (see [Routine update](#routine-update-already-installed)).
+
+| You do this… | On the **radio host** (SSH/editor) | In the **browser** (receiver page) |
+| --- | --- | --- |
+| First time | Paste `Plugins.load(…)` into `init.js` | Hard-refresh → **Toolbox** → **Check install** |
+| Day to day | Usually nothing | Scan bands, Explore, Settings |
+| Update (CDN) | Nothing | Settings → **Update Toolbox** → reload |
+| Update (local files) | Copy new `toolbox.js` + `toolbox.css` | Hard-refresh → **Check install** |
 
 > **Not a shell command.** The `(async () => { … Plugins.load(…) })();` snippet is
 > **JavaScript** for `init.js` (or the OpenWebRX browser page). Do **not** paste it
@@ -53,7 +60,7 @@ the top bar, then **Settings → Check install**.
 
 ### What’s new since v965 (B era)
 
-After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B138** (see Help → **What’s new since v965**). Summary:
+After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B169** (see Help → **What’s new since v965**). Summary:
 
 | Area | Highlights |
 | --- | --- |
@@ -112,20 +119,33 @@ audio. Use these features only on equipment and frequencies you own or have
 **explicit permission** to test.
 
 Built-in **Identify** heuristics guess signal *type* from the waterfall; they are
-not a callsign or content decoder by themselves. The repo `tools/*-stub.py`
-scripts are for **local wiring tests only**, not a supported product backend.
+not a callsign or content decoder by themselves. Maintainer scripts live under
+[`tools/`](tools/README.md) (stubs, callsign build, RSS proxy) — **not** copied to
+receivers. The `tools/*-stub.py` scripts are for **local wiring tests only**, not a
+supported product backend.
 The in-panel **Help** tab repeats this notice next to the LLM and STT boxes.
+
+| Hook | Stub (repo `tools/`) | Homelab user service | Same-origin proxy (optional) |
+| --- | --- | --- | --- |
+| Identify classifier | `owrx-identify-classifier-stub.py` | `:5055` | `/owrx-toolbox-classify` |
+| Audio STT | `owrx-audio-stt-stub.py` | `:5056` | `/owrx-toolbox-transcribe` |
+| Peak webhook | `owrx-peak-webhook-stub.py` | `:5057` | `/owrx-toolbox-peak-webhook` |
+| Settings sync | `owrx-settings-sync-stub.py` | `:8787` | `/owrx-toolbox-settings-sync` |
+| News / custom RSS | — (server fetch) | — | `/owrx-toolbox-rss?url=…` |
+
+On a shared OpenWebRX host, install proxies with `server_deploy/sdr-watchdog/apply-owrx-toolbox-proxies.sh` (includes RSS) and check stubs with `homelab-toolbox-stubs.sh`.
 
 ---
 
 ## Where to start
 
-After [install](#install) and a hard-refresh (**Ctrl+Shift+R** / **Cmd+Shift+R**),
-open the receiver page and click **Toolbox** in the **top bar** — between **Help**
-and **Status** (bar-graph icon). That opens the Toolbox panel. If the top bar is
-missing, look for **TB** on the frequency bar (fallback).
+1. Complete [first install](docs/FIRST-INSTALL.md) (or [Install](#install) below).
+2. **Hard-refresh** the receiver page (**Ctrl+Shift+R** / **Cmd+Shift+R**).
+3. Click **Toolbox** in the **top bar** — between **Help** and **Status**. No top bar? Look for **TB** on the frequency strip.
+4. **Settings → Check install** — green means you are ready.
+5. Overwhelmed? **Settings → General → Simplify my panel**, or open **Help (?)** → **Start in 3 minutes**.
 
-<p><em>Click <strong>Toolbox</strong> in the top bar, then Settings → <strong>Check install</strong>.</em></p>
+<p><em>Hover any control for a short tip. Brown <strong>?</strong> on each boxed section opens a little guide for that area.</em></p>
 
 ---
 
@@ -268,15 +288,24 @@ Pi OpenWebRX+ images with Varnish: after file changes, `sudo systemctl restart v
 
 ## Install
 
-**There is no installer** for first-time setup — edit `plugins/receiver/init.js` (+ optionally copy two files). Once installed, Settings → **Update Toolbox** can reload a CDN `@main` install or download the latest files for a local copy. You can still clone or pull from [G4EA5/openwebrx-toolbox](https://github.com/G4EA5/openwebrx-toolbox).
+**Wiki:** **[docs/FIRST-INSTALL.md](docs/FIRST-INSTALL.md)** — step-by-step first install (CDN and local), mistakes to avoid, and what to do in the browser after saving `init.js`.
 
-### Checklist
+**There is no installer** for first-time setup — edit `plugins/receiver/init.js` (+ optionally copy two files). Once installed, Settings → **Update Toolbox** can reload a CDN `@main` install or download the latest files for a local copy. Clone or pull from [G4EA5/openwebrx-toolbox](https://github.com/G4EA5/openwebrx-toolbox).
 
-1. Confirm you run **OpenWebRX+** (plugins API) — not vanilla OpenWebRX.
-2. On the **radio host**, open `plugins/receiver/init.js` (see paths below).
-3. Add **one** `Plugins.load(…)` line (CDN **or** local — not both Band Survey and Toolbox).
-4. Hard-refresh the receiver (**Ctrl+Shift+R** / **Cmd+Shift+R**).
-5. Click **Toolbox** → **Settings** → **Check install** (green = OK).
+### Checklist (first install)
+
+**Part A — on the radio host (once)**
+
+1. Confirm **OpenWebRX+** (plugins API) — not vanilla OpenWebRX.
+2. Open `plugins/receiver/init.js` ([paths below](#where-is-initjs)).
+3. Remove any `band_survey` load line. Add **one** Toolbox `Plugins.load(…)` (CDN **or** local `toolbox` id).
+4. If using a **local copy**, copy `toolbox.js` + `toolbox.css` into `htdocs/plugins/receiver/toolbox/`.
+
+**Part B — in the browser (every PC that uses the receiver)**
+
+5. Open the receiver URL. **Hard-refresh** (**Ctrl+Shift+R** / **Cmd+Shift+R**) — required after first install.
+6. Click **Toolbox** → **Settings** → **Check install** (green = OK).
+7. Optional: run the **layout** wizard or **Simplify my panel** if you want fewer tabs at first.
 
 ### What you need
 
@@ -437,13 +466,7 @@ Tabs (left → right): **Explore**, **Bands**, **Range**, **Analyzer**, **Identi
 tab). Explore opens by default.
 
 Hide tabs under Settings → **General** → **Visible tabs**. **Show all tabs**
-restores everything. Settings always stays on and has sub-tabs **General** ·
-**More** · **Public** (admin). **Analyzer**, **Identify**, and **More** are on by
-default. Under **Settings → General → More sections**, pick which More panes show (grouped like the
-More tab bar) — five per group on by default. **Settings → Public** sets guest
-allowlist including **More · Spots / Space / …** at the bottom. Log / Watch /
-Bookmarks / Audio / Skip / Peaks / Range also have optional Extra sections (on by
-default under General).
+restores everything. Settings always stays on; sub-tabs are **General** · **System** (optional) · **Public** (admin). **More sections** live at the **bottom of General** (which More panes appear). **Settings → Public** sets the guest allowlist. Log / Watch / Bookmarks / Audio / Skip / Peaks / Range also have optional **Extra sections** (checkboxes under General).
 Any of those that store transferable data have **Export** / **Import** (file or
 Shift-click paste), same gate as Peaks CSV/JSON.
 

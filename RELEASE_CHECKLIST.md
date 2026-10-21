@@ -6,13 +6,16 @@ Publish on the **same** GitHub repo (`G4EA5/openwebrx-toolbox`).
 
 1. Bump `Plugins.toolbox._version` and Help/README version strings (see `docs/CHANGES-v440-to-v960.md`).
 2. Smoke-test: every header tab opens; section **?** buttons pop help; hover tips on a few controls per tab; Scan skips on Skip + Range; More visible by default.
-3. Commit on `main`, push.
-4. Tag **`toolbox-vNNN`** or letter-era **`toolbox-vB5`** (numeric through **v965**, then
+3. Commit on `main`. Before push, run **`./verify-publish-tree.sh`** (or **`./publish-main.sh`**, which runs it).  
+   **Belongs on GitHub:** `toolbox.js`, `toolbox.css`, `README.md`, `CHANGELOG.md`, `LICENSE`, `docs/`, `tools/` (stubs + callsign build + proxy), `legacy/`, `v440/`, screenshots.  
+   **Never commit:** `install.sh`, `.toolbox-versions/`, `scripts/` (homelab deploy), root `callsign-allocations.json`, `.cursor/`, homelab paths, marketplace/personal exports — see `.gitignore`.
+4. Push (`./publish-main.sh` or `git push origin main`).
+5. Tag **`toolbox-vNNN`** or letter-era **`toolbox-vB5`** (numeric through **v965**, then
    **vB1**…) on that commit and push the tag.
-5. Create a GitHub **Release** for that tag — attach a zip of
+6. Create a GitHub **Release** for that tag — attach a zip of
    `toolbox.js` + `toolbox.css` + `README.md` (+ `LICENSE` if you like).
    Ship only those files. **Manual install only** (edit `init.js` — CDN or local copy).
-6. Older tags/releases stay on the Releases page forever. **v440** also lives in [`v440/`](v440/) on `main`.
+7. Older tags/releases stay on the Releases page forever. **v440** also lives in [`v440/`](v440/) on `main`.
 
 ## Band Survey archive tags (one-time / as needed)
 

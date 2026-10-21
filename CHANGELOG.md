@@ -1,5 +1,67 @@
 # Changelog
 
+## [B174] — News / RSS feeds work again
+
+- **rss2json** is often blocked (Cloudflare); News and **Feeds → Yours** now try **same-origin** `/owrx-toolbox-rss` (homelab proxy), then AllOrigins + XML parse, then rss2json.
+- Homelab: `apply-owrx-toolbox-proxies.sh` registers `/owrx-toolbox-rss` on OpenWebRX.
+
+## [B173] — Stale tab HTML migrations
+
+- Upgrade cached **Memory** / **Log** panes when sub-tabs or buttons (Trace **Sample now**, Archive, Export, …) are missing — same fix pattern as B172 Trace.
+
+## [B172] — Memory Trace works again
+
+- **Trace sampling** extra is on by default; one-time migration for browsers that had it off.
+- **Memory → Trace**: grid background, status hints, **Sample now** button; auto point when opening Trace (if sampling on).
+- S-meter fallback uses raw OpenWebRX level when calibrated display is unavailable.
+
+## [B171] — Fix Log tab scroll
+
+- Log feed list scrolls inside the pane again (tools/header stay visible).
+
+## [B170] — Install docs & friendlier Help / hovers
+
+- **[docs/FIRST-INSTALL.md](docs/FIRST-INSTALL.md)** — first-install wiki (host vs browser, CDN/local, checklist).
+- README install section expanded; links to the wiki.
+- Help: **How tips work**, clearer first-install steps; **Check install** / layout hovers improved.
+
+## [B169] — Easier for new users (nothing removed)
+
+- **Simplify my panel** — Light layout + lean/simple UI + header **Find** (Settings → Layout profile).
+- Fresh installs: **Find in Toolbox** on by default.
+- **Advanced URLs (optional)** — collapsible block for sync / webhook / classifier / STT (same fields as before).
+- Help **Start in 3 minutes** cards; Bands list **New?** hint.
+
+## [B168] — Back to top on scrolling tabs
+
+- Scrollable tab panes show an **↑ Back to top** control at the bottom when content overflows (Settings, Help, sub-tabs, Explore deck, …).
+
+## [B167] — Layout profiles + Find keywords
+
+- **Light** welcome preset hides **Settings → System** sub-tab (Public stays on). **Everything** shows System and Public again.
+- Find-in-Toolbox keywords for settings sync and System/Public sub-tab toggles.
+
+## [B166] — Homelab proxies + URL test buttons
+
+- **Test** on Peak webhook, Settings sync, and Identify classifier URL fields; peak webhook gated on **Extras → Peak webhook**.
+- Homelab: `tools/owrx_toolbox_http_proxy.py`, `apply-owrx-toolbox-proxies.sh`, same-origin `/owrx-toolbox-*` routes to local stubs.
+
+## [B165] — Settings sub-tab visibility
+
+- **Panel startup**: **Show System** / **Show Public** checkboxes (both on by default).
+
+## [B164] — Settings sync stub
+
+- `tools/owrx-settings-sync-stub.py` for homelab testing (`:8787`).
+
+## [B163] — Peak webhook stub
+
+- `tools/owrx-peak-webhook-stub.py` for homelab testing (`:5057`).
+
+## [B162] — Fix Settings → Public pane
+
+- Sub-tab switch resets scroll; `[hidden]` / CSS so Public content is visible.
+
 ## [B138] — Docs: full v965 → B era guide
 
 - **[docs/WHATS-NEW-SINCE-V965.md](docs/WHATS-NEW-SINCE-V965.md)** — wiki-style summary of all B-era changes.
@@ -214,7 +276,7 @@
 
 ## [B67] — Calls data embedded in toolbox.js (2-file deploy)
 
-- Country/licence table ships inside `toolbox.js` (~65 KiB compact JSON, parsed once when you open **Calls**; embed string cleared after parse). No extra `callsign-allocations.json` needed on the receiver. Regenerate: `tools/build-callsign-allocations.py` (also runs `tools/embed_callsign_in_toolbox.py`). JSON in repo remains the editable source.
+- Country/licence table ships inside `toolbox.js` (~65 KiB compact JSON, parsed once when you open **Calls**; embed string cleared after parse). No extra JSON on the receiver. Maintainer source: `tools/callsign-allocations.json` — regenerate with `tools/build-callsign-allocations.py` (runs `tools/embed_callsign_in_toolbox.py`).
 
 ## [B66] — Calls: licence classes (UK G1–G8, USA tiers, major EU)
 

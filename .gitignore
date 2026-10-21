@@ -7,6 +7,27 @@ install.sh
 # Local version snapshots / maintainer deploy helpers (not part of the public plugin)
 .toolbox-versions/
 scripts/
+
+# Calls source lives under tools/ — ignore accidental regen at repo root
+/callsign-allocations.json
+
+# Homelab / laptop deploy trees (never part of the public plugin repo)
+laptop_homelab/
+server_homelab/
+server_deploy/
+homelab-*/
+
+# Personal or one-off scripts (keep out of this repo)
+*todocoleccion*
+*importamatic*
+
+# Secrets / local env
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
 **/__pycache__/
 *.pyc
 
