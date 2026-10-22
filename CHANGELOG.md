@@ -1,5 +1,14 @@
 # Changelog
 
+## [B182] — Explore SDR only + multi-radio fixes
+
+- **Explore → Profile → SDR only** — wired like Bands (`bs-band-sdr-select`); **All SDRs** and per-radio picks (RTL, HackRF, Airspy, …) now save on Explore; one-time class fix for cached panel DOM (**B182+** hard refresh).
+- Multi-SDR — Explore/Bands filter no longer reverts when OpenWebRX rejects a profile switch; failed HackRF revert no longer forces filter back to RTL; stock profile sync uses Explore filter only (not Range / Analyzer / Identify choosers).
+- **All SDRs** — live profile changes no longer auto-narrow the filter from “show everything”.
+- HackRF — longer switch settle / revert detection; status hint when profile does not stick.
+- **Settings → Visible tabs** — split **Main tabs** vs **Header buttons** (? Help, Find, Minimal **M**); Appearance copy points to the new section.
+- Header chrome — minor alignment for version label and top-right buttons.
+
 ## [B174] — News / RSS feeds work again
 
 - **rss2json** is often blocked (Cloudflare); News and **Feeds → Yours** now try **same-origin** `/owrx-toolbox-rss` (homelab proxy), then AllOrigins + XML parse, then rss2json.

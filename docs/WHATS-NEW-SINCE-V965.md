@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B174** (current). Check install and the Help tab show the running build (e.g. `B174`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B182** (current). Check install and the Help tab show the running build (e.g. `B182`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,14 +13,14 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B174** | Current era (`toolbox-vB174` tag on GitHub when published) |
+| **B1…B182** | Current era (`toolbox-vB182` tag on GitHub when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB174/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB182/toolbox.js` (or `@main` for latest).
 
 ---
 
-## Recent (B146–B174)
+## Recent (B146–B182)
 
 - **B146+** — **Settings → System** sub-tab: host CPU/RAM, listeners, session, OpenWebRX internals (`hoststats.json` when present).
 - **B162** — Fix **Settings → Public** sub-tab (scroll + pane visibility).
@@ -35,6 +35,7 @@ CDN pin example: `…@toolbox-vB174/toolbox.js` (or `@main` for latest).
 - **B172** — **Memory → Trace** draws a grid, explains status, **Sample now**; trace sampling on by default.
 - **B173** — Cached **Memory** / **Log** panes upgrade when sub-tabs or buttons are missing.
 - **B174** — **More → News** / **Feeds** RSS works again (`/owrx-toolbox-rss` on hosts with the proxy).
+- **B182** — **Explore → SDR only** saves **All SDRs** / per-radio filter (was broken on Explore only); multi-SDR filter no longer snaps back on failed switches; **Settings → Visible tabs** splits main tabs vs header **?** / Find / **M**.
 
 ---
 
@@ -106,6 +107,7 @@ These are **separate** from Explore/Bands **SDR only**:
 - **B87** — Analyzer: fixed box widths (no per-box Wide/Half); drag titles to reorder.
 - **B135** — Fix dropdown reverting while picking RTL vs HackRF on Anz/Range.
 - **B136–B137** — Identify **All SDRs**; profile list follows Identify chooser, not Explore filter.
+- **B182** — **Explore → SDR only** finally saves like Bands (**All SDRs** / any radio); filter no longer snaps back when OpenWebRX rejects a profile switch.
 
 ---
 
