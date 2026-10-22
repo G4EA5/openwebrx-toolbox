@@ -80,8 +80,10 @@ Toolbox has **two patterns**:
 | **Range → Scan**, **Analyzer** | **Choose SDR** | No — pick one kind per tab |
 | **Identify** (top bar) | **Choose SDR** | Yes — **All SDRs** or one kind |
 
-They are **not linked**. If Anz snaps back to HackRF after picking RTL, hard-refresh
-(**B135+**). If Identify still follows Explore’s filter, hard-refresh (**B136+**).
+They are **not linked**. If **Explore → SDR only** will not stay on **All SDRs** or RTL
+(jumps back to the current radio), hard-refresh (**B182+**). If Anz snaps back after
+picking RTL, hard-refresh (**B135+**). If Identify still follows Explore’s filter,
+hard-refresh (**B136+**).
 
 In-panel **Help** tab has the full guide; hover any control for a short tip.
 
@@ -104,5 +106,5 @@ There is no separate GitHub wiki — docs live in this repo:
 
 - **[What’s new since v965 (B era)](WHATS-NEW-SINCE-V965.md)** — operator guide after `toolbox-v965`
 - **[README](../README.md)** — install, SDR hardware, troubleshooting table
-- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B137)
+- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B182)
 - **In-panel Help** tab — full UI guide + **What’s new since v965** (same era as above)

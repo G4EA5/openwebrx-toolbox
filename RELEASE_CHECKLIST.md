@@ -4,7 +4,15 @@ Publish on the **same** GitHub repo (`G4EA5/openwebrx-toolbox`).
 
 ## Every Toolbox release
 
-1. Bump `Plugins.toolbox._version` and Help/README version strings (see `docs/CHANGES-v440-to-v960.md`).
+1. Bump **`Plugins.toolbox._version`** in `toolbox.js`, then update **all** published version
+   strings in the same commit (do not ship code without docs):
+   - **`CHANGELOG.md`** — new `## [Bnnn]` section at the top (operator-facing bullets).
+   - **`README.md`** — title line `# OpenWebRX Toolbox (vBnnn)`.
+   - **`docs/WHATS-NEW-SINCE-V965.md`** — intro, version table, CDN pin, **Recent** bullet.
+   - **`docs/troubleshooting.md`** — when the fix changes behaviour users hit (SDR, Settings, …).
+   - Grep the repo for the **previous** build id (`B174`, `vB174`, `toolbox-vB174`, …) and fix stragglers.
+   - In-panel **Help** uses `_version` from JS automatically; no separate Help file.
+   - Optional: `docs/CHANGES-v440-to-v671.md` only for historical milestones (see that file).
 2. Smoke-test: every header tab opens; section **?** buttons pop help; hover tips on a few controls per tab; Scan skips on Skip + Range; More visible by default.
 3. Commit on `main`. Before push, run **`./verify-publish-tree.sh`** (or **`./publish-main.sh`**, which runs it).  
    **Belongs on GitHub:** `toolbox.js`, `toolbox.css`, `README.md`, `CHANGELOG.md`, `LICENSE`, `docs/`, `tools/` (stubs + callsign build + proxy), `legacy/`, `v440/`, screenshots.  
