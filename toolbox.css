@@ -292,17 +292,17 @@ body.bs-hide-stock-rx #openwebrx-panel-receiver {
 }
 
 #bs-panel .bs-head .bs-x {
-  align-self: center;
-  margin-bottom: 4px;
+  align-self: flex-end;
+  margin-bottom: 0;
   padding: 2px 6px;
 }
 
 #bs-panel .bs-head-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 1px;
-  align-self: center;
-  margin-bottom: 4px;
+  align-self: flex-end;
+  margin-bottom: 0;
   flex-shrink: 0;
 }
 
@@ -422,8 +422,8 @@ body.bs-hide-stock-rx #openwebrx-panel-receiver {
 
 #bs-panel .bs-head-ver {
   flex: 0 0 auto;
-  align-self: center;
-  margin: 0 2px 0 0;
+  align-self: flex-end;
+  margin: 0 2px 1px 0;
   padding: 0 3px 0 0;
   font-size: 11px;
   font-weight: 700;
@@ -775,7 +775,7 @@ body.bs-side-dock.bs-side-right #webrx-page-container {
 
 #bs-panel.bs-side-docked .bs-head .bs-x {
   padding: 2px 4px;
-  margin-bottom: 3px;
+  margin-bottom: 0;
   min-width: 1.25em;
 }
 
@@ -3984,6 +3984,12 @@ body.bs-ex-box-dnd {
 
 #bs-panel .bs-visible-tabs-box .bs-hint {
   margin: 0 0 6px;
+}
+
+#bs-panel .bs-visible-tabs-box #bs-visible-header-chrome {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid #374151;
 }
 
 #bs-panel #bs-tabs .bs-tab[hidden],

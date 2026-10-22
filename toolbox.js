@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B174";
+  Plugins.toolbox._version = "B182";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -25809,6 +25809,40 @@ Plugins.toolbox.init = function () {
     return ix >= 0 ? value.slice(0, ix) : value;
   }
 
+  /** Keep Explore/Bands SDR-only filter aligned with the live OWRX profile (stops RTL snap-back). */
+  function toolboxAlignSdrFiltersToProfile(profileValue) {
+    var kind = profileSdrKind(profileValue);
+    if (!kind) return;
+    var only = String(S.exploreSdrShowOnly || "").trim();
+    /* All SDRs — never auto-narrow the filter from the live profile. */
+    if (!only) return;
+    /* User picked SDR only = HackRF (etc.) — do not follow a failed revert back to RTL. */
+    if (!profileMatchesPackSdrKind(profileValue, only)) return;
+    if (String(S.exploreSdrShowOnly || "") !== kind) {
+      S.exploreSdrShowOnly = kind;
+      try { saveSettings(); } catch (eSv) {}
+      try { syncToolboxSdrShowSelects(); } catch (eUi) {}
+    }
+  }
+
+  function hookStockProfileChangeAlign() {
+    if (typeof window.sdr_profile_changed !== "function" || window.sdr_profile_changed._bs_align) return;
+    var orig = window.sdr_profile_changed;
+    window.sdr_profile_changed = function () {
+      var sel = $("openwebrx-sdr-profiles-listbox");
+      if (sel && sel.value) {
+        var only = String(S.exploreSdrShowOnly || "").trim();
+        if (only && !profileMatchesPackSdrKind(sel.value, only)) {
+          try { exploreEnsureStockProfileMatchesSdrFilter(); } catch (eSync) {}
+        } else if (only) {
+          toolboxAlignSdrFiltersToProfile(sel.value);
+        }
+      }
+      return orig.apply(this, arguments);
+    };
+    window.sdr_profile_changed._bs_align = true;
+  }
+
   function profileSdrKindCounts() {
     var counts = {};
     profiles().forEach(function (p) {
@@ -41857,14 +41891,20 @@ Plugins.toolbox.init = function () {
     return profileAllowedForPublicExplore(meta);
   }
 
+  var exploreEnsureStockProfileLock = false;
+
   function exploreEnsureStockProfileMatchesSdrFilter() {
-    var only = toolboxEffectiveSdrShowOnly();
+    /* Explore/Bands SDR-only filter only — not Range / Anz / Identify choosers. */
+    var only = String(S.exploreSdrShowOnly || "").trim();
     if (!only) return;
     if (exCtl.lockProf) return;
+    if (exploreEnsureStockProfileLock) return;
     var sel = $("openwebrx-sdr-profiles-listbox");
     if (!sel || !sel.value) return;
-    if (profilePassesSdrShowOnly(sel.value)) return;
-    var list = orderedProfiles(false);
+    if (profileMatchesPackSdrKind(sel.value, only)) return;
+    var list = profiles().filter(function (p) {
+      return profileMatchesPackSdrKind(p.value, only) && !bandIsHidden(p.value);
+    });
     if (!list.length) {
       try {
         exploreSetStatus("No visible “" + only + "” profiles — change SDR only or add bands.");
@@ -41872,11 +41912,20 @@ Plugins.toolbox.init = function () {
       return;
     }
     var pick = list[0];
-    switchProfile(pick.value).then(function () {
+    exploreEnsureStockProfileLock = true;
+    switchProfile(pick.value).then(function (ok) {
+      if (!ok) {
+        try {
+          exploreSetStatus(profileSwitchFailureHint(pick.value));
+        } catch (eFail) {}
+        return;
+      }
       exploreApplyProfileHop(pick, "→");
       try {
         exploreSetStatus("OpenWebRX profile synced to SDR only (“" + only + "”) — " + bandDisplayName(pick) + ".");
       } catch (eSt2) {}
+    }).finally(function () {
+      exploreEnsureStockProfileLock = false;
     });
   }
 
@@ -42167,6 +42216,7 @@ Plugins.toolbox.init = function () {
   }
 
   function exploreSyncSdrFilterUi() {
+    try { ensureExploreSdrShowSelectWired(); } catch (eW) {}
     if (exploreSdrShowSelectBusy()) return;
     exploreFillSdrShowSelect();
   }
@@ -42178,6 +42228,14 @@ Plugins.toolbox.init = function () {
     var lab = chk.closest && chk.closest("label");
     if (lab && lab.parentNode) lab.parentNode.removeChild(lab);
     else if (chk.parentNode) chk.parentNode.removeChild(chk);
+  }
+
+  /** Cached Explore DOM predates B182 — SDR only <select> missed bs-band-sdr-select so change never saved. */
+  function ensureExploreSdrShowSelectWired() {
+    var el = $("bs-ex-sdr-show");
+    if (!el) return;
+    if (!el.classList.contains("bs-band-sdr-select")) el.classList.add("bs-band-sdr-select");
+    wireToolboxSdrShowSelect(el);
   }
 
   function writeBandMeta(value, patch) {
@@ -44269,11 +44327,22 @@ Plugins.toolbox.init = function () {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
+  function profileSwitchFailureHint(requestedValue) {
+    var kind = profileSdrKind(requestedValue);
+    if (kind && /hackrf/i.test(kind)) {
+      return "HackRF profile did not stick — try SDR hub “Use HackRF in OpenWebRX”, hard-refresh, then pick HackRF again. If Explore/Bands had SDR only = RTL, Toolbox now syncs that when you change profile.";
+    }
+    return "Profile did not stick on the receiver — USB busy, connector error, or OpenWebRX rejected the switch. Check the server log.";
+  }
+
   function switchProfile(value) {
     var sel = $("openwebrx-sdr-profiles-listbox");
     if (!sel) return Promise.resolve(false);
     var prevCenter = window.center_freq;
     var already = sel.value === value;
+    var kind = profileSdrKind(value);
+    var isHackrf = /hackrf/i.test(kind);
+    if (!already) toolboxAlignSdrFiltersToProfile(value);
     if (!already) {
       sel.value = value;
       var toggle = $("owrx-band-toggle");
@@ -44289,6 +44358,8 @@ Plugins.toolbox.init = function () {
       } catch (eRec) {}
     }
     var t0 = Date.now();
+    var revertMs = isHackrf ? 1800 : 350;
+    var settleMs = isHackrf ? 1500 : 600;
     return new Promise(function (resolve) {
       (function tick() {
         if (stopFlag) {
@@ -44296,12 +44367,19 @@ Plugins.toolbox.init = function () {
           return;
         }
         var nowSel = $("openwebrx-sdr-profiles-listbox");
-        var ok = nowSel && nowSel.value === value;
+        var nowVal = nowSel && nowSel.value;
+        var ok = nowVal === value;
+        if (!already && nowVal && nowVal !== value && Date.now() - t0 > revertMs) {
+          resolve(false);
+          return;
+        }
         var data = wf();
         var moved = already || window.center_freq !== prevCenter;
-        if (ok && moved && data && data.length > 32 && Date.now() - t0 > 600) {
-          resolve(true);
-          return;
+        if (ok && data && data.length > 32 && Date.now() - t0 > settleMs) {
+          if (moved || isHackrf) {
+            resolve(true);
+            return;
+          }
         }
         if (Date.now() - t0 > 10000) {
           resolve(ok);
@@ -49343,7 +49421,7 @@ Plugins.toolbox.init = function () {
       "</div>" +
       '<div class="bs-row bs-ex-sdr-filter">' +
       '<label title="Explore only: list/hop profiles for one radio kind (e.g. hackrf). All SDRs shows every profile. Does not change Range / Anz / ID choosers or Bands SDR only.">SDR only ' +
-      '<select id="bs-ex-sdr-show" class="bs-ex-sdr-show"></select></label>' +
+      '<select id="bs-ex-sdr-show" class="bs-ex-sdr-show bs-band-sdr-select"></select></label>' +
       "</div>" +
       '<p class="bs-ex-tip">On: drag waterfall ≥⅓ width to hop · Alt+wheel = profile. Filters apply to Explore, Bands, and Range profile pick — not the stock receiver bar unless you hide it in Settings. Hide one band under Bands edit → Hide from list.</p>' +
       "</div></div></section>" +
@@ -58357,7 +58435,9 @@ Plugins.toolbox.init = function () {
           help: "Check install + Update Toolbox from GitHub. CDN @main reloads; local installs get a zip to copy onto the host." }) +
       "</div>" +
       settingsBoxHtml("Visible tabs",
-        '<p class="bs-hint">Unticked tabs leave the header (restore here or <b>Show all tabs</b>). Settings stays on. Guest tab limits are under Settings → <b>Public</b>.</p>' +
+        '<p class="bs-hint">Control what appears in the Toolbox <b>title bar</b>: the main tab strip (Explore, Bands, …) is separate from the small buttons on the top right (<b>?</b> <b>M</b> <b>S</b> <b>R</b>, …). Guest tab limits are under Settings → <b>Public</b>.</p>' +
+        '<p class="bs-range-mode-title">Main tabs</p>' +
+        '<p class="bs-hint">Unticked tabs leave the tab strip (restore here or <b>Show all tabs</b>). Settings always stays on.</p>' +
         '<div class="bs-row bs-chk-grid" id="bs-visible-tabs">' +
         '<label class="bs-chk" title="Show or hide the Explore tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="explore" checked> Explore</label>' +
         '<label class="bs-chk" title="Show or hide the Bands tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="bands" checked> Bands</label>' +
@@ -58372,10 +58452,16 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Show or hide the Audio tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="audio" checked> Audio</label>' +
         '<label class="bs-chk" title="Show or hide the Skip tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="skip" checked> Skip</label>' +
         '<label class="bs-chk" title="Show or hide More. DX, Sats, Passes, RBN, Time, Prop, Grey, Contest, Nets, Links."><input type="checkbox" class="bs-tab-vis" data-tab="more" checked> More</label>' +
-        '<label class="bs-chk" title="Help is the brown ? button next to M (not in the tab strip). Untick to hide it."><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help (?)</label>' +
         '<label class="bs-chk" title="Settings cannot be hidden."><input type="checkbox" class="bs-tab-vis" data-tab="settings" checked disabled> Settings (always on)</label>' +
         "</div>" +
-        '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-tabs-show-all" title="Turn every main tab back on.">Show all tabs</button></div>',
+        '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-tabs-show-all" title="Turn every main tab back on (not header buttons).">Show all tabs</button></div>' +
+        '<p class="bs-range-mode-title" style="margin-top:0.65rem">Header buttons (top right)</p>' +
+        '<p class="bs-hint">These sit beside the tab strip — not main tabs. <b>S</b> side dock, <b>R</b> hard refresh, <b>%</b> dock width, scale cycle, <b>−</b> minimize, and <b>×</b> close are always shown.</p>' +
+        '<div class="bs-row bs-chk-grid" id="bs-visible-header-chrome">' +
+        '<label class="bs-chk" title="Brown ? button — Help and install guide (not a main tab)."><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help (?)</label>' +
+        '<label class="bs-chk" title="Magnifier in the header — search controls by keyword."><input type="checkbox" id="bs-find-in-toolbox"> Find</label>' +
+        '<label class="bs-chk" title="M button — Minimal / Full view on the current tab."><input type="checkbox" id="bs-minimal-button"> Minimal (M)</label>' +
+        "</div>",
         { id: "bs-visible-tabs-box", wide: true }) +
       settingsBoxHtml("Extra sections",
         '<p class="bs-hint">Optional light sub-tabs on Log, Watch, Bookmarks, Audio, Skip, Peaks, and Range. All on by default.</p>' +
@@ -58452,11 +58538,9 @@ Plugins.toolbox.init = function () {
         '<option value="tick">Tick boxes</option></select></label>' +
         '<span class="bs-hint">Applies to checkboxes across Toolbox (Bands, Range, Settings, …)</span>' +
         "</div>" +
-        '<p class="bs-hint">Panel scale applies to <b>tab content</b> (Explore, Bands, Settings, …). <b>Main tab size</b> is the header row only (factory default is <b>Default</b>). Purple <b>100</b> cycles panel scale. Minimal: <b>M</b> / <b>F</b>.</p>' +
+        '<p class="bs-hint">Panel scale applies to <b>tab content</b> (Explore, Bands, Settings, …). <b>Main tab size</b> is the header row only (factory default is <b>Default</b>). Purple scale button cycles panel scale. Show or hide <b>?</b> / Find / <b>M</b> under <b>Visible tabs → Header buttons</b>.</p>' +
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="Show the Bands / Bookmarks scan strip when idle. Stop and status still appear while a scan is running even when this is off."><input type="checkbox" id="bs-show-scan-strip" checked> Show scan strip</label>' +
-        '<label class="bs-chk" title="Show the magnifier in the Toolbox header. Type keywords like gain, record, visible tabs, or simplify — jumps to matching settings."><input type="checkbox" id="bs-find-in-toolbox"> Find in Toolbox</label>' +
-        '<label class="bs-chk" title="Show the M button in the Toolbox header. It switches the current tab between Minimal and Full view. Off until you tick this."><input type="checkbox" id="bs-minimal-button"> Minimal button</label>' +
         '<label class="bs-chk" title="Hide OpenWebRX\u2019s floating receiver panel (modes, volume, squelch, etc.). Audio stays on — use Explore for those controls. Default off."><input type="checkbox" id="bs-hide-stock-rx"> Hide stock receiver panel</label>' +
         "</div>" +
         '<div class="bs-row bs-chk-grid">' +
@@ -59907,6 +59991,10 @@ Plugins.toolbox.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && !$("bs-visible-header-chrome")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing && $("bs-ux-feel-box")) {
       try { $("bs-ux-feel-box").remove(); } catch (eUxRm) {}
     }
@@ -60148,6 +60236,10 @@ Plugins.toolbox.init = function () {
       existing = null;
     }
     if (existing && !$("bs-visible-tabs")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-visible-header-chrome")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -65829,7 +65921,14 @@ Plugins.toolbox.init = function () {
         exploreFillProfiles();
         return;
       }
-      switchProfile(v).then(function () {
+      switchProfile(v).then(function (ok) {
+        if (!ok) {
+          try {
+            exploreSetStatus(profileSwitchFailureHint(v));
+          } catch (eSt) {}
+          try { exploreFillProfiles(); } catch (eFill) {}
+          return;
+        }
         exploreApplyProfileHop(meta);
       });
     };
@@ -68421,6 +68520,7 @@ Plugins.toolbox.init = function () {
     exploreRefreshReadout();
     if (explore.on) exploreSetStatus("Explore on — drag to hop tiles · wheel steps VFO · Alt+wheel hops profiles.");
     exploreFillModes();
+    try { ensureExploreSdrShowSelectWired(); } catch (eSdrW) {}
     exploreFillProfiles();
     exploreSyncRadioUi();
     setInterval(function () {
@@ -68449,6 +68549,7 @@ Plugins.toolbox.init = function () {
       try { hookOwrxWaterfallGeometry(); } catch (eG) {}
       try { hookHide(); } catch (eH) {}
       try { hookTuneApi(); } catch (eT) {}
+      try { hookStockProfileChangeAlign(); } catch (eProf) {}
       try { hookStockOpacityGuard(); } catch (eOpG) {}
       try {
         makePanel();
