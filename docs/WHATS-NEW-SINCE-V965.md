@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B184** (current). Check install and the Help tab show the running build (e.g. `B184`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B185** (current). Check install and the Help tab show the running build (e.g. `B185`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,10 +13,10 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B184** | Current era (`toolbox-vB184` tag on GitHub when published) |
+| **B1…B185** | Current era (`toolbox-vB185` tag on GitHub when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB184/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB185/toolbox.js` (or `@main` for latest).
 
 ---
 
@@ -38,6 +38,7 @@ CDN pin example: `…@toolbox-vB184/toolbox.js` (or `@main` for latest).
 - **B182** — **Explore → SDR only** saves **All SDRs** / per-radio filter (was broken on Explore only); multi-SDR filter no longer snaps back on failed switches; **Settings → Visible tabs** splits main tabs vs header **?** / Find / **M**.
 - **B183** — **More → Spots → DX** opens with **All** spots (not **This band** only).
 - **B184** — **Bands → Coverage** MHz map; **More → Here → Now** live snapshot; **Log → Session** your retunes/scans.
+- **B185** — **Coverage** bar enlarged + profile chip list when tiles are too narrow on the bar.
 
 ---
 

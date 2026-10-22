@@ -1,5 +1,9 @@
 # Changelog
 
+## [B185] — Bands Coverage map size
+
+- Taller MHz bar (full width, ~72px+), axis labels, and a scrollable profile chip list when spans are too narrow to read on the bar.
+
 ## [B184] — Coverage, Now, Session sub-panes
 
 - **Bands → Coverage** — MHz map of OpenWebRX profile spans, gap hints, click-to-tune; respects **SDR only**.

@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B184";
+  Plugins.toolbox._version = "B185";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -48971,9 +48971,17 @@ Plugins.toolbox.init = function () {
       var w = ((s.hi - s.lo) / span) * 100;
       var cls = bandPackSdrKindClass(profileSdrKind(s.p.value));
       var title = bandDisplayName(s.p) + " · " + profileFreqLabel(s.p);
-      return '<button type="button" class="bs-cov-seg ' + cls + '" style="left:' + left.toFixed(3) + "%;width:" + w.toFixed(3) +
+      var narrow = w < 1.2;
+      return '<button type="button" class="bs-cov-seg ' + cls + (narrow ? " bs-cov-seg-narrow" : "") +
+        '" style="left:' + left.toFixed(3) + "%;width:" + w.toFixed(3) +
         '%;" title="' + escapeHtml(title) + '" data-cov-prof="' + escapeHtml(s.p.value) + '">' +
-        escapeHtml(bandDisplayName(s.p).slice(0, 24)) + "</button>";
+        (narrow ? "" : escapeHtml(bandDisplayName(s.p).slice(0, 28))) + "</button>";
+    }).join("");
+    var legendHtml = segs.map(function (s) {
+      var cls = bandPackSdrKindClass(profileSdrKind(s.p.value));
+      var title = bandDisplayName(s.p) + " · " + profileFreqLabel(s.p);
+      return '<button type="button" class="bs-cov-chip ' + cls + '" title="' + escapeHtml(title) +
+        '" data-cov-prof="' + escapeHtml(s.p.value) + '">' + escapeHtml(bandDisplayName(s.p)) + "</button>";
     }).join("");
     var gaps = [];
     var step = Math.max(25e3, Math.min(100e3, span / 200));
@@ -48993,8 +49001,13 @@ Plugins.toolbox.init = function () {
         }).join("; ") + (gaps.length > 6 ? " …" : "") + "</p>")
       : '<p class="bs-hint">No gaps in this span — every sampled point has a profile.</p>';
     host.innerHTML =
+      '<div class="bs-cov-map">' +
       '<div class="bs-cov-axis"><span>' + escapeHtml(fmtMhz(spanLo)) + "</span><span>" + escapeHtml(fmtMhz(spanHi)) + "</span></div>" +
-      '<div class="bs-cov-bar">' + barHtml + "</div>" + gapHtml;
+      '<div class="bs-cov-bar">' + barHtml + "</div>" +
+      "</div>" +
+      '<p class="bs-cov-legend-lab">Profiles — click to tune</p>' +
+      '<div class="bs-cov-legend">' + legendHtml + "</div>" +
+      gapHtml;
     if (meta) {
       meta.textContent = segs.length + " profile span" + (segs.length === 1 ? "" : "s") +
         (String(S.exploreSdrShowOnly || "").trim() ? (" · SDR only = " + S.exploreSdrShowOnly) : " · all SDR kinds");

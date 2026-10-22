@@ -15430,37 +15430,91 @@ body.bs-welcome-open {
   color: #94a3b8;
 }
 
-/* B184 — Bands coverage map, More → Now, Log → Session */
+/* B184+ — Bands coverage map, More → Now, Log → Session */
+#bs-panel .bs-cov-host {
+  width: 100%;
+  min-width: 0;
+}
+#bs-panel .bs-bd-coverage-box .bs-tab-scroll,
+#bs-panel #bs-bd-coverage-host {
+  width: 100%;
+}
+#bs-panel .bs-cov-map {
+  width: 100%;
+  margin: 0 0 12px;
+}
 #bs-panel .bs-cov-axis {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 6px;
 }
 #bs-panel .bs-cov-bar {
   position: relative;
-  height: 2.6rem;
-  margin: 0 0 10px;
+  width: 100%;
+  height: 5.5rem;
+  min-height: 72px;
+  margin: 0;
   background: #0f172a;
-  border: 1px solid #374151;
-  border-radius: 6px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  box-sizing: border-box;
 }
 #bs-panel .bs-cov-seg {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  min-width: 3px;
-  padding: 0 3px;
-  font-size: 9px;
-  line-height: 1.15;
+  top: 6px;
+  bottom: 6px;
+  min-width: 4px;
+  padding: 4px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  cursor: pointer;
+  color: #f9fafb;
+  background: #475569;
+  box-sizing: border-box;
+}
+#bs-panel .bs-cov-seg.bs-cov-seg-narrow {
+  padding: 0;
+  min-width: 3px;
+}
+#bs-panel .bs-cov-legend-lab {
+  margin: 10px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+#bs-panel .bs-cov-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 12rem;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 2px 0;
+}
+#bs-panel .bs-cov-chip {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
   color: #f3f4f6;
-  background: #475569;
+  background: #374151;
+  max-width: 100%;
+  text-align: left;
 }
+#bs-panel .bs-cov-chip.bs-pack-sdr-hackrf { background: #5b21b6; }
+#bs-panel .bs-cov-chip.bs-pack-sdr-rtl_sdr { background: #b45309; }
+#bs-panel .bs-cov-chip.bs-pack-sdr-airspy { background: #0e7490; }
+#bs-panel .bs-cov-chip.bs-pack-sdr-sdrplay { background: #15803d; }
 #bs-panel .bs-cov-seg.bs-pack-sdr-hackrf { background: #5b21b6; }
 #bs-panel .bs-cov-seg.bs-pack-sdr-rtl_sdr { background: #b45309; }
 #bs-panel .bs-cov-seg.bs-pack-sdr-airspy { background: #0e7490; }
