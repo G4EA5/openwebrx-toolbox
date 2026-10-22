@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B183** (current). Check install and the Help tab show the running build (e.g. `B183`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B184** (current). Check install and the Help tab show the running build (e.g. `B184`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,14 +13,14 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B183** | Current era (`toolbox-vB183` tag on GitHub when published) |
+| **B1…B184** | Current era (`toolbox-vB184` tag on GitHub when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB183/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB184/toolbox.js` (or `@main` for latest).
 
 ---
 
-## Recent (B146–B183)
+## Recent (B146–B184)
 
 - **B146+** — **Settings → System** sub-tab: host CPU/RAM, listeners, session, OpenWebRX internals (`hoststats.json` when present).
 - **B162** — Fix **Settings → Public** sub-tab (scroll + pane visibility).
@@ -37,6 +37,7 @@ CDN pin example: `…@toolbox-vB183/toolbox.js` (or `@main` for latest).
 - **B174** — **More → News** / **Feeds** RSS works again (`/owrx-toolbox-rss` on hosts with the proxy).
 - **B182** — **Explore → SDR only** saves **All SDRs** / per-radio filter (was broken on Explore only); multi-SDR filter no longer snaps back on failed switches; **Settings → Visible tabs** splits main tabs vs header **?** / Find / **M**.
 - **B183** — **More → Spots → DX** opens with **All** spots (not **This band** only).
+- **B184** — **Bands → Coverage** MHz map; **More → Here → Now** live snapshot; **Log → Session** your retunes/scans.
 
 ---
 

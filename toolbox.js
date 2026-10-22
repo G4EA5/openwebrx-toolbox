@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B183";
+  Plugins.toolbox._version = "B184";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -1027,8 +1027,9 @@ Plugins.toolbox.init = function () {
       { id: "skysrc", lab: "Source", title: "Where Sky tab figures come from (NOAA / SWPC / local math).", defaultHidden: true },
       { id: "skyhear", lab: "Hear", title: "What K-index, storms, and greyline mean for your headphones.", defaultHidden: true }
     ]},
-    { id: "here", lab: "Here", title: "QTH, path, today, prefix, weather, noise, and locator tool.", panes: [
+    { id: "here", lab: "Here", title: "QTH, path, now, today, prefix, weather, noise, and locator tool.", panes: [
       { id: "qth", lab: "QTH", title: "Grid, clocks, sunrise/sunset for your lat/lon." },
+      { id: "now", lab: "Now", title: "Live snapshot: profile, tune, DX on this band, watches." },
       { id: "today", lab: "Today", title: "Log / Watch activity by band since midnight." },
       { id: "prefix", lab: "Prefix", title: "Callsign lookup — prefix, country, license, grid (network)." },
       { id: "wx", lab: "WX", title: "Local weather at the receiver lat/lon." },
@@ -1082,7 +1083,7 @@ Plugins.toolbox.init = function () {
     });
   });
 
-  var MORE_SUBS_VIS_VER = 2;
+  var MORE_SUBS_VIS_VER = 3;
 
   function buildDefaultHiddenMoreSubs() {
     var hidden = [];
@@ -1692,6 +1693,7 @@ Plugins.toolbox.init = function () {
   var LS_FREQ_NOTES = "owrx_toolbox_freq_notes_v1";
   var LS_SESSION_LOG = "owrx_toolbox_session_log_v1";
   var LS_TRAFFIC_LOG = "owrx_toolbox_traffic_log_v1";
+  var LS_OPERATOR_SESSION = "owrx_toolbox_op_session_v1";
   var LS_DECODER_ARCHIVE = "owrx_toolbox_decoder_archive_v1";
   var DECODER_ARCHIVE_MAX = 2500;
   var LS_QSO = "owrx_toolbox_qso_v1";
@@ -8346,8 +8348,39 @@ Plugins.toolbox.init = function () {
   var trafficLogIdGuessKey = "";
   var trafficLogIdGuessAt = 0;
   var trafficLogTimer = null;
+  var operatorSessionRows = [];
+
+  function loadOperatorSession() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem(LS_OPERATOR_SESSION) || "null");
+      operatorSessionRows = Array.isArray(o) ? o.slice(-300) : [];
+    } catch (e) { operatorSessionRows = []; }
+  }
+
+  function saveOperatorSession() {
+    try {
+      window.localStorage.setItem(LS_OPERATOR_SESSION, JSON.stringify(operatorSessionRows.slice(-300)));
+    } catch (e) {}
+  }
+
+  function operatorSessionPush(kind, title, detail, freqHz) {
+    title = String(title || "").replace(/\s+/g, " ").trim().slice(0, 140);
+    if (!title) return;
+    operatorSessionRows.push({
+      at: Date.now(),
+      kind: String(kind || "note").slice(0, 24),
+      title: title,
+      detail: String(detail || "").replace(/\s+/g, " ").trim().slice(0, 200),
+      freqHz: Math.round(Number(freqHz) || 0)
+    });
+    if (operatorSessionRows.length > 300) operatorSessionRows = operatorSessionRows.slice(-300);
+    saveOperatorSession();
+    try { logSessionRender(); } catch (eR) {}
+  }
+
   loadTrafficLog();
   trafficLogStart();
+  loadOperatorSession();
 
   function loadTrafficLog() {
     try {
@@ -10053,6 +10086,23 @@ Plugins.toolbox.init = function () {
     if ($("bs-log-json")) $("bs-log-json").onclick = function () { trafficLogExport("json"); };
     if ($("bs-log-import")) $("bs-log-import").onclick = trafficLogStartImport;
     if ($("bs-log-clear")) $("bs-log-clear").onclick = function () { trafficLogClear(false); };
+    if ($("bs-log-session-clear")) {
+      $("bs-log-session-clear").onclick = function () {
+        operatorSessionRows = [];
+        saveOperatorSession();
+        logSessionRender();
+        setStatus("Session log cleared.");
+      };
+    }
+    if ($("bs-log-session-list") && ! $("bs-log-session-list")._bsWired) {
+      $("bs-log-session-list")._bsWired = true;
+      $("bs-log-session-list").addEventListener("click", function (ev) {
+        var row = ev.target && ev.target.closest && ev.target.closest(".bs-session-row");
+        if (!row) return;
+        var hz = Number(row.getAttribute("data-session-mhz"));
+        if (hz > 0) try { exploreTuneTo(hz); } catch (eT) {}
+      });
+    }
     if ($("bs-qso-add")) $("bs-qso-add").onclick = qsoAddFromForm;
     if ($("bs-qso-now")) $("bs-qso-now").onclick = function () { qsoFillFromTune(false); };
     if ($("bs-qso-adif")) $("bs-qso-adif").onclick = qsoExportAdif;
@@ -10362,7 +10412,7 @@ Plugins.toolbox.init = function () {
 
   function setLogSubTab(name, opts) {
     opts = opts || {};
-    var allowed = { feed: 1, qso: 1, calls: 1, archive: 1, notes: 1, export: 1, dupes: 1 };
+    var allowed = { feed: 1, qso: 1, calls: 1, archive: 1, notes: 1, export: 1, dupes: 1, session: 1 };
     if (!allowed[name] || isExtraSubHidden("log", name)) name = firstVisibleExtraSub("log", "feed");
     var root = $("bs-tab-log");
     if (!root) return;
@@ -10393,6 +10443,7 @@ Plugins.toolbox.init = function () {
     if (name === "notes") { try { logNotesOnTab(); } catch (eN) {} }
     if (name === "export") { try { logExportOnTab(); } catch (eE) {} }
     if (name === "dupes") { try { logDupesOnTab(); } catch (eD) {} }
+    if (name === "session") { try { logSessionOnTab(); } catch (eSess) {} }
     if (!opts.skipSave) {
       try { if (extraOn("rememberSubs")) window.localStorage.setItem("owrx_toolbox_lg_sub_v1", name); } catch (e) {}
     }
@@ -12954,6 +13005,33 @@ Plugins.toolbox.init = function () {
     if (meta) {
       meta.textContent = recentRows().length + " feed lines · " + decoderArchiveRows.length + " archive lines.";
     }
+  }
+
+  function logSessionRender() {
+    var host = $("bs-log-session-list");
+    if (!host) return;
+    var rows = operatorSessionRows.slice().reverse().slice(0, 120);
+    var sig = rows.map(function (r) { return r.at + "|" + r.kind + "|" + r.title; }).join("\n");
+    if (host.getAttribute("data-sig") === sig) return;
+    host.setAttribute("data-sig", sig);
+    if (!rows.length) {
+      host.innerHTML = '<p class="bs-empty">No session events yet — profile changes, retunes, and band scans appear here.</p>';
+      return;
+    }
+    host.innerHTML = rows.map(function (r) {
+      var mhz = r.freqHz ? (' <span class="bs-dx-mhz">' + escapeHtml(fmtMhz(r.freqHz)) + "</span>") : "";
+      return '<div class="bs-session-row" data-session-mhz="' + (r.freqHz || "") + '">' +
+        '<span class="bs-dx-when">' + escapeHtml(trafficLogAgo(r.at)) + "</span>" +
+        '<span class="bs-session-kind">' + escapeHtml(r.kind) + "</span>" +
+        '<span class="bs-session-title">' + escapeHtml(r.title) + "</span>" +
+        mhz +
+        (r.detail ? (' <span class="bs-hint">' + escapeHtml(r.detail) + "</span>") : "") +
+        "</div>";
+    }).join("");
+  }
+
+  function logSessionOnTab() {
+    logSessionRender();
   }
 
   function logDupesOnTab() {
@@ -36209,7 +36287,7 @@ Plugins.toolbox.init = function () {
 
   function setBandsSubTab(name, opts) {
     opts = opts || {};
-    var allowed = { list: 1, edit: 1, schedule: 1, packs: 1 };
+    var allowed = { list: 1, edit: 1, coverage: 1, schedule: 1, packs: 1 };
     if (name === "options") name = "list";
     if (!allowed[name]) name = "list";
     if (name === "edit" && !extraOn("bandEdit")) name = "list";
@@ -36231,8 +36309,11 @@ Plugins.toolbox.init = function () {
     if (name === "edit") {
       try { fillBandsEdit(); } catch (eEdit) {}
     }
-    if (name === "list" || name === "edit") {
+    if (name === "list" || name === "edit" || name === "coverage") {
       try { ensureBandsSdrShowUi(); } catch (eSdrUi) {}
+    }
+    if (name === "coverage") {
+      try { bandsCoverageOnTab(); } catch (eCov) {}
     }
     if (!opts.skipSave) {
       try { if (extraOn("rememberSubs")) window.localStorage.setItem("owrx_toolbox_bd_sub_v1", name); } catch (e) {}
@@ -36246,7 +36327,7 @@ Plugins.toolbox.init = function () {
       var raw = extraOn("rememberSubs") ? window.localStorage.getItem("owrx_toolbox_bd_sub_v1") : null;
       if (raw === "options") raw = "list";
       if (raw === "beacons" || raw === "solar" || raw === "today") name = "list";
-      else if (raw === "list" || raw === "edit" || raw === "schedule" || raw === "packs") name = raw;
+      else if (raw === "list" || raw === "edit" || raw === "coverage" || raw === "schedule" || raw === "packs") name = raw;
     } catch (e) {}
     setBandsSubTab(name, { skipSave: true });
     try { ensureBandsSdrShowUi(); } catch (eSdrR) {}
@@ -44342,12 +44423,14 @@ Plugins.toolbox.init = function () {
     var already = sel.value === value;
     var kind = profileSdrKind(value);
     var isHackrf = /hackrf/i.test(kind);
+    var profLab = value;
     if (!already) toolboxAlignSdrFiltersToProfile(value);
     if (!already) {
       sel.value = value;
       var toggle = $("owrx-band-toggle");
       if (toggle) {
         var opt = sel.options[sel.selectedIndex];
+        profLab = (opt && opt.text) || value;
         toggle.textContent = opt ? opt.text : "Bands";
       }
       if (typeof sdr_profile_changed === "function") sdr_profile_changed();
@@ -44377,6 +44460,11 @@ Plugins.toolbox.init = function () {
         var moved = already || window.center_freq !== prevCenter;
         if (ok && data && data.length > 32 && Date.now() - t0 > settleMs) {
           if (moved || isHackrf) {
+            if (!already) {
+              try {
+                operatorSessionPush("profile", profLab, kind, window.center_freq || 0);
+              } catch (eSess) {}
+            }
             resolve(true);
             return;
           }
@@ -45084,6 +45172,9 @@ Plugins.toolbox.init = function () {
     }
     running = true;
     stopFlag = false;
+    try {
+      operatorSessionPush("scan", "Bands scan", S.selected.length + " band(s)" + (fresh ? " · fresh" : ""), 0);
+    } catch (eSess) {}
     var snapBefore = loadSnap();
     if (fresh) {
       hits = [];
@@ -48773,12 +48864,163 @@ Plugins.toolbox.init = function () {
       "</tbody></table>";
   }
 
+  var moreNowTimer = null;
+
+  function moreNowStopTimer() {
+    if (moreNowTimer) {
+      clearInterval(moreNowTimer);
+      moreNowTimer = null;
+    }
+  }
+
+  function dxSpotsOnCurrentBandCount() {
+    var now = Date.now();
+    var band = "";
+    try { band = dxBandKey(activityBandName(currentTuneHz())); } catch (eB) {}
+    if (!band) return 0;
+    var n = 0;
+    (dxSpots || []).forEach(function (spot) {
+      if (!spot) return;
+      var at = dxSpotWhen(spot);
+      if (!at || now - at > DX_MAX_AGE_MS) return;
+      var hz = dxHz(spot.frequency);
+      if (!(hz > 0)) return;
+      if (dxBandKey(spot.band) === band || dxBandKey(activityBandName(hz)) === band) n++;
+    });
+    return n;
+  }
+
+  function moreNowRender() {
+    var host = $("bs-more-now-host");
+    if (!host) return;
+    var hz = 0;
+    try { hz = currentTuneHz() || window.center_freq || 0; } catch (eHz) {}
+    var profLab = "";
+    try {
+      var sel = $("openwebrx-sdr-profiles-listbox");
+      if (sel && sel.selectedIndex >= 0) profLab = sel.options[sel.selectedIndex].text || "";
+    } catch (eP) {}
+    var watchN = 0;
+    try {
+      watchN = (sigWatchRules || []).filter(function (r) { return r && !r.snoozeUntil; }).length;
+    } catch (eW) {}
+    var dxBand = dxSpotsOnCurrentBandCount();
+    var sig = [profLab, hz, watchN, dxBand, dxFetchedAt || 0].join("|");
+    if (host.getAttribute("data-sig") === sig) return;
+    host.setAttribute("data-sig", sig);
+    var freqLine = hz > 0 ? escapeHtml(fmtMhz(hz)) : "—";
+    var bandName = "";
+    try { bandName = activityBandName(hz) || ""; } catch (eBn) {}
+    host.innerHTML =
+      '<dl class="bs-now-dl">' +
+      "<dt>Profile</dt><dd>" + escapeHtml(profLab || "—") + "</dd>" +
+      "<dt>Tune</dt><dd>" + freqLine + (bandName ? (" · " + escapeHtml(bandName)) : "") + "</dd>" +
+      "<dt>DX on this band</dt><dd>" + dxBand + " spot" + (dxBand === 1 ? "" : "s") + " (30 min)</dd>" +
+      "<dt>Watches armed</dt><dd>" + watchN + "</dd>" +
+      "</dl>" +
+      '<p class="bs-hint">Live snapshot — refreshes while this pane is open. <b>Today</b> sums Log/Watch since midnight.</p>";
+  }
+
+  function nowOnTab() {
+    moreNowRender();
+    moreNowStopTimer();
+    if (!dxFetchedAt || Date.now() - dxFetchedAt > 120000) {
+      try { dxFetch().then(function () { moreNowRender(); }); } catch (eDx) {}
+    }
+    moreNowTimer = setInterval(moreNowRender, 5000);
+  }
+
+  function bandsCoverageProfiles() {
+    var list = profiles().slice();
+    list = list.filter(function (p) {
+      if (bandIsHidden(p.value)) return false;
+      return profilePassesSdrShowOnlyForSelect(p.value, "bs-ex-profile-sel");
+    });
+    return list;
+  }
+
+  function bandsCoverageRender() {
+    var host = $("bs-bd-coverage-host");
+    var meta = $("bs-bd-coverage-meta");
+    if (!host) return;
+    var list = bandsCoverageProfiles();
+    var segs = [];
+    var spanLo = Infinity;
+    var spanHi = -Infinity;
+    list.forEach(function (p) {
+      var r = profileFreqRange(p);
+      if (!r) return;
+      var rLo = Math.min(r.lo, r.hi);
+      var rHi = Math.max(r.lo, r.hi);
+      if (!(rHi > rLo)) return;
+      spanLo = Math.min(spanLo, rLo);
+      spanHi = Math.max(spanHi, rHi);
+      segs.push({ p: p, lo: rLo, hi: rHi });
+    });
+    if (!segs.length) {
+      host.innerHTML = '<p class="bs-empty">No profile MHz coverage yet — openWebRX may still be loading, or names lack frequencies. Try Refresh, or add packs.</p>';
+      if (meta) meta.textContent = "";
+      return;
+    }
+    var pad = Math.max(50e3, (spanHi - spanLo) * 0.02);
+    spanLo -= pad;
+    spanHi += pad;
+    var span = spanHi - spanLo;
+    var barHtml = segs.map(function (s) {
+      var left = ((s.lo - spanLo) / span) * 100;
+      var w = ((s.hi - s.lo) / span) * 100;
+      var cls = bandPackSdrKindClass(profileSdrKind(s.p.value));
+      var title = bandDisplayName(s.p) + " · " + profileFreqLabel(s.p);
+      return '<button type="button" class="bs-cov-seg ' + cls + '" style="left:' + left.toFixed(3) + "%;width:" + w.toFixed(3) +
+        '%;" title="' + escapeHtml(title) + '" data-cov-prof="' + escapeHtml(s.p.value) + '">' +
+        escapeHtml(bandDisplayName(s.p).slice(0, 24)) + "</button>";
+    }).join("");
+    var gaps = [];
+    var step = Math.max(25e3, Math.min(100e3, span / 200));
+    var f;
+    for (f = spanLo; f <= spanHi; f += step) {
+      if (!profileForFreq(f)) {
+        if (!gaps.length || f - gaps[gaps.length - 1].hi > step * 1.5) {
+          gaps.push({ lo: f, hi: f + step });
+        } else {
+          gaps[gaps.length - 1].hi = f + step;
+        }
+      }
+    }
+    var gapHtml = gaps.length
+      ? ("<p class=\"bs-hint\"><b>Gaps</b> (no profile tile): " + gaps.slice(0, 6).map(function (g) {
+          return fmtMhz(g.lo) + "–" + fmtMhz(g.hi);
+        }).join("; ") + (gaps.length > 6 ? " …" : "") + "</p>")
+      : '<p class="bs-hint">No gaps in this span — every sampled point has a profile.</p>';
+    host.innerHTML =
+      '<div class="bs-cov-axis"><span>' + escapeHtml(fmtMhz(spanLo)) + "</span><span>" + escapeHtml(fmtMhz(spanHi)) + "</span></div>" +
+      '<div class="bs-cov-bar">' + barHtml + "</div>" + gapHtml;
+    if (meta) {
+      meta.textContent = segs.length + " profile span" + (segs.length === 1 ? "" : "s") +
+        (String(S.exploreSdrShowOnly || "").trim() ? (" · SDR only = " + S.exploreSdrShowOnly) : " · all SDR kinds");
+    }
+    if (!host._bsCovWired) {
+      host._bsCovWired = true;
+      host.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest("[data-cov-prof]");
+        if (!btn) return;
+        var v = btn.getAttribute("data-cov-prof");
+        if (v) openListedBand(v);
+      });
+    }
+  }
+
+  function bandsCoverageOnTab() {
+    ensureProfileFreqCache(function () { bandsCoverageRender(); });
+  }
+
   function panelTabHtml_bands() {
     return (
       '<div class="bs-tab-pane" id="bs-tab-bands" data-tab="bands" role="tabpanel">' +
       '<div class="bs-tab-stack">' +
       '<div class="bs-bd-subs" id="bs-bd-subs" role="tablist" aria-label="Bands sections">' +
       '<button type="button" class="bs-bd-sub bs-bd-sub-on" data-bd-sub="list" role="tab" aria-selected="true" title="Presets, filter, and tick list.">Bands list</button>' +
+      '<button type="button" class="bs-bd-sub" data-bd-sub="coverage" role="tab" aria-selected="false" title="MHz map of profile coverage and gaps.">Coverage</button>' +
       '<button type="button" class="bs-bd-sub" data-bd-sub="edit" data-extra="bandEdit" role="tab" aria-selected="false" title="Edit SDR profiles: name / centre / mode (admin), or local alias / hide / note / order. Delete removes a profile.">Bands edit</button>' +
       '<button type="button" class="bs-bd-sub" data-bd-sub="schedule" data-extra="bandSchedule" role="tab" aria-selected="false" title="After-scan actions, schedule, and courtesy.">Bands schedule</button>' +
       '<button type="button" class="bs-bd-sub" data-bd-sub="packs" data-extra="bandPacks" role="tab" aria-selected="false" title="Create missing SDR band profiles.">Bands packs</button>' +
@@ -48817,6 +49059,17 @@ Plugins.toolbox.init = function () {
       "</div>",
       { wide: true, cls: "bs-box-list", id: "bs-bd-list-box",
         help: "Tick which SDR profiles Scan bands / Fresh scan will walk. Presets and filter sit above. Scan skips (digital bookmarks / block MHz) live on the Skip tab." }) +
+      "</div>" +
+      '<div class="bs-bd-subpane" data-bd-sub="coverage" role="tabpanel" hidden>' +
+      tabBoxHtml("Coverage map",
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-bd-coverage-refresh" title="Reload profile MHz from status.json.">Refresh</button>' +
+      '<span class="bs-hint" id="bs-bd-coverage-meta"></span>' +
+      "</div>" +
+      '<div id="bs-bd-coverage-host" class="bs-cov-host"></div>' +
+      '<p class="bs-hint">Click a coloured span to tune that profile. Respects <b>SDR only</b> (same as Bands list). Gaps are where Range would warn — add a pack or profile in OpenWebRX Settings.</p>',
+      { wide: true, id: "bs-bd-coverage-box", cls: "bs-bd-coverage-box",
+        help: "Visual map of which MHz your OpenWebRX profiles cover. Click a span to switch profile." }) +
       "</div>" +
       '<div class="bs-bd-subpane" data-bd-sub="edit" role="tabpanel" hidden>' +
       '<div class="bs-band-sdr-bar" id="bs-bd-edit-sdr-bar">' + bandsSdrBarInnerHtml("bs-bd-edit-sdr-show") + "</div>" +
@@ -50308,6 +50561,7 @@ Plugins.toolbox.init = function () {
     if (id === "grey") return panelTabHtml_greyInner();
     if (id === "qth") return panelTabHtml_qthInner();
     if (id === "path") return panelTabHtml_pathInner();
+    if (id === "now") return panelTabHtml_nowInner();
     if (id === "today") return panelTabHtml_todayInner();
     if (id === "prefix") return panelTabHtml_prefixInner();
     if (id === "contest") return panelTabHtml_contestInner();
@@ -50587,6 +50841,14 @@ Plugins.toolbox.init = function () {
       '<p class="bs-hint">Uses lat/lon from QTH / Sats. Great-circle distance and bearing. No network.</p>',
       { wide: true, id: "bs-path-box", cls: "bs-path-box",
         help: "Distance and bearing from your QTH to a Maidenhead grid. No network." });
+  }
+
+  function panelTabHtml_nowInner() {
+    return tabBoxHtml("Now",
+      '<div id="bs-more-now-host" class="bs-now-host"></div>' +
+      '<p class="bs-hint">Profile, tune, DX spots on this band, and armed watches. Updates every few seconds while open.</p>',
+      { wide: true, id: "bs-more-now-box", cls: "bs-more-now-box",
+        help: "Live receiver snapshot. Use Today for midnight-to-now totals by band." });
   }
 
   function panelTabHtml_todayInner() {
@@ -57249,6 +57511,7 @@ Plugins.toolbox.init = function () {
     if (name === "grey") { try { greyOnTab(); } catch (eG) {} return; }
     if (name === "qth") { try { qthOnTab(); } catch (eQ) {} return; }
     if (name === "path") { try { pathOnTab(); } catch (ePa) {} return; }
+    if (name === "now") { try { nowOnTab(); } catch (eNow) {} return; }
     if (name === "today") { try { todayOnTab(); } catch (eTd) {} return; }
     if (name === "prefix") { try { prefixOnTab(); } catch (ePf) {} return; }
     if (name === "contest") { try { contestOnTab(); } catch (eC) {} return; }
@@ -57296,6 +57559,7 @@ Plugins.toolbox.init = function () {
     greyStopTimer();
     moreBeaconStopTimer();
     qthStopTimer();
+    moreNowStopTimer();
   }
 
   function moreGroupVisible(gid) {
@@ -58077,6 +58341,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-lg-sub" data-lg-sub="notes" role="tab" aria-selected="false" title="Free-text notepad in this browser.">Notes</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="export" role="tab" aria-selected="false" title="Copy feed / ADIF / CSV of recent lines.">Export</button>' +
       '<button type="button" class="bs-lg-sub" data-lg-sub="dupes" role="tab" aria-selected="false" title="Calls heard 2+ times today.">Dupes</button>' +
+      '<button type="button" class="bs-lg-sub" data-lg-sub="session" role="tab" aria-selected="false" title="Your retunes, profile changes, and scans in this browser.">Session</button>' +
       "</div>" +
       '<div class="bs-lg-subpane bs-lg-sub-on" data-lg-sub="feed" role="tabpanel">' +
       tabBoxHtml("Log",
@@ -58224,6 +58489,16 @@ Plugins.toolbox.init = function () {
       '<p class="bs-hint">Calls heard 2+ times since local midnight (from Callsigns / Log).</p>',
       { wide: true, id: "bs-log-dupes-box", cls: "bs-log-box",
         help: "Calls heard 2+ times today. Export the list; Import merges a Log export." }) +
+      "</div>" +
+      '<div class="bs-lg-subpane" data-lg-sub="session" role="tabpanel" hidden>' +
+      tabBoxHtml("Session",
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-clear" id="bs-log-session-clear" title="Clear this browser session log.">Clear</button>' +
+      "</div>" +
+      '<div class="bs-session-list" id="bs-log-session-list"></div>' +
+      '<p class="bs-hint">Profile switches, retunes, and band scans — not decoder traffic (see Log). Click a row with MHz to tune.</p>',
+      { wide: true, id: "bs-log-session-box", cls: "bs-log-box",
+        help: "Your actions on this receiver in this browser. Separate from the decoder Log feed." }) +
       "</div>" +
       "</div></div>"
     );
@@ -59856,6 +60131,18 @@ Plugins.toolbox.init = function () {
     }
     if (existing && $("bs-tab-more") && (!$("bs-more-myfeeds") || !$("bs-cfeed-remove"))) {
       /* B84/B85: More → Feeds (custom RSS + remove). */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-bd-subs") && !$("bs-bd-subs").querySelector('[data-bd-sub="coverage"]')) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-lg-subs") && !$("bs-lg-subs").querySelector('[data-lg-sub="session"]')) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-tab-more") && !$("bs-more-now")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -61845,6 +62132,12 @@ Plugins.toolbox.init = function () {
         if (name) setBandsSubTab(name);
       };
       restoreBandsSubTab();
+    }
+    if ($("bs-bd-coverage-refresh")) {
+      $("bs-bd-coverage-refresh").onclick = function () {
+        profileFreqCacheAt = 0;
+        try { bandsCoverageOnTab(); } catch (eCov) {}
+      };
     }
     if ($("bs-bd-edit")) {
       $("bs-bd-edit").onclick = function (ev) {
@@ -66257,6 +66550,7 @@ Plugins.toolbox.init = function () {
       explorePushHistory(hz);
       exploreStoreActiveVfo();
       exploreRefreshHud();
+      try { operatorSessionPush("tune", fmtMhz(hz), "", hz); } catch (eSess) {}
     };
     if (needSwitch) {
       exploreSetStatus("Profile → " + (p.label || p.id || "") + " · " + fmtMhz(hz));

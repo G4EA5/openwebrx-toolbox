@@ -15430,3 +15430,70 @@ body.bs-welcome-open {
   color: #94a3b8;
 }
 
+/* B184 — Bands coverage map, More → Now, Log → Session */
+#bs-panel .bs-cov-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+#bs-panel .bs-cov-bar {
+  position: relative;
+  height: 2.6rem;
+  margin: 0 0 10px;
+  background: #0f172a;
+  border: 1px solid #374151;
+  border-radius: 6px;
+}
+#bs-panel .bs-cov-seg {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 3px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 1.15;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  cursor: pointer;
+  color: #f3f4f6;
+  background: #475569;
+}
+#bs-panel .bs-cov-seg.bs-pack-sdr-hackrf { background: #5b21b6; }
+#bs-panel .bs-cov-seg.bs-pack-sdr-rtl_sdr { background: #b45309; }
+#bs-panel .bs-cov-seg.bs-pack-sdr-airspy { background: #0e7490; }
+#bs-panel .bs-cov-seg.bs-pack-sdr-sdrplay { background: #15803d; }
+#bs-panel .bs-now-dl {
+  display: grid;
+  grid-template-columns: 9em 1fr;
+  gap: 6px 12px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+#bs-panel .bs-now-dl dt {
+  margin: 0;
+  color: #94a3b8;
+  font-weight: 600;
+}
+#bs-panel .bs-now-dl dd {
+  margin: 0;
+}
+#bs-panel .bs-session-list .bs-session-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid #1f2937;
+  font-size: 12px;
+  cursor: pointer;
+}
+#bs-panel .bs-session-kind {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+

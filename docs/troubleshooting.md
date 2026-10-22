@@ -106,5 +106,5 @@ There is no separate GitHub wiki — docs live in this repo:
 
 - **[What’s new since v965 (B era)](WHATS-NEW-SINCE-V965.md)** — operator guide after `toolbox-v965`
 - **[README](../README.md)** — install, SDR hardware, troubleshooting table
-- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B183)
+- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B184)
 - **In-panel Help** tab — full UI guide + **What’s new since v965** (same era as above)
