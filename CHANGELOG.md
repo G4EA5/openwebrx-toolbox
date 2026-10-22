@@ -1,5 +1,11 @@
 # Changelog
 
+## [B184] — Coverage, Now, Session sub-panes
+
+- **Bands → Coverage** — MHz map of OpenWebRX profile spans, gap hints, click-to-tune; respects **SDR only**.
+- **More → Here → Now** — live profile, tune, DX on this band, armed watches (refreshes while open).
+- **Log → Session** — this-browser timeline of profile switches, retunes, and band scans (click MHz to tune).
+
 ## [B183] — More → Spots → DX default filter
 
 - **DX** scope chips default to **All** (was **This band**) — full 30-minute cache on first open.
