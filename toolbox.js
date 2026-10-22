@@ -48918,7 +48918,7 @@ Plugins.toolbox.init = function () {
       "<dt>DX on this band</dt><dd>" + dxBand + " spot" + (dxBand === 1 ? "" : "s") + " (30 min)</dd>" +
       "<dt>Watches armed</dt><dd>" + watchN + "</dd>" +
       "</dl>" +
-      '<p class="bs-hint">Live snapshot — refreshes while this pane is open. <b>Today</b> sums Log/Watch since midnight.</p>";
+      '<p class="bs-hint">Live snapshot — refreshes while this pane is open. <b>Today</b> sums Log/Watch since midnight.</p>';
   }
 
   function nowOnTab() {
