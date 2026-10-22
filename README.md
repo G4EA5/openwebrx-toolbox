@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB182)
+# OpenWebRX Toolbox (vB183)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band

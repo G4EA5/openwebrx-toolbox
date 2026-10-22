@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B182";
+  Plugins.toolbox._version = "B183";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -50391,9 +50391,9 @@ Plugins.toolbox.init = function () {
       '<div class="bs-dx-tools">' +
       '<button type="button" class="bs-tiny bs-btn-util" id="bs-dx-refresh" title="Fetch the latest cluster spots.">Refresh</button>' +
       '<div class="bs-log-chips" id="bs-dx-scopes">' +
-      '<button type="button" class="bs-tiny bs-log-chip bs-on" data-dx-scope="band" title="Spots on the band the receiver is tuned to.">This band</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip" data-dx-scope="band" title="Spots on the band the receiver is tuned to.">This band</button>' +
       '<button type="button" class="bs-tiny bs-log-chip" data-dx-scope="hf" title="Spots below 30 MHz.">HF</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-dx-scope="all" title="Every spot in the cache from the last 30 minutes.">All</button>' +
+      '<button type="button" class="bs-tiny bs-log-chip bs-on" data-dx-scope="all" title="Every spot in the cache from the last 30 minutes.">All</button>' +
       "</div>" +
       '<span class="bs-hint" id="bs-dx-meta"></span>' +
       "</div>" +
@@ -51056,7 +51056,7 @@ Plugins.toolbox.init = function () {
   }
 
   var dxSpots = [];
-  var dxScope = "band";
+  var dxScope = "all";
   var dxFetchedAt = 0;
   var dxError = "";
   var DX_SPOT_URL = "https://dxc.jo30.de/dxcache/spots";
@@ -51204,7 +51204,7 @@ Plugins.toolbox.init = function () {
       if (t.closest("a.bs-lookup")) return;
       var scope = t.closest("[data-dx-scope]");
       if (scope) {
-        dxScope = scope.getAttribute("data-dx-scope") || "band";
+        dxScope = scope.getAttribute("data-dx-scope") || "all";
         dxRender();
         return;
       }
