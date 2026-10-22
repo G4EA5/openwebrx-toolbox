@@ -1,5 +1,9 @@
 # Changelog
 
+## [B183] — More → Spots → DX default filter
+
+- **DX** scope chips default to **All** (was **This band**) — full 30-minute cache on first open.
+
 ## [B182] — Explore SDR only + multi-radio fixes
 
 - **Explore → Profile → SDR only** — wired like Bands (`bs-band-sdr-select`); **All SDRs** and per-radio picks (RTL, HackRF, Airspy, …) now save on Explore; one-time class fix for cached panel DOM (**B182+** hard refresh).
