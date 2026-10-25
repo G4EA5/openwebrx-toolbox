@@ -1,0 +1,13 @@
+#!/bin/sh
+# Drop Cursor co-author trailers so GitHub Contributors stays on the maintainer only.
+msgfile="$1"
+[ -z "$msgfile" ] || [ ! -f "$msgfile" ] && exit 0
+tmp=$(mktemp)
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    Co-authored-by:*cursoragent@cursor.com*) continue ;;
+    Co-authored-by:*[Cc]ursor*) continue ;;
+  esac
+  printf '%s\n' "$line"
+done < "$msgfile" > "$tmp" && mv "$tmp" "$msgfile"
+exit 0
