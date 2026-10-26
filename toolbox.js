@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B185";
+  Plugins.toolbox._version = "B296";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -152,15 +152,16 @@ function ensureExploreTuneRowStyles() {
 }
 
 /** Half frequency | half (audio + meter). PROFILE stats wrap inside the grid. */
-function explorePinTuneRow() {
-  var box = document.getElementById("bs-ex-box-tune");
+function explorePinTuneRow(optDoc) {
+  var doc = optDoc || document;
+  var box = doc.getElementById("bs-ex-box-tune");
   if (!box) return;
   ensureExploreTuneRowStyles();
   var ver = String(Plugins.toolbox._version || "");
   var grid = box.querySelector(".bs-ex-tune-grid");
   var lcd = box.querySelector(".bs-ex-lcd");
-  var scope = document.getElementById("bs-ex-audio-scope") || box.querySelector(".bs-ex-scope");
-  var meter = document.getElementById("bs-ex-smeter-gauge") || box.querySelector(".bs-ex-meter");
+  var scope = doc.getElementById("bs-ex-audio-scope") || box.querySelector(".bs-ex-scope");
+  var meter = doc.getElementById("bs-ex-smeter-gauge") || box.querySelector(".bs-ex-meter");
   var side = box.querySelector(".bs-ex-tune-side");
   var meta = (lcd && lcd.querySelector(".bs-ex-lcd-meta")) || box.querySelector(".bs-ex-lcd-meta");
   var stats = box.querySelector(".bs-ex-stats");
@@ -181,7 +182,7 @@ function explorePinTuneRow() {
   if (meter && meter.parentNode !== side) side.appendChild(meter);
   if (meta && lcd && !lcd.contains(meta)) lcd.appendChild(meta);
   ["bs-ex-center", "bs-ex-offset-read", "bs-ex-mouse"].forEach(function (id) {
-    var el = document.getElementById(id);
+    var el = doc.getElementById(id);
     if (!el) return;
     if (meta && el.parentNode !== meta) meta.appendChild(el);
     else if (lcd && !lcd.contains(el)) lcd.appendChild(el);
@@ -219,7 +220,7 @@ function explorePinTuneRow() {
     }
     try { ch.style && ch.style.setProperty("display", "none", "important"); } catch (eH) {}
   });
-  var panel = document.getElementById("bs-panel");
+  var panel = doc.getElementById("bs-panel");
   var hideScope = false;
   try {
     hideScope = !!(panel && panel.clientWidth > 0 && panel.clientWidth < 420);
@@ -325,7 +326,7 @@ function explorePinTuneRow() {
   pin(meter, cell);
   if (scope) scope.style.setProperty("display", hideScope ? "none" : "flex", "important");
   var svg = meter && meter.querySelector(".bs-ex-meter-svg");
-  var canvas = document.getElementById("bs-ex-audio-scope-c");
+  var canvas = doc.getElementById("bs-ex-audio-scope-c");
   var plot = {
     display: "block",
     width: "100%",
@@ -381,7 +382,7 @@ function explorePinTuneRow() {
     });
   }
   ["bs-ex-center", "bs-ex-offset-read", "bs-ex-mouse", "bs-ex-readout"].forEach(function (id) {
-    pin(document.getElementById(id), {
+    pin(doc.getElementById(id), {
       position: "static",
       float: "none",
       left: "auto",
@@ -397,8 +398,13 @@ function explorePinTuneRow() {
   });
   grid.setAttribute("data-bs-tune-pin", pinKey);
   try {
-    if (typeof ensureExploreConsoleStructure === "function") ensureExploreConsoleStructure();
+    if (doc === document && typeof ensureExploreConsoleStructure === "function") ensureExploreConsoleStructure();
   } catch (eConsPin) {}
+  try {
+    if (typeof Plugins !== "undefined" && Plugins.toolbox && typeof Plugins.toolbox._exploreRestartAudioScope === "function") {
+      Plugins.toolbox._exploreRestartAudioScope();
+    }
+  } catch (eScopePin) {}
 }
 try { ensureExploreTuneRowStyles(); } catch (eTuneRow) {}
 try { explorePinTuneRow(); } catch (ePin) {}
@@ -569,7 +575,7 @@ Plugins.toolbox.init = function () {
     return syncJumpFmDetectUi(el ? el.value : S.jumpFmDetect);
   }
 
-  /** FM broadcast Jump loudest — off unless Settings → Jump tuning · experimental is enabled. */
+  /** FM broadcast Jump loudest — off unless Settings → Extras → Jump · FM broadcast is enabled. */
   function jumpFmExpOn() {
     return extraOn("jumpFmExp");
   }
@@ -587,8 +593,6 @@ Plugins.toolbox.init = function () {
 
   function syncJumpFmExpUi() {
     var on = !!(S.extras && S.extras.jumpFmExp);
-    var el = $("bs-jump-fm-exp-on");
-    if (el) el.checked = on;
     var ex = $("bs-extra-jumpFmExp");
     if (ex) ex.checked = on;
   }
@@ -613,7 +617,7 @@ Plugins.toolbox.init = function () {
     var tip = $("bs-ex-hop-tip");
     if (tip) {
       tip.textContent = blocked
-        ? "Jump loudest is off on FM broadcast (wideband). Enable under Settings → Jump tuning · experimental, or use narrow bands."
+        ? "Jump loudest is off on FM broadcast (wideband). Enable under Settings → Extras → Jump · FM broadcast, or use narrow bands."
         : "Jump to the strongest peak on this tile. Reject birdie if it lands on a DC spike.";
     }
   }
@@ -738,7 +742,18 @@ Plugins.toolbox.init = function () {
   }
 
   function injectJumpFmRowsIfMissing() {
-    /* FM Jump controls live only under Settings → Jump tuning · experimental. */
+    var wrap = $("bs-extras-section");
+    if (!wrap || wrap.querySelector("#bs-set-jump-fm-grid")) return;
+    var body = wrap.querySelector(".bs-set-box-body");
+    if (!body) return;
+    var hint = document.createElement("p");
+    hint.className = "bs-hint bs-jump-fm-exp-hint";
+    hint.setAttribute("data-extra", "jumpFmExp");
+    hint.innerHTML = "When <b>Jump · FM broadcast</b> is on: Grid / ±kHz / Detect for WFM Jump loudest. Jump dB / Cluster / Center stay under Jump loudest on Explore and Identify.";
+    var row = document.createElement("div");
+    row.innerHTML = jumpFmTuneRowHtml("bs-set-jump-fm-grid", "bs-set-jump-fm-scan", "bs-set-jump-fm-detect");
+    body.appendChild(hint);
+    if (row.firstChild) body.appendChild(row.firstChild);
   }
 
   function syncMuteUi(checked) {
@@ -803,6 +818,7 @@ Plugins.toolbox.init = function () {
     var stored = isChk ? !!storedVal : String(storedVal == null ? "" : storedVal);
     if (va !== stored && vb === stored) return a;
     if (vb !== stored && va === stored) return b;
+    if (isTabPaneActive("range")) return b;
     var tab = "";
     try { tab = currentPanelTab(); } catch (eTab) { tab = ""; }
     if (tab === "range") return b;
@@ -840,6 +856,18 @@ Plugins.toolbox.init = function () {
   function muteFromUi() {
     var el = pickPairedEl("bs-mute", "bs-range-mute", S.mute, true);
     return syncMuteUi(el ? el.checked : S.mute);
+  }
+
+  function syncMuteScanBeepUi(on) {
+    on = !!on;
+    if ($("bs-mute-beep")) $("bs-mute-beep").checked = on;
+    if ($("bs-range-mute-beep")) $("bs-range-mute-beep").checked = on;
+    return on;
+  }
+
+  function muteScanBeepFromUi() {
+    var el = pickPairedEl("bs-mute-beep", "bs-range-mute-beep", S.muteScanBeep, true);
+    return syncMuteScanBeepUi(el ? el.checked : S.muteScanBeep);
   }
 
   function ownRadioFromUi() {
@@ -956,7 +984,7 @@ Plugins.toolbox.init = function () {
   var OFFSET_BUCKET_HZ = 8000;
   var layoutDragging = false;
   var TAB_IDS = ["explore", "bands", "range", "analyzer", "identify", "log", "watch", "memory", "peaks", "bookmarks", "audio", "skip", "more", "settings", "help"];
-  var TAB_BAR_IDS = TAB_IDS.filter(function (id) { return id !== "help"; });
+  var TAB_BAR_IDS = TAB_IDS.slice();
   var TAB_HEAD_META = {
     explore: { lab: "Exp", title: "Explore — browse spectrum by profile hop." },
     bands: { lab: "Bands", title: "Bands — presets and tick list." },
@@ -966,12 +994,13 @@ Plugins.toolbox.init = function () {
     log: { lab: "Log", title: "Log — decoded traffic, identify guesses, new peaks, and busy scan stops. Click a row to tune." },
     watch: { lab: "Watch", title: "Watch — alert when a callsign, flight, ship, or talkgroup shows up in the Log. Click a hit to tune." },
     memory: { lab: "Mem", title: "Memory — Trace (signal history), Digital (TG / radio IDs), Bench (shared receiver hints). Lazy until you open a sub-tab." },
-    more: { lab: "More", title: "More — Spots, Space, Tune, Sky, Here, Sked, Read (grouped sections)." },
+    more: { lab: "More", title: "More — reference panes grouped as Spots, Space, Tune, Sky, Here, Sked, Read. Hover a group or inner tab for what it does." },
     peaks: { lab: "Peaks", title: "Peaks — table and export." },
     bookmarks: { lab: "Book", title: "Bookmarks — Local (blue) and Loaded [load]; yellow/green stay on the OpenWebRX waterfall." },
     audio: { lab: "Audio", title: "Audio — clips and decode export." },
     skip: { lab: "Skip", title: "Skip — always-skip, lockouts, and scan skips (digital bookmarks / block MHz)." },
-    settings: { lab: "Set", title: "Settings — startup, schedule, notifications." }
+    settings: { lab: "Set", title: "Settings — startup, schedule, notifications." },
+    help: { lab: "?", title: "Help — install guide, hover tips, and full manual." }
   };
 
   /**
@@ -979,98 +1008,109 @@ Plugins.toolbox.init = function () {
    * guests: Settings → Public → More · … boxes). Keeps the More bar short on Pis.
    */
   var MORE_GROUPS = [
-    { id: "spots", lab: "Spots", title: "DX, RBN, activator spots, and listener guides — where activity comes from.", panes: [
-      { id: "dx", lab: "DX", title: "Cluster spots. Click a spot to tune." },
-      { id: "rbn", lab: "RBN", title: "Skimmer-style CW / digi spots." },
-      { id: "pota", lab: "POTA", title: "Parks on the Air activator spots." },
-      { id: "sota", lab: "SOTA", title: "Summits on the Air activator spots." },
-      { id: "cluster", lab: "Cluster", title: "Filter DX cluster spots by call, band, or mode." },
-      { id: "wwff", lab: "WWFF", title: "World Wide Flora & Fauna activator pointers.", defaultHidden: true },
-      { id: "qsl", lab: "QSL", title: "LoTW / Club Log / eQSL / QRZ pointers (static).", defaultHidden: true },
-      { id: "ft8", lab: "FT8", title: "FT8 / FT4 dial centres only — click to tune.", defaultHidden: true },
-      { id: "spotlisten", lab: "Listen", title: "How to use Spots as a listener — sources and what to expect.", defaultHidden: true },
-      { id: "spotwhat", lab: "Bands", title: "What you are likely to hear on each HF band (static).", defaultHidden: true }
+    { id: "spots", lab: "Spots", title: "Spots — who is on the air right now: live DX/RBN/activator lists and static listener guides.", panes: [
+      { id: "dx", lab: "DX", title: "DX cluster spots (live fetch). Click a row to tune the receiver to that station." },
+      { id: "rbn", lab: "RBN", title: "Reverse Beacon Network — CW and digital skimmer spots. Click to tune and hear the spotted signal." },
+      { id: "pota", lab: "POTA", title: "Parks on the Air activators (live list). Find a park station and click to tune." },
+      { id: "sota", lab: "SOTA", title: "Summits on the Air activators (live list). Click a spot to jump to the activator frequency." },
+      { id: "cluster", lab: "Cluster", title: "Filter the DX cluster by call, band, or mode before you tune in." },
+      { id: "wwff", lab: "WWFF", title: "World Wide Flora & Fauna pointers — what WWFF is and how to find activators (static).", defaultHidden: true },
+      { id: "qsl", lab: "QSL", title: "QSL bureau links — LoTW, Club Log, eQSL, QRZ (static; no log upload from Toolbox).", defaultHidden: true },
+      { id: "ft8", lab: "FT8", title: "FT8 and FT4 dial centres per band — click a frequency to tune (no decoder here).", defaultHidden: true },
+      { id: "spotlisten", lab: "Listen", title: "How to use Spots as a listener — what cluster/RBN data means and fair use (static).", defaultHidden: true },
+      { id: "spotwhat", lab: "Bands", title: "Typical signals on each HF band — what you might hear as an SWL (static guide).", defaultHidden: true },
+      { id: "wspr", lab: "WSPR", title: "WSPR dial frequencies by band — click to tune; decode WSPR in OpenWebRX or external tools.", defaultHidden: true },
+      { id: "hunt", lab: "Hunt", title: "DX hunting workflow — using spots without transmitting (static tips).", defaultHidden: true }
     ]},
-    { id: "space", lab: "Space", title: "Amateur satellites, passes, beacons, Moon, ISS, meteor scatter, and LEO/WX dials.", panes: [
-      { id: "sats", lab: "Sats", title: "Pick a satellite and follow the Doppler shift." },
-      { id: "passes", lab: "Passes", title: "Next AOS/LOS for the sat catalog." },
-      { id: "beacons", lab: "Beacons", title: "NCDXF HF beacon cycle." },
-      { id: "iss", lab: "ISS", title: "ISS voice / packet freqs and next-pass hint." },
-      { id: "leo", lab: "LEO", title: "Amateur LEO + weather-sat APT dials (RX). Click to tune." },
-      { id: "moon", lab: "Moon", title: "Moon phase and rough altitude from your QTH.", defaultHidden: true },
-      { id: "meteor", lab: "Meteor", title: "Meteor-scatter tips and shower calendar.", defaultHidden: true },
-      { id: "sstv", lab: "SSTV", title: "Common SSTV calling frequencies (HF/VHF/ISS). Click to tune.", defaultHidden: true },
-      { id: "spacewx", lab: "Wx sat", title: "Weather satellite APT — what it is and where those freqs come from.", defaultHidden: true },
-      { id: "spacetrk", lab: "Track", title: "Pass prediction sites (static links — open in browser).", defaultHidden: true }
+    { id: "space", lab: "Space", title: "Space — satellites, ISS, beacons, passes, and space-related dial frequencies.", panes: [
+      { id: "sats", lab: "Sats", title: "Amateur satellite catalog — pick a bird, see Doppler, and tune the downlink as it moves." },
+      { id: "passes", lab: "Passes", title: "Upcoming AOS/LOS times for satellites at your grid (from the built-in catalog)." },
+      { id: "beacons", lab: "Beacons", title: "NCDXF/IARU HF beacon cycle — which beacon should be on now and click-to-tune." },
+      { id: "iss", lab: "ISS", title: "ISS voice, SSTV, and packet frequencies plus a rough next-pass hint for your QTH." },
+      { id: "leo", lab: "LEO", title: "Amateur LEO and weather-sat APT dial frequencies — receive only; click to tune." },
+      { id: "moon", lab: "Moon", title: "Moon phase, illumination, and rough elevation at your locator (EME planning aid).", defaultHidden: true },
+      { id: "meteor", lab: "Meteor", title: "Meteor scatter basics and major shower dates (static; VHF listening tips).", defaultHidden: true },
+      { id: "sstv", lab: "SSTV", title: "Common SSTV calling frequencies on HF, VHF, and ISS — click to tune.", defaultHidden: true },
+      { id: "spacewx", lab: "Wx sat", title: "NOAA and similar weather satellites — what APT is and where those freqs are listed.", defaultHidden: true },
+      { id: "spacetrk", lab: "Track", title: "External pass-prediction and tracking websites (opens in your browser; static links).", defaultHidden: true },
+      { id: "doplr", lab: "Dopp", title: "Doppler shift cheat sheet for FM satellites (static; complements Sats pane).", defaultHidden: true },
+      { id: "updn", lab: "Up/Dn", title: "Satellite uplink vs downlink band chart (static reference for split working).", defaultHidden: true }
     ]},
-    { id: "tune", lab: "Tune", title: "Dial, band plan, time, calling, maritime, air, and CB/PMR.", panes: [
-      { id: "dial", lab: "Dial", title: "FT8 / FT4 / WSPR / JS8 dial frequencies." },
-      { id: "plan", lab: "Plan", title: "Regional band plans (UK / EU / USA / …) with typical max power." },
-      { id: "time", lab: "Time", title: "WWV, WWVH, CHU, BPM time stations." },
-      { id: "maritime", lab: "Maritime", title: "Marine VHF channels and DSC watch freqs (RX)." },
-      { id: "air", lab: "Air", title: "Airband / ATIS / common watch freqs (RX)." },
-      { id: "call", lab: "Call", title: "Common FM / SSB calling frequencies.", defaultHidden: true },
-      { id: "cb", lab: "CB", title: "CB / PR27 / UK midband / PMR446 channels (RX). Click to tune.", defaultHidden: true },
-      { id: "swl", lab: "SWL", title: "HF broadcast / media samples (RX). Click to tune.", defaultHidden: true },
-      { id: "tunndb", lab: "NDB", title: "Aviation NDB beacons to practice CW ID (RX). Click to tune.", defaultHidden: true },
-      { id: "tunutil", lab: "Util", title: "HF utility stations listeners often meet (static).", defaultHidden: true }
+    { id: "tune", lab: "Tune", title: "Tune — one-click listening frequencies: digi dials, band plans, time stations, air, marine, CB.", panes: [
+      { id: "dial", lab: "Dial", title: "Weak-signal dial frequencies — FT8, FT4, WSPR, JS8 by band; click to tune." },
+      { id: "plan", lab: "Plan", title: "Regional amateur band plans (UK, EU, USA, …) with typical power limits (reference)." },
+      { id: "time", lab: "Time", title: "Standard time stations — WWV, WWVH, CHU, BPM; click to check clock and propagation." },
+      { id: "maritime", lab: "Maritime", title: "Marine VHF channels and DSC watch frequencies — receive only; click to tune." },
+      { id: "air", lab: "Air", title: "Airband, ATIS, and common aviation watch frequencies — receive only; click to tune." },
+      { id: "call", lab: "Call", title: "National calling frequencies for FM and SSB on VHF/UHF — click to tune.", defaultHidden: true },
+      { id: "cb", lab: "CB", title: "CB, PR27, UK midband, and PMR446 channel list — receive only; click to tune.", defaultHidden: true },
+      { id: "swl", lab: "SWL", title: "Sample HF broadcast and media frequencies for shortwave listeners — click to tune.", defaultHidden: true },
+      { id: "tunndb", lab: "NDB", title: "Aviation NDB identifiers to practice Morse IDs on the air — click to tune.", defaultHidden: true },
+      { id: "tunutil", lab: "Util", title: "HF utility stations listeners often log — time signals, markers, data (static list).", defaultHidden: true },
+      { id: "rtty", lab: "RTTY", title: "Common RTTY segments and dial spots — click to tune; set RTTY mode on the receiver.", defaultHidden: true },
+      { id: "pager", lab: "Pager", title: "POCSAG pager frequencies (receive only, static). Legal RX varies by country.", defaultHidden: true }
     ]},
-    { id: "sky", lab: "Sky", title: "Propagation, alerts, aurora, greyline, MUF, storms, and Es/tropo tips.", panes: [
-      { id: "prop", lab: "Prop", title: "Sunspot number, active regions, SFI, K/A, X-ray, HF tip." },
-      { id: "alerts", lab: "Alerts", title: "NOAA SWPC space-weather alerts." },
-      { id: "storm", lab: "Storm", title: "Geomagnetic storm / G-scale strip." },
-      { id: "grey", lab: "Grey", title: "Day/night greyline from your lat/lon." },
-      { id: "muf", lab: "MUF", title: "Rough mid-latitude MUF hint from solar figures." },
-      { id: "aurora", lab: "Aurora", title: "OVATION aurora forecast at your QTH.", defaultHidden: true },
-      { id: "es", lab: "Es", title: "Sporadic-E / tropo / VHF opening tips (static).", defaultHidden: true },
-      { id: "hfday", lab: "HF day", title: "Rough HF band openings by time of day (static cheat).", defaultHidden: true },
-      { id: "skysrc", lab: "Source", title: "Where Sky tab figures come from (NOAA / SWPC / local math).", defaultHidden: true },
-      { id: "skyhear", lab: "Hear", title: "What K-index, storms, and greyline mean for your headphones.", defaultHidden: true }
+    { id: "sky", lab: "Sky", title: "Sky — propagation and space weather: live NOAA/SWPC data, greyline, storms, MUF hints.", panes: [
+      { id: "prop", lab: "Prop", title: "Live solar figures — sunspot count, SFI, K/A index, X-ray flux, and a short HF band tip." },
+      { id: "alerts", lab: "Alerts", title: "NOAA SWPC space-weather alerts and warnings (fetched when you open this pane)." },
+      { id: "storm", lab: "Storm", title: "Geomagnetic storm scale (G1–G5) and current K-index context for HF noise." },
+      { id: "grey", lab: "Grey", title: "Day/night greyline map from your latitude — where terminators favour long paths." },
+      { id: "muf", lab: "MUF", title: "Rough mid-latitude MUF estimate from solar numbers — not a replacement for VOACAP." },
+      { id: "aurora", lab: "Aurora", title: "Aurora oval / OVATION-style forecast for your QTH — useful for VHF and polar paths.", defaultHidden: true },
+      { id: "es", lab: "Es", title: "Sporadic-E and tropo opening tips for VHF listeners (static; no live Es map).", defaultHidden: true },
+      { id: "hfday", lab: "HF day", title: "Which HF bands tend to work by time of day — quick cheat sheet (static).", defaultHidden: true },
+      { id: "skysrc", lab: "Source", title: "Where Sky panes get their numbers — NOAA, SWPC, and local math (static explainer).", defaultHidden: true },
+      { id: "skyhear", lab: "Hear", title: "What K-index, storms, and greyline mean for what you hear on the headphones.", defaultHidden: true },
+      { id: "condx", lab: "Condx", title: "How to read band conditions and SFI/K-index together (static primer).", defaultHidden: true },
+      { id: "bandwx", lab: "Band+Wx", title: "How local weather and D-layer absorption affect HF (static notes).", defaultHidden: true }
     ]},
-    { id: "here", lab: "Here", title: "QTH, path, now, today, prefix, weather, noise, and locator tool.", panes: [
-      { id: "qth", lab: "QTH", title: "Grid, clocks, sunrise/sunset for your lat/lon." },
-      { id: "now", lab: "Now", title: "Live snapshot: profile, tune, DX on this band, watches." },
-      { id: "today", lab: "Today", title: "Log / Watch activity by band since midnight." },
-      { id: "prefix", lab: "Prefix", title: "Callsign lookup — prefix, country, license, grid (network)." },
-      { id: "wx", lab: "WX", title: "Local weather at the receiver lat/lon." },
-      { id: "locator", lab: "Locator", title: "Maidenhead grid ↔ lat/lon converter (local math)." },
-      { id: "path", lab: "Path", title: "Distance and bearing from your QTH to a grid.", defaultHidden: true },
-      { id: "noise", lab: "Noise", title: "Local S-meter noise floor samples (this browser).", defaultHidden: true },
-      { id: "units", lab: "Units", title: "dBm, PEP, distance, and ERP quick reference (static).", defaultHidden: true },
-      { id: "heredata", lab: "Data", title: "Where Here tab gets QTH, weather, and lookup data.", defaultHidden: true },
-      { id: "hereutc", lab: "UTC", title: "UTC snapshot and logging time tips (no live clock).", defaultHidden: true }
+    { id: "here", lab: "Here", title: "Here — your shack context: grid, clocks, weather, callsign lookup, path tools.", panes: [
+      { id: "qth", lab: "QTH", title: "Your Maidenhead grid, local and UTC clocks, sunrise and sunset at the receiver lat/lon." },
+      { id: "now", lab: "Now", title: "Live dashboard — active profile, tuned MHz, DX on this band, and Watch hits." },
+      { id: "today", lab: "Today", title: "Log and Watch activity since local midnight, grouped by band." },
+      { id: "prefix", lab: "Prefix", title: "Callsign prefix lookup — country, licence class hints, grid (uses network when you search)." },
+      { id: "wx", lab: "WX", title: "Current weather at the receiver coordinates (fetched when this pane is open)." },
+      { id: "locator", lab: "Locator", title: "Convert Maidenhead grid ↔ decimal lat/lon (instant, no network)." },
+      { id: "dms", lab: "DMS", title: "Convert decimal degrees ↔ degrees-minutes-seconds (local calculator)." },
+      { id: "path", lab: "Path", title: "Great-circle distance and bearing from your QTH to another grid.", defaultHidden: true },
+      { id: "noise", lab: "Noise", title: "Noise-floor samples from Explore S-meter in this browser (your local RFI log).", defaultHidden: true },
+      { id: "units", lab: "Units", title: "dBm, PEP, km/miles, and ERP quick reference (static).", defaultHidden: true },
+      { id: "heredata", lab: "Data", title: "Which Here panes call the network vs local math (static explainer).", defaultHidden: true },
+      { id: "hereutc", lab: "UTC", title: "Why logs use UTC and sample net times (static; not a live clock).", defaultHidden: true }
     ]},
-    { id: "sked", lab: "Sked", title: "Contests, nets, GB2RS, events, specials, repeaters, and awards.", panes: [
-      { id: "contest", lab: "Contest", title: "Upcoming major HF contests." },
-      { id: "nets", lab: "Nets", title: "Your net schedule (this browser)." },
-      { id: "gb2rs", lab: "GB2RS", title: "RSGB Sunday news broadcast pointers." },
-      { id: "events", lab: "Events", title: "Major rallies and conventions (built-in)." },
-      { id: "repeater", lab: "Repeater", title: "Common UK/EU repeater outputs (static RX list)." },
-      { id: "special", lab: "Special", title: "Special-event / commemorative call pointers.", defaultHidden: true },
-      { id: "award", lab: "Awards", title: "DXCC / IOTA / WAS / SOTA / POTA award pointers.", defaultHidden: true },
-      { id: "filday", lab: "Field", title: "Field Day, JOTA, and other annual on-air events (static).", defaultHidden: true },
-      { id: "skedbc", lab: "BCast", title: "Scheduled broadcasts and news you can hunt (static).", defaultHidden: true },
-      { id: "skedrx", lab: "Emcomm", title: "Emergency / disaster listening pointers (RX only).", defaultHidden: true }
+    { id: "sked", lab: "Sked", title: "Sked — contests, nets, GB2RS, repeaters, and on-air events to plan listening.", panes: [
+      { id: "contest", lab: "Contest", title: "Upcoming major HF contests — dates and modes to expect on the bands." },
+      { id: "nets", lab: "Nets", title: "Your personal net schedule stored in this browser (add times and frequencies)." },
+      { id: "gb2rs", lab: "GB2RS", title: "RSGB Sunday news broadcast — typical frequencies and times (static pointers)." },
+      { id: "events", lab: "Events", title: "Ham rallies, conventions, and on-air commemorations (built-in list)." },
+      { id: "repeater", lab: "Repeater", title: "Common UK/EU repeater output frequencies — receive only; verify locally before use." },
+      { id: "special", lab: "Special", title: "Special-event and commemorative station ideas (static; hunt on the cluster).", defaultHidden: true },
+      { id: "award", lab: "Awards", title: "DXCC, IOTA, WAS, SOTA, POTA award pointers — what they are (static).", defaultHidden: true },
+      { id: "filday", lab: "Field", title: "Field Day, JOTA, and similar annual events (static calendar hints).", defaultHidden: true },
+      { id: "skedbc", lab: "BCast", title: "Scheduled broadcasts and news bulletins worth hunting (static SWL list).", defaultHidden: true },
+      { id: "skedrx", lab: "Emcomm", title: "Emergency and disaster listening pointers — receive only, static.", defaultHidden: true },
+      { id: "rota", lab: "Rota", title: "How weekly net rotas usually work (static explainer for net listeners).", defaultHidden: true },
+      { id: "skedutc", lab: "UTC", title: "Why nets and contests publish UTC times (static primer).", defaultHidden: true }
     ]},
-    { id: "read", lab: "Read", title: "News, links, keys, tips, IARU, licence, phonetics, and world callsigns.", panes: [
-      { id: "news", lab: "News", title: "ARRL, RSGB, AMSAT, Newsline, DX World, and more headlines." },
-      { id: "links", lab: "Links", title: "Curated ham links." },
-      { id: "keys", lab: "Keys", title: "Keyboard shortcuts cheat sheet." },
-      { id: "tips", lab: "Tips", title: "Short operating tips (static)." },
-      { id: "callsigns", lab: "Calls", title: "Country / entity prefix allocations with start and end years (worldwide)." },
-      { id: "iaru", lab: "IARU", title: "IARU region notes and band-edge reminders.", defaultHidden: true },
-      { id: "license", lab: "License", title: "UK / EU / US licence-class cheat (not legal advice).", defaultHidden: true },
-      { id: "phonetic", lab: "Phonetic", title: "ICAO phonetic alphabet and numbers (static).", defaultHidden: true },
-      { id: "readswl", lab: "SWL", title: "Shortwave listening starter — bands, modes, legal RX.", defaultHidden: true },
-      { id: "readabout", lab: "About", title: "What Toolbox ships in-browser vs fetches when you open a pane.", defaultHidden: true }
-    ]},
-    { id: "feeds", lab: "Feeds", title: "RSS / Atom feeds you add — headlines in Toolbox (this browser).", panes: [
-      { id: "myfeeds", lab: "Yours", title: "Your own RSS or Atom URLs — same headline fetch as Read → News." }
+    { id: "read", lab: "Read", title: "Read — ham news headlines, your RSS feeds, references, keys, and prefix data.", panes: [
+      { id: "news", lab: "News", title: "Headlines from ARRL, RSGB, AMSAT, Newsline, DX World, and more (fetched while open)." },
+      { id: "myfeeds", lab: "My feeds", title: "Your own RSS/Atom URLs — same fetch path as News; stored in this browser only." },
+      { id: "links", lab: "Links", title: "One hundred English links in ten groups — SDR, DX, propagation, satellites, beacons, scanners, societies (static)." },
+      { id: "keys", lab: "Keys", title: "Toolbox and OpenWebRX keyboard shortcuts cheat sheet (static)." },
+      { id: "tips", lab: "Tips", title: "Short operating and listening tips (static cards)." },
+      { id: "callsigns", lab: "Calls", title: "Worldwide prefix allocations by country/entity with approximate year ranges (embedded data)." },
+      { id: "iaru", lab: "IARU", title: "IARU regions and band-edge reminders (static; not legal advice).", defaultHidden: true },
+      { id: "license", lab: "License", title: "UK, EU, and US licence class overview (static study aid, not legal advice).", defaultHidden: true },
+      { id: "phonetic", lab: "Phonetic", title: "ICAO phonetic alphabet and spoken digits (static).", defaultHidden: true },
+      { id: "readswl", lab: "SWL", title: "Shortwave listening starter — bands, modes, and lawful receive (static).", defaultHidden: true },
+      { id: "modes", lab: "Modes", title: "Common mode bandwidths and when you hear them (static reference).", defaultHidden: true },
+      { id: "chart", lab: "Chart", title: "HF amateur band chart in one view (static).", defaultHidden: true }
     ]}
   ];
   var MORE_SUB_IDS = [];
   var MORE_SUBS = {};
   var MORE_SUB_LABELS = {};
+  var MORE_PANE_TITLES = {};
   var MORE_PANE_GROUP = {};
   var MORE_GROUP_META = {};
   MORE_GROUPS.forEach(function (g) {
@@ -1079,11 +1119,17 @@ Plugins.toolbox.init = function () {
       MORE_SUB_IDS.push(p.id);
       MORE_SUBS[p.id] = 1;
       MORE_SUB_LABELS[p.id] = p.lab;
+      MORE_PANE_TITLES[p.id] = p.title || p.lab;
       MORE_PANE_GROUP[p.id] = g.id;
     });
   });
 
-  var MORE_SUBS_VIS_VER = 3;
+  function moreSubHoverTip(subId) {
+    if (subId && MORE_PANE_TITLES[subId]) return MORE_PANE_TITLES[subId];
+    return MORE_SUB_LABELS[subId] || subId || "";
+  }
+
+  var MORE_SUBS_VIS_VER = 4;
 
   function buildDefaultHiddenMoreSubs() {
     var hidden = [];
@@ -1099,6 +1145,29 @@ Plugins.toolbox.init = function () {
   function publicDefaultMoreSubs() {
     var hidden = buildDefaultHiddenMoreSubs();
     return MORE_SUB_IDS.filter(function (id) { return hidden.indexOf(id) < 0; });
+  }
+
+  function publicDefaultExtraSubs() {
+    return EXTRA_SUB_DEFS.map(function (d) { return extraSubKey(d.tab, d.id); });
+  }
+
+  function defaultPublicHeaderChrome() {
+    return { help: true, find: true, minimal: true };
+  }
+
+  function networkBudgetRank(b) {
+    b = String(b || "full");
+    if (b === "offline") return 0;
+    if (b === "more-off") return 1;
+    return 2;
+  }
+
+  function effectiveNetworkBudget() {
+    var b = (S && S.networkBudget) || "full";
+    if (!isPublicReceiver()) return b;
+    var pol = effectivePublicPolicy();
+    var cap = (pol && pol.networkBudget) || "more-off";
+    return networkBudgetRank(b) < networkBudgetRank(cap) ? cap : b;
   }
 
   /** Optional light sub-tabs (Settings → Extra sections). Keys: tab:id. All on by default. */
@@ -1134,8 +1203,10 @@ Plugins.toolbox.init = function () {
   function isExtraSubHidden(tab, id) {
     if (!id) return true;
     if (EXTRA_SUB_CORE[tab] && EXTRA_SUB_CORE[tab][id]) return false;
+    var key = extraSubKey(tab, id);
+    if (isPublicReceiver() && !publicAllowsExtraSubKey(key)) return true;
     var list = S.hiddenExtraSubs;
-    return Array.isArray(list) && list.indexOf(extraSubKey(tab, id)) >= 0;
+    return Array.isArray(list) && list.indexOf(key) >= 0;
   }
   function extraSubDefsFor(tab) {
     return EXTRA_SUB_DEFS.filter(function (d) { return d.tab === tab; });
@@ -1165,6 +1236,33 @@ Plugins.toolbox.init = function () {
     }).join("");
   }
 
+  function removeLegacyHelpHeaderBtn(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    try {
+      var leg = root.querySelector("#bs-help-tog");
+      if (leg && leg.parentNode) leg.parentNode.removeChild(leg);
+    } catch (eRm) {}
+  }
+
+  function ensureHelpMainTabInBar() {
+    var bar = $("bs-tabs");
+    if (!bar || bar.querySelector('.bs-tab[data-tab="help"]')) return;
+    var settingsBtn = bar.querySelector('.bs-tab[data-tab="settings"]');
+    if (!settingsBtn) return;
+    var m = TAB_HEAD_META.help || { lab: "?", title: "Help" };
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "bs-tab";
+    btn.setAttribute("data-tab", "help");
+    btn.setAttribute("role", "tab");
+    btn.textContent = m.lab;
+    btn.setAttribute("data-tab-base-title", m.title);
+    btn.setAttribute("data-tip", m.title);
+    if (settingsBtn.nextSibling) bar.insertBefore(btn, settingsBtn.nextSibling);
+    else bar.appendChild(btn);
+  }
+
   function mainTabBarOrderOk() {
     var bar = $("bs-tabs");
     if (!bar) return true;
@@ -1191,7 +1289,8 @@ Plugins.toolbox.init = function () {
     var body = $("bs-body");
     if (body) {
       TAB_IDS.forEach(function (id) {
-        var pane = document.getElementById("bs-tab-" + id);
+        if (isTabDetached(id)) return;
+        var pane = $("bs-tab-" + id);
         if (pane) body.appendChild(pane);
       });
     }
@@ -1239,7 +1338,7 @@ Plugins.toolbox.init = function () {
     { id: "exHwGain", label: "Explore · tuner gain", where: "Explore", tip: "Tuner / RF / IF gain box on Explore (RTL, SDRplay, HackRF, Airspy, Lime, …). Off by default — tick to show the box.", defaultOn: false },
     { id: "jumpLoudest", label: "Jump loudest", where: "Explore / Identify", tip: "Retune to the loudest other peak on this waterfall tile (VFO only — no profile hop). Skips DC, Skip list, and birdies. Uses wideband peak detect on FM/HF broadcast and band-based Jump dB / Cluster defaults." },
     { id: "jumpTuning", label: "Jump tuning", where: "Explore / Identify", tip: "Jump dB, Cluster kHz, and Center screen under every Jump loudest button. Band-aware defaults; tick Center screen to recentre the waterfall on the jumped station (off by default = dial only)." },
-    { id: "jumpFmExp", label: "Jump · FM broadcast (experimental)", where: "Settings", tip: "Enable Jump loudest on FM broadcast (WFM). Off by default — wide carriers are unreliable. When on, Jump appears on FM and uses Grid / ±kHz / Detect under Settings → Jump tuning · experimental.", defaultOn: false },
+    { id: "jumpFmExp", label: "Jump · FM broadcast (experimental)", where: "Settings", tip: "Enable Jump loudest on FM broadcast (WFM). Off by default — wide carriers are unreliable. When on, Jump appears on FM and uses Grid / ±kHz / Detect in Extras below the tick.", defaultOn: false },
     { id: "bandEdit", label: "Bands edit", where: "Bands", tip: "Edit OpenWebRX name / centre / mode (admin), plus local alias, hide, note, order." },
     { id: "bandEditAdvanced", label: "Bands edit · full admin fields", where: "Bands", tip: "Shows stock Profile settings (sample rate, initial freq, step) plus Additional optional settings (Add/Remove) like OpenWebRX admin: gain, PPM, Bias-Tee, Direct Sampling, waterfall, etc." },
     { id: "bandSchedule", label: "Bands schedule", where: "Bands", tip: "After-scan actions, schedule, and courtesy quiet hours." },
@@ -1254,6 +1353,7 @@ Plugins.toolbox.init = function () {
     { id: "bmFiles", label: "Bookmarks files", where: "Bookmarks", tip: "Save/load/clear Toolbox lists (blue local + amber [load]). Load yellow copies OpenWebRX server bookmarks into [load] only — not green band-plan markers." },
     { id: "homelabWebhook", label: "Peak webhook", where: "Settings", tip: "When a band/range survey finds a brand-new peak, optionally POST a small JSON notice to a URL you run (Home Assistant, ntfy, a DIY script, …)." },
     { id: "installCheck", label: "Install check", where: "Settings", tip: "Check install; open the GitHub repo for updates." },
+    { id: "detachTabs", label: "Detach main tabs", where: "Settings", tip: "Right-click a main tab → Detach to new window, new browser tab, or this receiver tab (fullscreen over the dock page). Detach together and Add to open pop-out. Help and Settings stay on the main Toolbox. Bands / Bookmarks pop-outs include the Scan strip. Same receiver URL. Off by default.", defaultOn: false },
     /* —— Identify (heuristic boosters; no neural net) —— */
     { id: "idBandplan", label: "Identify · bandplan priors", where: "Identify", tip: "Boost guesses from known service / ham allocations (FM broadcast, airband, marine, AIS, FT8/JS8 dials, APRS, …) using the same Band mode table. On by default." },
     { id: "idStable", label: "Identify · stable Live vote", where: "Identify", tip: "Smooth Live Identify by voting across the last few samples so the top guess flickers less. On by default." },
@@ -1475,6 +1575,10 @@ Plugins.toolbox.init = function () {
     /* Match Settings → Safe defaults: no visitor extras, no panel layout edits. */
     d.extras = [];
     d.features.changeLayout = false;
+    d.headerChrome = { help: true, find: true, minimal: true };
+    d.networkBudget = "more-off";
+    d.extraSubs = publicDefaultExtraSubs();
+    d.moreSubs = publicDefaultMoreSubs();
     return sanitizePublicPolicy(d);
   }
 
@@ -1495,7 +1599,10 @@ Plugins.toolbox.init = function () {
       exploreMinMhz: null,
       exploreMaxMhz: null,
       exploreBands: [],
-      moreSubs: publicDefaultMoreSubs()
+      moreSubs: publicDefaultMoreSubs(),
+      extraSubs: publicDefaultExtraSubs(),
+      headerChrome: defaultPublicHeaderChrome(),
+      networkBudget: "full"
     };
   }
 
@@ -1560,6 +1667,22 @@ Plugins.toolbox.init = function () {
       d.moreSubs = raw.moreSubs.filter(function (id) { return MORE_SUBS[id]; });
     }
     if (!d.moreSubs || !d.moreSubs.length) d.moreSubs = ["dx"];
+    var hc = raw.headerChrome && typeof raw.headerChrome === "object" ? raw.headerChrome : null;
+    d.headerChrome = defaultPublicHeaderChrome();
+    if (hc) {
+      if (typeof hc.help === "boolean") d.headerChrome.help = hc.help;
+      if (typeof hc.find === "boolean") d.headerChrome.find = hc.find;
+      if (typeof hc.minimal === "boolean") d.headerChrome.minimal = hc.minimal;
+    }
+    if (Array.isArray(raw.extraSubs)) {
+      d.extraSubs = raw.extraSubs.filter(function (k) {
+        return EXTRA_SUB_DEFS.some(function (d0) { return extraSubKey(d0.tab, d0.id) === k; });
+      });
+    }
+    if (!d.extraSubs || !d.extraSubs.length) d.extraSubs = publicDefaultExtraSubs();
+    var nb = String(raw.networkBudget != null ? raw.networkBudget : d.networkBudget || "full");
+    if (nb !== "full" && nb !== "more-off" && nb !== "offline") nb = "full";
+    d.networkBudget = nb;
     return d;
   }
 
@@ -1695,7 +1818,10 @@ Plugins.toolbox.init = function () {
   var LS_TRAFFIC_LOG = "owrx_toolbox_traffic_log_v1";
   var LS_OPERATOR_SESSION = "owrx_toolbox_op_session_v1";
   var LS_DECODER_ARCHIVE = "owrx_toolbox_decoder_archive_v1";
-  var DECODER_ARCHIVE_MAX = 2500;
+  var STORAGE_QUOTA_DEFAULT = 999;
+  var OCC_DAYS_DEFAULT = 30;
+  var STORAGE_QUOTA_MIN = 25;
+  var STORAGE_QUOTA_MAX = 10000;
   var LS_QSO = "owrx_toolbox_qso_v1";
   var LS_SIG_WATCH = "owrx_toolbox_sig_watch_v1";
   var LS_RECENT_TUNES = "owrx_toolbox_recent_tunes_v1";
@@ -1709,7 +1835,7 @@ Plugins.toolbox.init = function () {
 
   var SIDE_PCT_MIN = 20;
   var SIDE_PCT_MAX = 60;
-  var SIDE_DOCK_PCT_DEFAULT = 35;
+  var SIDE_DOCK_PCT_DEFAULT = 33;
   var UI_SCALE_PCT_DEFAULT = 100;
   /* Pixel floor so a low % still stays usable on tiny windows. Do NOT add a px ceiling —
      that used to cap ~920px (~48% on 1920) so dragging to 60% never reached 60%. */
@@ -2471,6 +2597,7 @@ Plugins.toolbox.init = function () {
 
   /** Run a Settings mutation without jumping the panel/page to the top. */
   function withSettingsScrollPreserved(fn) {
+    try { touchSettingsUiLock(); } catch (eLock) {}
     try { pinSettingsScroll(); } catch (ePin) {}
     var scrollY = captureSettingsScroll();
     var pageScroll = capturePageScroll();
@@ -2499,6 +2626,7 @@ Plugins.toolbox.init = function () {
       var t = ev.target;
       if (!t || !t.closest) return;
       if (!t.closest("input, label, select, button, summary, .bs-set-box-toggle")) return;
+      try { touchSettingsUiLock(); } catch (eLock) {}
       pinSettingsScroll();
     }, true);
   }
@@ -3984,7 +4112,7 @@ Plugins.toolbox.init = function () {
     try { about = String((box && box.getAttribute("data-box-help")) || "").trim(); } catch (eA) {}
     var move;
     if (box && box.classList.contains("bs-ex-box-tune")) {
-      move = "Pinned at the top — click the title to minimize or expand.";
+      move = "Pinned at the top of Explore.";
     } else if (typeof exploreLayoutAllowed === "function" && !exploreLayoutAllowed()) {
       move = "Click the title to minimize or expand. Drag-to-reorder needs the Change panel layout permission.";
     } else if (exploreIsFreePack()) {
@@ -4011,6 +4139,7 @@ Plugins.toolbox.init = function () {
   }
 
   function stampAllExploreBoxDragTips() {
+    try { upgradeExploreTuneHeadNoCollapse(); } catch (eTuneH) {}
     var root = $("bs-panel") || document;
     Array.prototype.forEach.call(root.querySelectorAll(".bs-ex-box"), stampExploreBoxDragTip);
   }
@@ -4611,7 +4740,7 @@ Plugins.toolbox.init = function () {
     if (!t || !t.closest) return null;
     var box = t.closest("#bs-ex-free-canvas .bs-ex-box");
     if (!box || box.classList.contains("bs-ex-box-tune")) return null;
-    if (t.closest("input, select, textarea, a, label, .bs-box-help, .bs-ex-free-resize")) return null;
+    if (t.closest("input, select, textarea, a, label, .bs-box-help, .bs-ex-box-close, .bs-ex-free-resize")) return null;
     if (t.closest("button")) return null;
     return box;
   }
@@ -4672,6 +4801,22 @@ Plugins.toolbox.init = function () {
     Array.prototype.forEach.call(root.querySelectorAll(".bs-set-box.bs-id-box, #bs-id-meta-section"), function (box) {
       upgradeIdentifyBoxHeadNoCollapse(box);
     });
+  }
+
+  function upgradeExploreTuneHeadNoCollapse() {
+    var box = $("bs-ex-box-tune");
+    if (!box) return;
+    box.classList.remove("bs-ex-box-collapse", "bs-collapsed");
+    var head = box.querySelector(".bs-ex-box-h.bs-ex-tune-h");
+    if (!head) return;
+    var btn = head.querySelector(".bs-ex-box-toggle");
+    if (!btn) return;
+    var text = btn.querySelector(".bs-ex-box-head-text");
+    if (text) {
+      try { head.insertBefore(text, btn); } catch (eIns) {}
+    }
+    try { btn.remove(); } catch (eRm) {}
+    try { window.localStorage.setItem("owrx_toolbox_box_bs-ex-box-tune", "1"); } catch (eLs) {}
   }
 
   function upgradeExploreBoxHeadNoMinimize(box) {
@@ -5291,9 +5436,100 @@ Plugins.toolbox.init = function () {
   var listenScanPass = 0;
   var listenScanMaxPasses = 0;
   var surveyRunning = false;
-  /* Exclusive radio job: analyzer / bands / range / bookmarks / nest — only one at a time. */
+  /* Exclusive radio job: analyzer / bands / range / bookmarks / nest / identify — only one at a time. */
   var radioJob = null;
   var radioJobGen = 0;
+  var RADIO_JOB_LS = "owrx_toolbox_radio_job_v1";
+  var RADIO_JOB_STOP_LS = "owrx_toolbox_radio_job_stop_v1";
+  var RADIO_JOB_OWNER_KEY = "owrx_toolbox_radio_owner_v1";
+
+  function radioJobOwnerId() {
+    try {
+      var v = sessionStorage.getItem(RADIO_JOB_OWNER_KEY);
+      if (!v) {
+        v = "o" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+        sessionStorage.setItem(RADIO_JOB_OWNER_KEY, v);
+      }
+      return v;
+    } catch (e) {
+      return "o_local";
+    }
+  }
+
+  function radioJobLeaseGet() {
+    try {
+      var raw = localStorage.getItem(RADIO_JOB_LS);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function radioJobLeaseActive(lease) {
+    if (!lease || !lease.job) return false;
+    return (Date.now() - (lease.at || 0)) < 7200000;
+  }
+
+  function radioJobLeaseTouch(job) {
+    try {
+      if (!job) {
+        var cur = radioJobLeaseGet();
+        if (cur && cur.owner === radioJobOwnerId()) localStorage.removeItem(RADIO_JOB_LS);
+        return;
+      }
+      localStorage.setItem(RADIO_JOB_LS, JSON.stringify({
+        owner: radioJobOwnerId(),
+        job: job,
+        at: Date.now()
+      }));
+    } catch (e) {}
+  }
+
+  function radioJobForeignLease() {
+    var L = radioJobLeaseGet();
+    if (!radioJobLeaseActive(L)) return null;
+    if (L.owner === radioJobOwnerId()) return null;
+    return L;
+  }
+
+  function radioJobRequestForeignStop(owner) {
+    try {
+      localStorage.setItem(RADIO_JOB_STOP_LS, JSON.stringify({ target: owner, at: Date.now() }));
+    } catch (e) {}
+  }
+
+  function radioJobPollForeignStop() {
+    try {
+      var raw = localStorage.getItem(RADIO_JOB_STOP_LS);
+      if (!raw) return;
+      var req = JSON.parse(raw);
+      if (!req || req.target !== radioJobOwnerId()) return;
+      if (Date.now() - (req.at || 0) > 120000) {
+        localStorage.removeItem(RADIO_JOB_STOP_LS);
+        return;
+      }
+      localStorage.removeItem(RADIO_JOB_STOP_LS);
+      var cur = detectRadioJob();
+      if (cur) forceStopRadioJob(cur);
+      else radioJobLeaseTouch(null);
+    } catch (e) {}
+  }
+
+  function radioJobBindCrossWindow() {
+    if (radioJobBindCrossWindow._on) return;
+    radioJobBindCrossWindow._on = true;
+    try {
+      window.addEventListener("storage", function (ev) {
+        if (ev.key === RADIO_JOB_STOP_LS) radioJobPollForeignStop();
+      });
+    } catch (e) {}
+    setInterval(function () {
+      try { radioJobPollForeignStop(); } catch (e1) {}
+      try {
+        var cur = detectRadioJob();
+        if (cur) radioJobLeaseTouch(cur);
+        else radioJobLeaseTouch(null);
+      } catch (e2) {}
+    }, 2000);
+  }
   var listenFreq = 0;
   var lastProfileSwitchAt = 0;
   var PROFILE_GAP_MS = 11000;
@@ -5517,15 +5753,21 @@ Plugins.toolbox.init = function () {
       switchPeaksOnDone: false,
       notifyScanDone: false,
       soundNewPeak: true,
+      muteScanBeep: false,
       schedAction: "band",
       schedIdleOnly: false,
       quietStart: "",
       quietEnd: "",
       pauseOnManualTune: false,
       profileSettleMs: 0,
-      maxPeaks: 0,
+      maxPeaks: STORAGE_QUOTA_DEFAULT,
       keepPeaks: true,
-      maxAudioClips: 60,
+      maxAudioClips: STORAGE_QUOTA_DEFAULT,
+      maxTrafficLogRows: STORAGE_QUOTA_DEFAULT,
+      maxLoadedBookmarks: STORAGE_QUOTA_DEFAULT,
+      maxSkipFreqs: STORAGE_QUOTA_DEFAULT,
+      maxDecoderArchiveRows: STORAGE_QUOTA_DEFAULT,
+      maxQsoRows: STORAGE_QUOTA_DEFAULT,
       clipPreviewSec: 3,
       clipVolume: 80,
       clipMuted: false,
@@ -5550,17 +5792,20 @@ Plugins.toolbox.init = function () {
       digiForceOn: false,
       dayNightBeforeSched: false,
       peaksView: "list",
-      occDays: 7,
+      occDays: OCC_DAYS_DEFAULT,
       uiTextSize: "default",
       uiScale: UI_SCALE_PCT_DEFAULT,
       mainTabScale: 100,
       panelOpacity: 100,
       panelShade: "classic",
       hideToolbar: false,
-      findInToolbox: false,
-      showMinimalButton: false,
+      hideDetachHttpNote: false,
+      findInToolbox: true,
+      showMinimalButton: true,
       hideStockReceiver: false,
       muteOnTabHide: true,
+      stopClipOnTabLeave: true,
+      stopClipOnPanelHide: true,
       btnColoursOff: false,
       btnShadeHoverHint: true,
       hoverHelp: true,
@@ -5682,6 +5927,33 @@ Plugins.toolbox.init = function () {
         window.localStorage.setItem(LS_REC_MIGRATE_VOICE, "1");
       }
     } catch (e) {}
+    try {
+      if (!d._storageQuotaB248) {
+        if (typeof d.maxTrafficLogRows !== "number") d.maxTrafficLogRows = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxLoadedBookmarks !== "number") d.maxLoadedBookmarks = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxSkipFreqs !== "number") d.maxSkipFreqs = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxDecoderArchiveRows !== "number") d.maxDecoderArchiveRows = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxQsoRows !== "number") d.maxQsoRows = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxPeaks !== "number") d.maxPeaks = STORAGE_QUOTA_DEFAULT;
+        if (typeof d.maxAudioClips !== "number" || d.maxAudioClips === 60 || d.maxAudioClips === 40) {
+          d.maxAudioClips = STORAGE_QUOTA_DEFAULT;
+        }
+        d._storageQuotaB248 = true;
+      }
+      if (!d._storageQuotaB294) {
+        var was400 = 400;
+        ["maxTrafficLogRows", "maxLoadedBookmarks", "maxSkipFreqs", "maxDecoderArchiveRows", "maxQsoRows", "maxAudioClips"].forEach(function (k) {
+          if (d[k] === was400) d[k] = STORAGE_QUOTA_DEFAULT;
+        });
+        if (d.maxPeaks === was400) d.maxPeaks = STORAGE_QUOTA_DEFAULT;
+        d._storageQuotaB294 = true;
+      }
+      if (!d._occDaysB295) {
+        if (Number(d.occDays) === 7) d.occDays = OCC_DAYS_DEFAULT;
+        d._occDaysB295 = true;
+      }
+      normalizeStorageQuotas(d);
+    } catch (eSqLoad) {}
     return enforcePublicSettingsLoad(sanitizeLayoutSettings(d));
   }
 
@@ -5720,7 +5992,13 @@ Plugins.toolbox.init = function () {
       activeRole: ""
     };
     d.networkBudget = "more-off";
-    d.maxPeaks = 1500;
+    d.maxPeaks = STORAGE_QUOTA_DEFAULT;
+    d.maxAudioClips = STORAGE_QUOTA_DEFAULT;
+    d.maxTrafficLogRows = STORAGE_QUOTA_DEFAULT;
+    d.maxLoadedBookmarks = STORAGE_QUOTA_DEFAULT;
+    d.maxSkipFreqs = STORAGE_QUOTA_DEFAULT;
+    d.maxDecoderArchiveRows = STORAGE_QUOTA_DEFAULT;
+    d.maxQsoRows = STORAGE_QUOTA_DEFAULT;
     d.hiddenTabs = ["bands", "range", "analyzer", "identify", "skip", "decode"];
     d.expAnalyzer = false;
     d.expIdentify = false;
@@ -5755,20 +6033,30 @@ Plugins.toolbox.init = function () {
   function isPublicReceiver() {
     /* Hard --public install bake always wins. */
     if (!ownerOverrideAllowed()) return true;
-    /* Stock OpenWebRX General → Toolbox public mode (all visitors). */
-    if (serverPublicMode != null) return !!serverPublicMode;
-    /* Legacy fallback until WS config arrives. */
+    /* Server General ON forces public for every visitor. false from WS only means “not server-forced”. */
+    if (serverPublicMode === true) return true;
     return !!(S.extras && S.extras.publicMode);
   }
 
+  function serverOwnsPublicModeToggle() {
+    return serverPublicMode === true;
+  }
+
   function canEditPublicPolicy() {
-    /* Visitor allowlist / public policy: OpenWebRX admin session only. */
-    return isOwrxAdmin();
+    if (isOwrxAdmin()) return true;
+    if (isHardPublicInstall() || owrxAdmin === false) return false;
+    if (!ownerOverrideAllowed()) return false;
+    /* Owner install: allowlist without OWRX HTML probe on personal mode, or while admin probe is pending. */
+    if (!isPublicReceiver() || owrxAdmin === null) return true;
+    return false;
   }
 
   function effectivePublicPolicy() {
     var baked = bakedPublicPolicy();
-    if (isHardPublicInstall()) return baked || publicPolicySafeDefaults();
+    if (isHardPublicInstall()) {
+      if (canEditPublicPolicy() && S.publicPolicy) return sanitizePublicPolicy(S.publicPolicy);
+      return baked || publicPolicySafeDefaults();
+    }
     if (isPublicReceiver()) {
       if (canEditPublicPolicy() && S.publicPolicy) return sanitizePublicPolicy(S.publicPolicy);
       return baked || publicPolicySafeDefaults();
@@ -5803,6 +6091,12 @@ Plugins.toolbox.init = function () {
       d.idClassifierUrl = "";
       d.scheduleHrs = 0;
     }
+    try {
+      var cap = (bakedPublicPolicy() || publicPolicySafeDefaults()).networkBudget || "more-off";
+      if (networkBudgetRank(d.networkBudget || "full") > networkBudgetRank(cap)) {
+        d.networkBudget = cap;
+      }
+    } catch (eNb) {}
     return d;
   }
 
@@ -5813,11 +6107,13 @@ Plugins.toolbox.init = function () {
     if (!S.extras) S.extras = extrasDefaults();
     S.extras.publicMode = isHardPublicInstall() || !!S.extras.publicMode;
     if (isHardPublicInstall()) {
-      S.publicPolicy = null;
-      S.webhookUrl = "";
-      S.audioSttUrl = "";
-      S.idClassifierUrl = "";
-      S.scheduleHrs = 0;
+      if (!canEditPublicPolicy()) {
+        S.publicPolicy = null;
+        S.webhookUrl = "";
+        S.audioSttUrl = "";
+        S.idClassifierUrl = "";
+        S.scheduleHrs = 0;
+      }
     } else if (owrxAdmin === false) {
       S.publicPolicy = null;
       S.webhookUrl = "";
@@ -5826,8 +6122,26 @@ Plugins.toolbox.init = function () {
       S.scheduleHrs = 0;
     }
     enforcePublicExtrasState();
+    try { applyPublicHeaderChromeLocks(); } catch (eChr) {}
+    try { applyPublicNetworkBudgetCap(); } catch (eNet) {}
     try { applyPublicModeExtra(); } catch (ePm) {}
     try { gatePublicActions(); } catch (eGate) {}
+  }
+
+  function applyPublicHeaderChromeLocks() {
+    if (!isPublicReceiver()) return;
+    if (!publicAllowsHeaderChrome("find")) S.findInToolbox = false;
+    if (!publicAllowsHeaderChrome("minimal")) S.showMinimalButton = false;
+    try { applyToolboxFindVisibility(); } catch (eF) {}
+    try { applyMinimalButtonVisibility(); } catch (eM) {}
+    try { syncMainHeaderTabVisibility(); } catch (eH) {}
+  }
+
+  function applyPublicNetworkBudgetCap() {
+    if (!isPublicReceiver()) return;
+    var cap = effectiveNetworkBudget();
+    if (S.networkBudget !== cap) S.networkBudget = cap;
+    if ($("bs-net-budget")) $("bs-net-budget").value = cap;
   }
 
   function scrubPublicSettingsBeforeSave() {
@@ -5859,6 +6173,24 @@ Plugins.toolbox.init = function () {
     if (!isPublicReceiver()) return true;
     var pol = effectivePublicPolicy();
     return (pol.extras || []).indexOf(id) >= 0;
+  }
+
+  function publicAllowsHeaderChrome(key) {
+    if (!isPublicReceiver()) return true;
+    var pol = effectivePublicPolicy();
+    var c = (pol && pol.headerChrome) || defaultPublicHeaderChrome();
+    if (key === "help") return !!c.help;
+    if (key === "find") return !!c.find;
+    if (key === "minimal") return !!c.minimal;
+    return true;
+  }
+
+  function publicAllowsExtraSubKey(key) {
+    if (!key || !isPublicReceiver()) return true;
+    var pol = effectivePublicPolicy();
+    var list = pol && pol.extraSubs;
+    if (!Array.isArray(list) || !list.length) list = publicDefaultExtraSubs();
+    return list.indexOf(key) >= 0;
   }
 
   function enforcePublicExtrasState() {
@@ -6396,6 +6728,52 @@ Plugins.toolbox.init = function () {
     return '<button type="button" class="bs-box-help" aria-label="About this section">?</button>';
   }
 
+  function exploreBoxVisLabel(id) {
+    var i;
+    for (i = 0; i < EX_BOX_VIS_DEFS.length; i++) {
+      if (EX_BOX_VIS_DEFS[i].id === id) return EX_BOX_VIS_DEFS[i].lab;
+    }
+    return id || "box";
+  }
+
+  function hideExploreBoxFromUi(boxId) {
+    if (!boxId || boxId === "bs-ex-box-tune") return;
+    if (!EX_BOX_VIS_DEFS.some(function (d) { return d.id === boxId; })) return;
+    var lab = exploreBoxVisLabel(boxId);
+    var msg =
+      "Hide the \"" + lab + "\" box on Explore?\n\n" +
+      "You can show it again anytime under Settings → Visible tabs → Explore boxes.";
+    if (!window.confirm(msg)) return;
+    if (!Array.isArray(S.hiddenExploreBoxes)) S.hiddenExploreBoxes = [];
+    if (S.hiddenExploreBoxes.indexOf(boxId) < 0) S.hiddenExploreBoxes.push(boxId);
+    saveSettings();
+    applyHiddenExploreBoxes();
+    setStatus("\"" + lab + "\" hidden on Explore — turn it back on under Settings → Visible tabs → Explore boxes.");
+  }
+
+  function ensureExploreBoxCloseButton(head) {
+    if (!head || !head.closest) return;
+    var box = head.closest(".bs-ex-box");
+    if (!box || !box.id || box.classList.contains("bs-ex-box-tune")) return;
+    if (!EX_BOX_VIS_DEFS.some(function (d) { return d.id === box.id; })) return;
+    var closeBtn = head.querySelector(".bs-ex-box-close");
+    if (!closeBtn) {
+      closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "bs-ex-box-close";
+      closeBtn.textContent = "\u00d7";
+      var help = head.querySelector(".bs-box-help");
+      if (help && help.parentNode) help.parentNode.insertBefore(closeBtn, help.nextSibling);
+      else head.appendChild(closeBtn);
+    }
+    var lab = exploreBoxVisLabel(box.id);
+    closeBtn.setAttribute("aria-label", "Hide " + lab + " box");
+    setHoverTip(
+      closeBtn,
+      "Hide this box on Explore (restore under Settings → Visible tabs → Explore boxes)."
+    );
+  }
+
   /* Box width toggle symbols (▭ = widen, ◧ = half width). */
   var BOX_SIZE_SYM_WIDE = "\u25AD";
   var BOX_SIZE_SYM_HALF = "\u25E7";
@@ -6433,16 +6811,13 @@ Plugins.toolbox.init = function () {
       "</div>";
   }
 
-  /** Tune header with Mute + Vol on the right (always visible, even when the box is collapsed). */
+  /** Tune header with Mute + Vol on the right (not collapsible — scope/S-meter layout is always shown). */
   function exTuneHeadHtml() {
     return '<div class="bs-ex-box-h bs-ex-tune-h">' +
-      '<button type="button" class="bs-ex-box-toggle" aria-expanded="true">' +
       '<span class="bs-ex-box-head-text">' +
       '<span class="bs-ex-box-title">Tune</span>' +
       '<span class="bs-ex-box-sub">Type MHz and Go — live audio scope and S-meter</span>' +
       "</span>" +
-      '<span class="bs-ex-box-chev" aria-hidden="true"></span>' +
-      "</button>" +
       '<div class="bs-ex-tune-vol" role="group" aria-label="Receiver volume">' +
       '<button type="button" class="bs-ex-btn bs-ex-icon bs-btn-util" id="bs-ex-shot" title="Save a PNG of the waterfall.">Shot</button>' +
       '<button type="button" class="bs-ex-btn bs-ex-icon bs-btn-util" id="bs-ex-mute" title="Mute receiver audio. Vol still tracks the unmute level.">Mute</button>' +
@@ -6658,7 +7033,7 @@ Plugins.toolbox.init = function () {
     "show public": "Panel startup: show Settings → Public (visitor allowlist) sub-tab.",
     "simplify": "Apply Light layout, lean/simple UI, and header Find — does not delete data.",
     "advanced urls": "Optional DIY HTTP endpoints (sync, peak webhook, classifier, STT) at the bottom of Settings → General.",
-    "jump tuning · experimental (fm broadcast)": "Optional FM broadcast Jump loudest extras (grid / ±kHz / detect). Off by default — Jump loudest stays off on WFM unless you enable this.",
+    "jump tuning · experimental (fm broadcast)": "Moved into Settings → Extras → Jump · FM broadcast (grid / ±kHz / detect under the Extras box).",
     "presets": "Named Start–End / grid / mode setups for the Range scanner (load / save / delete).",
     "record": "Record demod now or Record busy during bookmark scans; clip limits sit nearby.",
     "scan options": "Timing, peaks, filters, and courtesy for band or range scans (groups sync where noted)."
@@ -6694,10 +7069,10 @@ Plugins.toolbox.init = function () {
     "memory:export": "Export trace CSV, digital IDs, and markers from one place.",
     "settings:general": "Start here after install: Check install, Simplify my panel, layout profile, visible tabs. Advanced URLs (optional) at the bottom. OpenWebRX admin login required to change most options.",
     "help": "Full manual: first install, hover tips, every tab. Start in 3 minutes for Listen / Survey / Public shortcuts.",
-    "settings:system": "Host specs, listener IPs/profiles, your tune trail, Toolbox counters, CPU/RAM, WebSocket and traffic.",
+    "settings:system": "Host specs, listener IPs/profiles, your tune trail, live pulse (jobs, detach, storage), CPU/RAM, WebSocket and traffic.",
     "settings:decoders": "Live secondary demod, every OpenWebRX decoder panel (open/closed, line counts), Log ingest stats, IPs/calls/IDs per channel.",
     "settings:owrx": "OpenWebRX internals: status.json SDRs/profiles, live demod/IF/squelch, WebSocket, footer meters, and open decoder panels.",
-    "settings:nerd": "Deep nerd vault: OWRX globals, waterfall/FFT, secondary demod, WebSocket wire stats, Toolbox buffers, JSON dumps — copy for debugging.",
+    "settings:nerd": "Deep nerd vault: FFT near VFO, hooks/runtime, localStorage top keys, waterfall levels, footer bars, OWRX globals, demod, WebSocket, perf timing, JSON dumps.",
     "settings:more": "Which More tab panes show for you (grouped checkboxes). Separate from Public → visitor allowlist at the bottom of the Public sub-tab.",
     "settings:public": "Public / shared receiver mode and the visitor allowlist (tabs, features, extras, Explore limits, More panes for guests). Admin only.",
     "more:dx": "DX cluster spots. Filter This band / HF / All, then click a spot to tune.",
@@ -6737,9 +7112,9 @@ Plugins.toolbox.init = function () {
     "more:events": "Major ham rallies and conventions. No network.",
     "more:special": "Special-event / commemorative call pointers. Click a freq to tune when listed.",
     "more:repeater": "Common UK/EU repeater outputs (static RX list). Click to tune.",
-    "more:news": "ARRL, RSGB, AMSAT, AMSAT-UK, Newsline, DX World, RTL-SDR, and AmateurRadio.com headlines. RSS URL for the selected source only (copy into Feeds → Yours). Opens in a new tab. Fetches only while open.",
+    "more:news": "Ham headline RSS — societies, DX, satellites, SDR, activators, and more. Pick a chip, Refresh, open rows in a new tab. Copy the RSS link into My feeds if you like.",
     "more:myfeeds": "RSS or Atom URLs you add — each feed gets its own sub-tab when you have two or more. Headlines open in a new tab. Stored in this browser. Fetches only while open.",
-    "more:links": "Curated ham links. Opens in a new tab.",
+    "more:links": "Ten groups of ten English links — SDR, receivers, DX, logs, propagation, digital, satellites, beacons, repeaters, societies.",
     "more:keys": "Keyboard shortcuts cheat sheet. No network.",
     "more:tips": "Short operating tips. No network.",
     "more:iaru": "IARU region notes and band-edge reminders. No network.",
@@ -6800,7 +7175,7 @@ Plugins.toolbox.init = function () {
     if (t) {
       var clone = t.cloneNode(true);
       Array.prototype.forEach.call(clone.querySelectorAll(
-        ".bs-ex-box-sub, .bs-set-box-count, .bs-box-help, .bs-ex-box-chev, .bs-set-box-chev"
+        ".bs-ex-box-sub, .bs-set-box-count, .bs-box-help, .bs-ex-box-close, .bs-ex-box-chev, .bs-set-box-chev"
       ), function (n) {
         if (n.parentNode) n.parentNode.removeChild(n);
       });
@@ -6957,6 +7332,13 @@ Plugins.toolbox.init = function () {
 
   function boxHelpPopDocument() {
     try {
+      var tab = typeof currentPanelTab === "function" ? currentPanelTab() : "";
+      if (tab) {
+        var tdoc = typeof tabPaneDocument === "function" ? tabPaneDocument(tab) : null;
+        if (tdoc && tdoc.body) return tdoc;
+      }
+    } catch (eTab) {}
+    try {
       var pd = panelDocument();
       if (pd && pd.body) return pd;
     } catch (e) {}
@@ -7042,6 +7424,9 @@ Plugins.toolbox.init = function () {
     try { closeBtnShadeMenu(); } catch (eSh) {}
     try { stripNativeTitles(box); } catch (eSt) {}
     var pop = ensureBoxHelpPopup();
+    try {
+      mountToolboxOverlay(pop, tabIdFromPaneEl(box) || tabIdFromPaneEl(anchor));
+    } catch (eOv) {}
     var titleEl = pop.querySelector(".bs-box-help-pop-title");
     var introEl = pop.querySelector(".bs-box-help-pop-intro");
     var list = pop.querySelector(".bs-box-help-pop-list");
@@ -7077,11 +7462,70 @@ Plugins.toolbox.init = function () {
     var r = (anchor || box).getBoundingClientRect();
     var w = pop.offsetWidth || 320;
     var h = pop.offsetHeight || 220;
-    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var vw = overlayView(pop);
+    var left = Math.min(Math.max(8, r.left), vw.innerWidth - w - 8);
     var top = r.bottom + 6;
-    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    if (top + h > vw.innerHeight - 8) top = Math.max(8, r.top - h - 6);
     pop.style.left = left + "px";
     pop.style.top = top + "px";
+  }
+
+  function injectMoreSubNavButtons(root) {
+    var more = root && root.id === "bs-tab-more" ? root : null;
+    if (!more && root && root.querySelector) more = root.querySelector("#bs-tab-more");
+    if (!more) more = moreTabRoot();
+    if (!more) return;
+    var moreDoc = more.ownerDocument || document;
+    Array.prototype.forEach.call(more.querySelectorAll(".bs-more-subpane .bs-set-box-h"), function (h) {
+      var helpBtn = h.querySelector(".bs-box-help");
+      if (!helpBtn) return;
+      var grp = h.querySelector(".bs-more-sub-head-actions");
+      if (!grp) {
+        grp = moreDoc.createElement("div");
+        grp.className = "bs-more-sub-head-actions";
+        h.appendChild(grp);
+      }
+      var prev = h.querySelector(".bs-more-sub-prev");
+      var next = h.querySelector(".bs-more-sub-next");
+      if (!prev) {
+        prev = moreDoc.createElement("button");
+        prev.type = "button";
+        prev.className = "bs-more-sub-nav bs-more-sub-prev";
+        prev.setAttribute("aria-label", "Previous More pane");
+        prev.textContent = "\u2190";
+      }
+      if (!next) {
+        next = moreDoc.createElement("button");
+        next.type = "button";
+        next.className = "bs-more-sub-nav bs-more-sub-next";
+        next.setAttribute("aria-label", "Next More pane");
+        next.textContent = "\u2192";
+      }
+      grp.appendChild(prev);
+      grp.appendChild(next);
+      grp.appendChild(helpBtn);
+      setHoverTip(prev, "Previous More pane — step back through every visible inner tab (Spots, Space, Tune, …).");
+      setHoverTip(next, "Next More pane — step forward through every visible inner tab; wraps at the end.");
+    });
+    if (!more._bsMoreSubNavDelegated) {
+      more._bsMoreSubNavDelegated = true;
+      more.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".bs-more-sub-prev, .bs-more-sub-next");
+        if (!btn || !more.contains(btn)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+        switchMoreSubRelative(btn.classList.contains("bs-more-sub-prev") ? -1 : 1);
+      });
+    }
+    Array.prototype.forEach.call(more.querySelectorAll(".bs-more-sub-prev, .bs-more-sub-next"), function (btn) {
+      btn._bsMoreSubNav = true;
+      btn.onclick = null;
+    });
+    var few = navigableMoreSubs().length < 2;
+    Array.prototype.forEach.call(more.querySelectorAll(".bs-more-sub-prev, .bs-more-sub-next"), function (btn) {
+      btn.disabled = few;
+    });
   }
 
   function injectBoxHelpButtons(root) {
@@ -7108,6 +7552,10 @@ Plugins.toolbox.init = function () {
       btn.textContent = "?";
       h.appendChild(btn);
       syncBoxHelpButtonTip(btn);
+      try { ensureExploreBoxCloseButton(h); } catch (eExCl) {}
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".bs-ex-box > .bs-ex-box-h"), function (h) {
+      try { ensureExploreBoxCloseButton(h); } catch (eExCl2) {}
     });
     /* Sub-tab bars: one ? for the active section (Log, Watch, Bands, More, …). */
     Array.prototype.forEach.call(root.querySelectorAll(SUB_BAR_SEL), function (bar) {
@@ -7129,12 +7577,31 @@ Plugins.toolbox.init = function () {
       bar.appendChild(sbtn);
       syncBoxHelpButtonTip(sbtn);
     });
+    try { injectMoreSubNavButtons(root); } catch (eMoreNav) {}
+  }
+
+  function bindExploreBoxClose(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    if (root._bs_ex_close_bound) return;
+    root._bs_ex_close_bound = true;
+    root.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest(".bs-ex-box-close");
+      if (!btn || !root.contains(btn)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+      var box = btn.closest(".bs-ex-box");
+      if (!box || !box.id) return;
+      hideExploreBoxFromUi(box.id);
+    }, true);
   }
 
   function bindBoxHelp(root) {
     root = root || $("bs-panel");
     if (!root) return;
     injectBoxHelpButtons(root);
+    try { bindExploreBoxClose(root); } catch (eExClose) {}
     if (root._bs_box_help_bound) return;
     root._bs_box_help_bound = true;
     root.addEventListener("click", function (ev) {
@@ -7171,7 +7638,9 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-tiny bs-set-bulk-all" id="bs-extras-all" title="Turn on every default-on extra. Leaves Public / shared and other opt-in extras off (FM Jump experimental, STT webhook, tuner gain, …).">Add all</button>' +
       '<button type="button" class="bs-tiny bs-set-bulk-none" id="bs-extras-none" title="Turn every extra off.">Remove all</button>' +
       "</div>" +
-      '<div class="bs-extras-grid" id="bs-extras">' + extrasGridInnerHtml(!!(S.uxFeel && S.uxFeel.extrasByJob)) + "</div>";
+      '<div class="bs-extras-grid" id="bs-extras">' + extrasGridInnerHtml(!!(S.uxFeel && S.uxFeel.extrasByJob)) + "</div>" +
+      '<p class="bs-hint bs-jump-fm-exp-hint" data-extra="jumpFmExp">When <b>Jump · FM broadcast</b> is on: Grid / ±kHz / Detect for WFM Jump loudest. Jump dB / Cluster / Center stay under Jump loudest on Explore and Identify.</p>' +
+      jumpFmTuneRowHtml("bs-set-jump-fm-grid", "bs-set-jump-fm-scan", "bs-set-jump-fm-detect");
     return '<div id="bs-extras-wrap" class="bs-min-hide">' +
       settingsBoxHtml("Extras", extrasBody, {
         id: "bs-extras-section",
@@ -7254,6 +7723,12 @@ Plugins.toolbox.init = function () {
   }
 
   function applyExtrasUi() {
+    if (applyExtrasUi._busy) return;
+    applyExtrasUi._busy = true;
+    try {
+    if (!tabDetachExtraOn()) {
+      try { reattachAllDetachedTabs({ silent: true }); } catch (eDt) {}
+    }
     var sttBox = $("bs-audio-stt-box");
     if (sttBox) {
       sttBox.hidden = !extraOn("audioSttWebhook");
@@ -7317,13 +7792,13 @@ Plugins.toolbox.init = function () {
     try { syncBandEditAdvancedUi(); } catch (eAdv) {}
     /* If the active Bands / Bookmarks sub-tab was turned off by an Extra, fall back to list. */
     try {
-      var bdOn = document.querySelector("#bs-tab-bands .bs-bd-sub.bs-bd-sub-on");
+      var bdOn = tabPaneQuery("bands", "#bs-tab-bands .bs-bd-sub.bs-bd-sub-on");
       if (bdOn && (bdOn.hidden || bdOn.classList.contains("bs-extra-off")) && typeof setBandsSubTab === "function") {
         setBandsSubTab("list", { skipSave: true });
       }
     } catch (eBd) {}
     try {
-      var bmOn = document.querySelector("#bs-tab-bookmarks .bs-bm-sub.bs-bm-sub-on");
+      var bmOn = tabPaneQuery("bookmarks", "#bs-tab-bookmarks .bs-bm-sub.bs-bm-sub-on");
       if (bmOn && (bmOn.hidden || bmOn.classList.contains("bs-extra-off")) && typeof setBookmarkSubTab === "function") {
         setBookmarkSubTab("list", { skipSave: true });
       }
@@ -7372,9 +7847,15 @@ Plugins.toolbox.init = function () {
       }
     } catch (eGainEx) {}
     try { memorySyncTimers(); memoryTraceRender(); } catch (eMemEx) {}
+    } finally {
+      applyExtrasUi._busy = false;
+    }
   }
 
   function applyPublicModeExtra() {
+    if (applyPublicModeExtra._busy) return;
+    applyPublicModeExtra._busy = true;
+    try {
     var on = extraOn("publicMode") || !ownerOverrideAllowed();
     if (on) {
       S.aloneOnly = true;
@@ -7428,6 +7909,9 @@ Plugins.toolbox.init = function () {
         : "Public / shared receiver mode is on — Factory reset is disabled. Choose visitor options under Public visitor allowlist.";
     }
     applyPublicPolicyUi();
+    } finally {
+      applyPublicModeExtra._busy = false;
+    }
   }
 
   function setControlPublicGate(el, allowed, whyDenied) {
@@ -7456,6 +7940,15 @@ Plugins.toolbox.init = function () {
   }
 
   function applyPublicPolicyUi() {
+    if (applyPublicPolicyUi._busy) return;
+    applyPublicPolicyUi._busy = true;
+    var pinSettings = false;
+    try { pinSettings = settingsEngaged(); } catch (ePinPre) {}
+    if (pinSettings) {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePinPs) {}
+    }
+    try {
     var wrap = $("bs-public-policy");
     var canEdit = canEditPublicPolicy();
     if (wrap) {
@@ -7477,7 +7970,7 @@ Plugins.toolbox.init = function () {
       } else if (serverPublicMode === true) {
         note.textContent = "Public mode is ON via OpenWebRX Settings → General (this host has that checkbox). Applies to all visitors. Edit the allowlist below.";
       } else if (serverPublicMode === false) {
-        note.textContent = "Public mode is OFF via OpenWebRX Settings → General. Allowlist is unused until you enable public there, or set TOOLBOX_ALLOW_OWNER_OVERRIDE = false in toolbox.js.";
+        note.textContent = "OpenWebRX reports toolbox_public_mode = false (default on many hosts). Tick Public / shared receiver below to enable visitor limits in this browser, or turn it on in OpenWebRX Settings → General when that row exists.";
       } else if (extraOn("publicMode")) {
         note.textContent = "Public mode is ON via the Toolbox tick below. This host has no General checkbox (normal on stock OpenWebRX+). For every visitor on the server, set TOOLBOX_ALLOW_OWNER_OVERRIDE = false in toolbox.js.";
       } else {
@@ -7487,10 +7980,19 @@ Plugins.toolbox.init = function () {
     fillPublicPolicyForm();
     gatePublicActions();
     fillExtrasForm();
-    applyHiddenTabs();
+    syncMainHeaderTabVisibility();
     try { applyHiddenMoreSubs(); } catch (eMorePub) {}
     try { syncMoreVisPublicHint(); } catch (eMoreHint) {}
     try { updatePublicExploreLimitHint(); } catch (eLim) {}
+    if (pinSettings) {
+      try { pinMainToolboxTab("settings"); } catch (ePinPe) {}
+    }
+    try { applyPublicHeaderChromeLocks(); } catch (eChrUi) {}
+    try { applyPublicNetworkBudgetCap(); } catch (eNetUi) {}
+    try { applyExtraSubsVisibility(); } catch (eExSub) {}
+    } finally {
+      applyPublicPolicyUi._busy = false;
+    }
   }
 
   function gatePublicActions() {
@@ -7590,11 +8092,11 @@ Plugins.toolbox.init = function () {
       if (!el) return;
       if (e.id === "publicMode") {
         var hardPub = isHardPublicInstall();
-        var serverOwns = serverPublicMode != null;
+        var serverOwns = serverOwnsPublicModeToggle();
         var admin = canEditPublicPolicy();
         var box = $("bs-public-mode-box");
         if (box) {
-          box.hidden = !admin;
+          box.hidden = !admin && owrxAdmin === false;
           box.classList.toggle("bs-extra-locked", true);
         }
         el.checked = isPublicReceiver();
@@ -7606,10 +8108,10 @@ Plugins.toolbox.init = function () {
             "You can still edit the Public visitor allowlist below while admin.");
         } else if (serverOwns) {
           el.disabled = true;
-          el.checked = !!serverPublicMode;
+          el.checked = true;
           setHoverTip(el,
-            "Read-only here — use OpenWebRX Settings → General → Toolbox: public / shared receiver mode " +
-            "(open /settings/general in this browser while logged in as admin).");
+            "Read-only here — OpenWebRX Settings → General has Toolbox public mode ON for all visitors. " +
+            "Turn it off there (open /settings/general while logged in as admin).");
         } else if (!admin) {
           el.disabled = true;
           setHoverTip(el, "Log in to OpenWebRX Settings (admin) to change Public / shared mode.");
@@ -7750,7 +8252,12 @@ Plugins.toolbox.init = function () {
       if (box.querySelector(".bs-tab-vis")) {
         try { readHiddenTabsFromForm(); } catch (e1) {}
         try { saveSettings(); } catch (e2) {}
-        try { applyHiddenTabs(); } catch (e3) {}
+        if (settingsEngaged()) {
+          try { syncMainHeaderTabVisibility(); } catch (e3s) {}
+          try { pinMainToolboxTab("settings"); } catch (e3p) {}
+        } else {
+          try { applyHiddenTabs(); } catch (e3) {}
+        }
         try { fillVisibleTabsForm(); } catch (e4) {}
       } else if (box.querySelector(".bs-more-vis")) {
         try { readHiddenMoreSubsFromForm(); } catch (e1) {}
@@ -7772,7 +8279,7 @@ Plugins.toolbox.init = function () {
         try { saveSettings(); } catch (e2) {}
         try { applyLightFeatsVisibility(); } catch (e3) {}
         try { fillLightFeatsForm(); } catch (e4) {}
-      } else if (box.querySelector(".bs-pub-tab, .bs-pub-feat, .bs-pub-extra, .bs-pub-more-sub")) {
+      } else if (box.querySelector(".bs-pub-chrome, .bs-pub-extra-sub, .bs-pub-tab, .bs-pub-feat, .bs-pub-extra, .bs-pub-more-sub")) {
         try { readPublicPolicyFromForm(); } catch (e1) {}
         try { saveSettings(); } catch (e2) {}
         try { applyPublicPolicyUi(); } catch (e3) {}
@@ -7795,6 +8302,7 @@ Plugins.toolbox.init = function () {
         try { applyToolbarVisibility(); } catch (e3) {}
         try { applyStockReceiverVisibility(); } catch (e4) {}
         try { applyMuteOnTabHidePref(); } catch (e5) {}
+        try { applyHideDetachHttpNotePref(); } catch (e5b) {}
         try { applyBtnShades(); } catch (e6) {}
         try { syncSideDockLayout(); } catch (e7) {}
         try { syncJumpFmExpUi(); } catch (e8) {}
@@ -7836,6 +8344,56 @@ Plugins.toolbox.init = function () {
         help: "Shared-host mode (admin). Turn on here, then set the visitor allowlist in the section below." });
   }
 
+  function publicHeaderChromePolicyHtml() {
+    return publicPolicyMiniBox("Header buttons",
+      '<p class="bs-hint">Top-right chrome (not main tabs). <b>Help (?)</b> is a main tab after Settings — use Tabs below to allow it for visitors.</p>' +
+      '<div class="bs-row bs-chk-grid" id="bs-pub-header-chrome">' +
+      '<label class="bs-chk" title="Show the Help (?) tab after Settings for visitors."><input type="checkbox" class="bs-pub-chrome" data-chrome="help" checked> Help tab (?)</label>' +
+      '<label class="bs-chk" title="Header magnifier — Find in Toolbox."><input type="checkbox" class="bs-pub-chrome" data-chrome="find"> Find</label>' +
+      '<label class="bs-chk" title="Header M — Minimal / Full on the current tab."><input type="checkbox" class="bs-pub-chrome" data-chrome="minimal"> Minimal (M)</label>' +
+      "</div>",
+      3, { bulk: true });
+  }
+
+  function publicExtraSubsPolicyHtml() {
+    var groups = {};
+    EXTRA_SUB_DEFS.forEach(function (d) {
+      if (!groups[d.tab]) groups[d.tab] = [];
+      groups[d.tab].push(d);
+    });
+    var boxes = Object.keys(groups).sort().map(function (tab) {
+      var items = groups[tab].map(function (d) {
+        var key = extraSubKey(d.tab, d.id);
+        return '<label class="bs-chk" title="' + escapeHtml(d.title || d.lab) + '">' +
+          '<input type="checkbox" class="bs-pub-extra-sub" data-extra-sub="' + escapeHtml(key) + '"> ' +
+          escapeHtml(d.lab) + "</label>";
+      }).join("");
+      var lab = tab.charAt(0).toUpperCase() + tab.slice(1);
+      return publicPolicyMiniBox("Extra sections · " + lab,
+        '<div class="bs-row bs-chk-grid">' + items + "</div>",
+        groups[tab].length, { bulk: groups[tab].length >= 2 });
+    }).join("");
+    return (
+      '<div class="bs-pub-extra-sub-policy" id="bs-pub-extra-sub-policy">' +
+      '<p class="bs-hint bs-pub-extra-sub-lead">Optional light sub-tabs on Log, Watch, Bookmarks, Audio, Skip, Peaks, Range (main sub-panes are always on).</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-pub-extra-sub-all" title="Allow every optional extra section for visitors.">Allow all extra sections</button>' +
+      "</div>" +
+      '<div class="bs-pub-policy-grid bs-pub-extra-sub-grid" id="bs-pub-extra-subs">' + boxes + "</div></div>"
+    );
+  }
+
+  function publicNetworkBudgetPolicyHtml() {
+    return publicPolicyMiniBox("Network budget (guest max)",
+      '<p class="bs-hint">Caps More / solar / TLE fetches for visitors. They cannot raise it above this (Settings → SDR → Network budget).</p>' +
+      '<label title="Maximum network budget while public mode is on.">Guest max <select id="bs-pub-network-budget">' +
+      '<option value="full">Full — More may fetch</option>' +
+      '<option value="more-off">More off — no DX/POTA/WX/TLE/solar</option>' +
+      '<option value="offline">Offline — block More network</option>' +
+      "</select></label>",
+      1);
+  }
+
   function publicMoreSubsPolicyHtml() {
     var boxes = MORE_GROUPS.map(function (g) {
       var panes = g.panes || [];
@@ -7851,6 +8409,10 @@ Plugins.toolbox.init = function () {
     return (
       '<div class="bs-pub-more-policy" id="bs-pub-more-policy">' +
       '<p class="bs-hint bs-pub-more-lead">When the <b>More</b> tab is allowed, which panes guests may open — one box per More group.</p>' +
+      '<div class="bs-row">' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-pub-more-all" title="Tick every More pane in the allowlist below (all groups). Does not change other Public allowlist items.">Allow all More panes</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-pub-more-safe" title="Factory-default More panes only (Top 5 per group).">Safe More panes</button>' +
+      "</div>" +
       '<div class="bs-pub-policy-grid bs-pub-more-grid" id="bs-pub-more-subs">' +
       boxes +
       "</div></div>"
@@ -7917,10 +8479,14 @@ Plugins.toolbox.init = function () {
       '<div class="bs-row">' +
       '<button type="button" class="bs-tiny bs-pub-allow-all" id="bs-pub-allow-all" title="Allow every tab, feature, and extra (still no Own radio / Factory reset while public).">Allow all</button>' +
       '<button type="button" class="bs-tiny bs-pub-allow-safe" id="bs-pub-allow-safe" title="Safe defaults: common tabs (no Analyzer / Identify), scans on, clear/import/extras off.">Safe defaults</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-pub-extras-all" title="Tick every extra in the allowlist (does not change tabs or features).">Allow all extras</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-pub-tabs-from-visible" title="Set visitor main tabs to match your Settings → Visible tabs (plus Settings).">Sync tabs from Visible</button>' +
       '<button type="button" class="bs-tiny bs-btn-export" id="bs-pub-copy-policy" title="Copy a TOOLBOX_PUBLIC_POLICY snippet to paste into toolbox.js on the radio host (for all visitors).">Copy policy for install</button>' +
       "</div>" +
       '<div class="bs-pub-policy-grid" id="bs-pub-policy-grid">' +
       publicPolicyMiniBox("Tabs", '<div class="bs-row bs-chk-grid" id="bs-pub-tabs">' + tabsHtml + "</div>", TAB_IDS.length, { bulk: true }) +
+      publicHeaderChromePolicyHtml() +
+      publicNetworkBudgetPolicyHtml() +
       publicPolicyMiniBox("Explore MHz limit",
         '<p class="bs-hint">When public, guests may only Explore inside this window (Go, wheel, drag, profile hop). Leave blank for no limit.</p>' +
         '<div class="bs-row">' +
@@ -7940,6 +8506,7 @@ Plugins.toolbox.init = function () {
       featBoxes +
       extrasBoxes +
       "</div>" +
+      publicExtraSubsPolicyHtml() +
       publicMoreSubsPolicyHtml(),
       { id: "bs-public-policy", wide: true, cls: "bs-min-hide",
         sub: "Tabs, features, Explore limits/bands, and extras in the grid above; More panes in grouped boxes at the bottom. Multi-option checkbox boxes have Add all / Remove all." });
@@ -8013,6 +8580,24 @@ Plugins.toolbox.init = function () {
       var lab = inp.closest && inp.closest("label");
       if (lab) lab.classList.toggle("bs-tab-vis-off", !inp.checked);
     });
+    var chrome = pol.headerChrome || defaultPublicHeaderChrome();
+    Array.prototype.forEach.call(document.querySelectorAll("#bs-public-policy .bs-pub-chrome"), function (inp) {
+      var k = inp.getAttribute("data-chrome");
+      inp.checked = !!(chrome[k]);
+      inp.disabled = !canEdit;
+    });
+    var extraSubSet = {};
+    (pol.extraSubs || publicDefaultExtraSubs()).forEach(function (k) { extraSubSet[k] = true; });
+    Array.prototype.forEach.call(document.querySelectorAll("#bs-public-policy .bs-pub-extra-sub"), function (inp) {
+      var k = inp.getAttribute("data-extra-sub");
+      inp.checked = !!extraSubSet[k];
+      inp.disabled = !canEdit;
+    });
+    var nbEl = $("bs-pub-network-budget");
+    if (nbEl) {
+      nbEl.value = pol.networkBudget || "more-off";
+      nbEl.disabled = !canEdit;
+    }
     var minEl = $("bs-pub-explore-min");
     var maxEl = $("bs-pub-explore-max");
     if (minEl) {
@@ -8028,7 +8613,9 @@ Plugins.toolbox.init = function () {
       maxEl.disabled = !canEdit;
     }
     fillPublicExploreBandsForm(pol, canEdit);
-    ["bs-pub-allow-all", "bs-pub-allow-safe", "bs-pub-explore-bands-ticked", "bs-pub-explore-bands-current"].forEach(function (id) {
+    ["bs-pub-allow-all", "bs-pub-allow-safe", "bs-pub-extras-all", "bs-pub-tabs-from-visible",
+      "bs-pub-more-all", "bs-pub-more-safe", "bs-pub-extra-sub-all",
+      "bs-pub-explore-bands-ticked", "bs-pub-explore-bands-current"].forEach(function (id) {
       if ($(id)) $(id).disabled = !canEdit;
     });
     Array.prototype.forEach.call(document.querySelectorAll(
@@ -8172,6 +8759,22 @@ Plugins.toolbox.init = function () {
     } else if (S.publicPolicy && Array.isArray(S.publicPolicy.moreSubs)) {
       moreSubs = S.publicPolicy.moreSubs.slice();
     }
+    var extraSubs = [];
+    var extraBox = $("bs-pub-extra-subs");
+    if (extraBox) {
+      Array.prototype.forEach.call(extraBox.querySelectorAll(".bs-pub-extra-sub"), function (inp) {
+        if (inp.checked) extraSubs.push(inp.getAttribute("data-extra-sub"));
+      });
+      if (!extraSubs.length) extraSubs = publicDefaultExtraSubs();
+    } else if (S.publicPolicy && Array.isArray(S.publicPolicy.extraSubs)) {
+      extraSubs = S.publicPolicy.extraSubs.slice();
+    }
+    var headerChrome = defaultPublicHeaderChrome();
+    Array.prototype.forEach.call(document.querySelectorAll("#bs-public-policy .bs-pub-chrome"), function (inp) {
+      var k = inp.getAttribute("data-chrome");
+      if (k === "help" || k === "find" || k === "minimal") headerChrome[k] = !!inp.checked;
+    });
+    var nbEl = $("bs-pub-network-budget");
     var minEl = $("bs-pub-explore-min");
     var maxEl = $("bs-pub-explore-max");
     S.publicPolicy = sanitizePublicPolicy({
@@ -8179,6 +8782,9 @@ Plugins.toolbox.init = function () {
       features: features,
       extras: extras,
       moreSubs: moreSubs,
+      extraSubs: extraSubs,
+      headerChrome: headerChrome,
+      networkBudget: nbEl ? nbEl.value : null,
       exploreMinMhz: minEl ? minEl.value : null,
       exploreMaxMhz: maxEl ? maxEl.value : null,
       exploreBands: publicExploreBandsSelectedFromForm()
@@ -8186,7 +8792,10 @@ Plugins.toolbox.init = function () {
   }
 
   function setPublicPolicyPreset(kind) {
-    if (!canEditPublicPolicy()) return;
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
     withSettingsScrollPreserved(function () {
       var keepMin = S.publicPolicy && S.publicPolicy.exploreMinMhz;
       var keepMax = S.publicPolicy && S.publicPolicy.exploreMaxMhz;
@@ -8199,10 +8808,16 @@ Plugins.toolbox.init = function () {
         PUBLIC_FEATURE_DEFS.forEach(function (f) { all.features[f.id] = true; });
         all.extras = allExtrasIds(false);
         all.moreSubs = MORE_SUB_IDS.slice();
+        all.extraSubs = publicDefaultExtraSubs();
+        all.headerChrome = { help: true, find: true, minimal: true };
+        all.networkBudget = "full";
         all.exploreMinMhz = keepMin;
         all.exploreMaxMhz = keepMax;
         all.exploreBands = keepBands;
         S.publicPolicy = sanitizePublicPolicy(all);
+        S.expIdentify = true;
+        S.expAnalyzer = true;
+        syncAnlzIdHiddenTabs();
       } else {
         var safe = publicPolicySafeDefaults();
         safe.exploreMinMhz = keepMin;
@@ -8218,6 +8833,120 @@ Plugins.toolbox.init = function () {
         (isHardPublicInstall()
           ? "Safe defaults — Copy policy for install to bake into toolbox.js for all visitors."
           : "Public allowlist: safe defaults."));
+    });
+  }
+
+  function setPublicMoreSubsAll() {
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
+    withSettingsScrollPreserved(function () {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePin) {}
+      if (!S.publicPolicy || typeof S.publicPolicy !== "object") {
+        S.publicPolicy = publicPolicySafeDefaults();
+      }
+      S.publicPolicy.moreSubs = MORE_SUB_IDS.slice();
+      if (Array.isArray(S.publicPolicy.tabs) && S.publicPolicy.tabs.indexOf("more") < 0) {
+        S.publicPolicy.tabs.push("more");
+      }
+      fillPublicPolicyForm();
+      saveSettings();
+      applyPublicPolicyUi();
+      applyExtrasUi();
+      try { pinMainToolboxTab("settings"); } catch (ePin2) {}
+      setStatus("Public allowlist: all More panes allowed (" + MORE_SUB_IDS.length + ").");
+    });
+  }
+
+  function setPublicMoreSubsSafe() {
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
+    withSettingsScrollPreserved(function () {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePin) {}
+      if (!S.publicPolicy || typeof S.publicPolicy !== "object") {
+        S.publicPolicy = publicPolicySafeDefaults();
+      }
+      S.publicPolicy.moreSubs = publicDefaultMoreSubs();
+      fillPublicPolicyForm();
+      saveSettings();
+      applyPublicPolicyUi();
+      applyExtrasUi();
+      setStatus("Public allowlist: Safe More panes (" + S.publicPolicy.moreSubs.length + ").");
+    });
+  }
+
+  function setPublicExtrasAll() {
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
+    withSettingsScrollPreserved(function () {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePin) {}
+      if (!S.publicPolicy || typeof S.publicPolicy !== "object") {
+        S.publicPolicy = publicPolicySafeDefaults();
+      }
+      S.publicPolicy.extras = allExtrasIds(false);
+      fillPublicPolicyForm();
+      saveSettings();
+      applyPublicPolicyUi();
+      applyExtrasUi();
+      setStatus("Public allowlist: all extras allowed.");
+    });
+  }
+
+  function setPublicExtraSubsAll() {
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
+    withSettingsScrollPreserved(function () {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      if (!S.publicPolicy || typeof S.publicPolicy !== "object") {
+        S.publicPolicy = publicPolicySafeDefaults();
+      }
+      S.publicPolicy.extraSubs = publicDefaultExtraSubs();
+      fillPublicPolicyForm();
+      saveSettings();
+      applyPublicPolicyUi();
+      try { applyExtraSubsVisibility(); } catch (eEx) {}
+      setStatus("Public allowlist: all extra sections allowed.");
+    });
+  }
+
+  function syncPublicTabsFromVisible() {
+    if (!canEditPublicPolicy()) {
+      setStatus("Public allowlist needs an OpenWebRX admin login — open OpenWebRX Settings in this browser, then Check again in Toolbox Settings.");
+      return;
+    }
+    withSettingsScrollPreserved(function () {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePin) {}
+      if (!S.publicPolicy || typeof S.publicPolicy !== "object") {
+        S.publicPolicy = publicPolicySafeDefaults();
+      }
+      var tabs = [];
+      var hidden = Array.isArray(S.hiddenTabs) ? S.hiddenTabs : [];
+      TAB_IDS.forEach(function (id) {
+        if (id === "settings") {
+          tabs.push(id);
+          return;
+        }
+        if (id === "identify" && !S.expIdentify) return;
+        if (id === "analyzer" && !S.expAnalyzer) return;
+        if (hidden.indexOf(id) < 0) tabs.push(id);
+      });
+      if (tabs.indexOf("settings") < 0) tabs.push("settings");
+      S.publicPolicy.tabs = tabs;
+      fillPublicPolicyForm();
+      saveSettings();
+      applyPublicPolicyUi();
+      setStatus("Public tabs synced from Visible tabs (" + tabs.length + ").");
     });
   }
 
@@ -8379,6 +9108,7 @@ Plugins.toolbox.init = function () {
   }
 
   loadTrafficLog();
+  try { trafficLogTrim(); saveTrafficLog(); } catch (eTlBoot) {}
   trafficLogStart();
   loadOperatorSession();
 
@@ -8386,11 +9116,11 @@ Plugins.toolbox.init = function () {
     try {
       var o = JSON.parse(window.localStorage.getItem(LS_TRAFFIC_LOG) || "null");
       if (o && Array.isArray(o.rows)) {
-        trafficLogRows = o.rows.slice(-400);
+        trafficLogRows = o.rows.slice(-maxTrafficLogCap());
         trafficLogPause = !!o.pause;
         trafficLogKinds = (o.kinds && typeof o.kinds === "object") ? o.kinds : {};
       } else if (Array.isArray(o)) {
-        trafficLogRows = o.slice(-400);
+        trafficLogRows = o.slice(-maxTrafficLogCap());
       } else {
         trafficLogRows = [];
       }
@@ -8402,13 +9132,13 @@ Plugins.toolbox.init = function () {
       window.localStorage.setItem(LS_TRAFFIC_LOG, JSON.stringify({
         pause: !!trafficLogPause,
         kinds: trafficLogKinds || {},
-        rows: trafficLogRows.slice(-400)
+        rows: trafficLogRows.slice(-maxTrafficLogCap())
       }));
     } catch (e) {}
   }
 
   function trafficLogTrim() {
-    var cap = 400;
+    var cap = maxTrafficLogCap();
     if (trafficLogRows.length <= cap) return;
     var pinned = [];
     var rest = [];
@@ -8444,7 +9174,7 @@ Plugins.toolbox.init = function () {
   function loadDecoderArchive() {
     try {
       var o = JSON.parse(window.localStorage.getItem(LS_DECODER_ARCHIVE) || "null");
-      if (o && Array.isArray(o.rows)) decoderArchiveRows = o.rows.slice(-DECODER_ARCHIVE_MAX);
+      if (o && Array.isArray(o.rows)) decoderArchiveRows = o.rows.slice(-decoderArchiveCap());
       else decoderArchiveRows = [];
     } catch (e) { decoderArchiveRows = []; }
     if (!decoderArchiveRows.length && trafficLogRows.length) {
@@ -8459,12 +9189,13 @@ Plugins.toolbox.init = function () {
     try {
       window.localStorage.setItem(LS_DECODER_ARCHIVE, JSON.stringify({
         v: 1,
-        rows: decoderArchiveRows.slice(-DECODER_ARCHIVE_MAX)
+        rows: decoderArchiveRows.slice(-decoderArchiveCap())
       }));
     } catch (e) {}
   }
 
   loadDecoderArchive();
+  try { trimDecoderArchiveIfNeeded(); } catch (eDaBoot) {}
 
   function trafficLogRefineDigiBadge(line, meta) {
     meta = meta || { badge: "Digi", mode: "" };
@@ -8538,8 +9269,8 @@ Plugins.toolbox.init = function () {
       logId: r.id || "",
       _key: key
     });
-    if (decoderArchiveRows.length > DECODER_ARCHIVE_MAX) {
-      decoderArchiveRows = decoderArchiveRows.slice(-DECODER_ARCHIVE_MAX);
+    if (decoderArchiveRows.length > decoderArchiveCap()) {
+      decoderArchiveRows = decoderArchiveRows.slice(-decoderArchiveCap());
     }
     saveDecoderArchive();
     try {
@@ -10136,18 +10867,19 @@ Plugins.toolbox.init = function () {
   var qsoRows = [];
   var logCallArmed = "";
   loadQso();
+  try { trimQsoRowsIfNeeded(); } catch (eQsoBoot) {}
 
   function loadQso() {
     try {
       var o = JSON.parse(window.localStorage.getItem(LS_QSO) || "null");
       var rows = o && Array.isArray(o.rows) ? o.rows : (Array.isArray(o) ? o : []);
-      qsoRows = rows.map(qsoNormalize).filter(Boolean).slice(-300);
+      qsoRows = rows.map(qsoNormalize).filter(Boolean).slice(-maxQsoRowsCap());
     } catch (e) { qsoRows = []; }
   }
 
   function saveQso() {
     try {
-      window.localStorage.setItem(LS_QSO, JSON.stringify({ rows: qsoRows.slice(-300) }));
+      window.localStorage.setItem(LS_QSO, JSON.stringify({ rows: qsoRows.slice(-maxQsoRowsCap()) }));
     } catch (e) {}
   }
 
@@ -10243,7 +10975,7 @@ Plugins.toolbox.init = function () {
       return;
     }
     qsoRows.push(row);
-    if (qsoRows.length > 300) qsoRows = qsoRows.slice(-300);
+    if (qsoRows.length > maxQsoRowsCap()) qsoRows = qsoRows.slice(-maxQsoRowsCap());
     saveQso();
     qsoRender();
     if (callEl) callEl.value = "";
@@ -10501,6 +11233,11 @@ Plugins.toolbox.init = function () {
     } else {
       try { settingsHostStatsOffTab(); } catch (eSysOff) {}
     }
+    if (name === "public" && subChanged) {
+      try { touchSettingsUiLock(); } catch (eLock) {}
+      try { pinMainToolboxTab("settings"); } catch (ePinSt) {}
+      try { applyPublicPolicyUi(); } catch (ePubUi) {}
+    }
     if (name === "public" || name === "general") {
       try { packSettingsMasonry(true); } catch (ePack) {}
     }
@@ -10513,6 +11250,9 @@ Plugins.toolbox.init = function () {
       try {
         if (extraOn("rememberSubs")) window.localStorage.setItem("owrx_toolbox_st_sub_v1", name);
       } catch (eLs) {}
+    }
+    if (settingsTabIsActive()) {
+      try { pinMainToolboxTab("settings"); } catch (ePinEnd) {}
     }
     if (subChanged && !opts.skipScroll) {
       try {
@@ -10542,7 +11282,7 @@ Plugins.toolbox.init = function () {
     } catch (e) {}
     if (name === "system" && !settingsSubTabUserVisible("system")) name = "general";
     if (name === "public" && settingsSubTabHidden("public")) name = "general";
-    setSettingsSubTab(name, { skipSave: true });
+    setSettingsSubTab(name, { skipSave: true, skipAdminRefresh: true });
   }
 
   function bindSettingsSubTabs() {
@@ -10565,6 +11305,7 @@ Plugins.toolbox.init = function () {
   var settingsHostStatsFetchBusy = false;
   var settingsHostStatsRemote = null;
   var settingsHostStatsRemoteAt = 0;
+  var settingsToolboxAssetsProbe = { at: 0, busy: false, js: null, css: null, err: "" };
   var settingsHostStatsStatus = null;
   var settingsHostNetHist = [];
   var settingsHostAudioHist = [];
@@ -10574,6 +11315,8 @@ Plugins.toolbox.init = function () {
   var settingsNerdLastJson = "";
   var settingsHostStatsLastD = null;
   var settingsSystemLastExportJson = "";
+  var settingsPulsePing = { at: 0, statusMs: null, hostMs: null };
+  var settingsSatPulseCacheAt = 0;
   var SETTINGS_DASH_SCROLL_LINES = 20;
 
   function settingsDashLineCount(text) {
@@ -11585,6 +12328,407 @@ Plugins.toolbox.init = function () {
       histHtml + "</tbody></table></div></div>";
   }
 
+  function settingsLsToolboxBytes() {
+    var n = 0;
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k) continue;
+        if (k.indexOf("owrx_toolbox") < 0 && k.indexOf("owrx_band_survey") < 0) continue;
+        n += (k.length + (localStorage.getItem(k) || "").length) * 2;
+      }
+    } catch (e) {}
+    return n;
+  }
+
+  function settingsActiveJobsList() {
+    var jobs = [];
+    var j = detectRadioJob();
+    if (j) jobs.push({ lab: radioJobLabel(j), tone: "amber" });
+    if (listenScanRunning) {
+      jobs.push({
+        lab: "Bookmark scan" + (listenPaused ? " (paused)" : ""),
+        tone: listenPaused ? "slate" : "amber"
+      });
+    }
+    try {
+      if (idState && idState.liveOn && (idState.liveTimer || identifyPopoutOpen())) {
+        jobs.push({ lab: "Identify live", tone: "mint" });
+      }
+    } catch (eId) {}
+    try {
+      if (recordingOn) jobs.push({ lab: "Recording demod", tone: "violet" });
+    } catch (eRec) {}
+    try {
+      if (clipPreview && clipPreview.running) jobs.push({ lab: "Clip play-all", tone: "sky" });
+    } catch (eClip) {}
+    try {
+      if (exCtl && exCtl.nestOn) jobs.push({ lab: "Explore nest scan", tone: "amber" });
+    } catch (eNest) {}
+    if (!jobs.length) jobs.push({ lab: "Idle — receiver listening", tone: "slate" });
+    return jobs;
+  }
+
+  function settingsStatusJsonAgeSec(d) {
+    var at = d && d.stAt ? Number(d.stAt) : 0;
+    if (!(at > 0)) return null;
+    return Math.max(0, Math.round((Date.now() - at) / 1000));
+  }
+
+  function settingsPulsePingMaybe() {
+    if (!settingsSystemSubOn()) return;
+    var now = Date.now();
+    if (settingsPulsePing.at && now - settingsPulsePing.at < 12000) return;
+    settingsPulsePing.at = now;
+    var t0 = performance.now();
+    fetch("/status.json", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j) {
+          settingsPulsePing.statusMs = Math.max(1, Math.round(performance.now() - t0));
+          try {
+            if (settingsHostStatsStatus) {
+              settingsHostStatsStatus.data = j;
+              settingsHostStatsStatus.at = Date.now();
+            }
+          } catch (eSt) {}
+          try { settingsHostStatsRender(); } catch (eR) {}
+        }
+      })
+      .catch(function () { settingsPulsePing.statusMs = null; });
+    var t1 = performance.now();
+    fetch("/hoststats.json", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function () {
+        settingsPulsePing.hostMs = Math.max(1, Math.round(performance.now() - t1));
+        try { settingsHostStatsRender(); } catch (eR2) {}
+      })
+      .catch(function () { settingsPulsePing.hostMs = null; });
+  }
+
+  function settingsLastDecodeSnapshot() {
+    var rows = trafficLogRows || [];
+    var i;
+    for (i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      if (!r) continue;
+      if (r.kind === "digi" || r.kind === "meta" || r.kind === "id" || r.kind === "traffic") {
+        return {
+          at: r.at,
+          ago: trafficLogAgo(r.at),
+          title: String(r.title || r.badge || "Decode").trim(),
+          detail: String(r.detail || "").trim(),
+          freqHz: Number(r.freqHz) || 0,
+          kind: r.kind
+        };
+      }
+    }
+    if (decoderArchiveRows && decoderArchiveRows.length) {
+      var a = decoderArchiveRows[decoderArchiveRows.length - 1];
+      if (a) {
+        return {
+          at: a.at,
+          ago: trafficLogAgo(a.at),
+          title: String(a.title || a.decoderMode || "Decoder").trim(),
+          detail: String(a.detail || "").trim(),
+          freqHz: Number(a.freqHz) || 0,
+          kind: "archive"
+        };
+      }
+    }
+    return null;
+  }
+
+  function settingsSatPulseSnapshot() {
+    var out = { obs: false, selected: "", following: false, items: [] };
+    try {
+      var obs = moreObsFromStorage();
+      out.obs = !!obs;
+      out.following = !!satFollowing;
+      if (obs) {
+        try {
+          if (satRec && !satRec.deep) {
+            var sel = satSelected();
+            var look = satLookAt(Date.now());
+            out.selected = sel.name + " — " + satPassLine(look);
+          } else if (satRec && satRec.deep) {
+            out.selected = satSelected().name + " (deep orbit — use More → Sats)";
+          } else if (satFollowing) {
+            out.selected = satSelected().name + " — following (loading TLE…)";
+          }
+        } catch (eSel) {}
+        var now = Date.now();
+        if (!settingsSatPulseCacheAt || now - settingsSatPulseCacheAt > 60000) {
+          settingsSatPulseCacheAt = now;
+          try {
+            if (passTleByNorad && Object.keys(passTleByNorad).length) passComputeRows();
+          } catch (ePass) {}
+        }
+        if (passRows && passRows.length) {
+          passRows.slice(0, 4).forEach(function (r) {
+            var st;
+            if (r.miss) st = "no TLE";
+            else if (r.deep) st = "deep orbit";
+            else if (r.up) st = "Up · LOS " + satClock(r.los) + " (" + passFmtEta(r.los) + ")";
+            else if (r.aos) st = "Rises " + satClock(r.aos) + " (" + passFmtEta(r.aos) + ")";
+            else st = "No pass in 24 h";
+            out.items.push({ name: r.name, status: st, up: !!r.up, mhz: r.mhz });
+          });
+        }
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  function settingsBrowserNetLine() {
+    var bits = [];
+    try {
+      var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (c) {
+        if (c.effectiveType) bits.push(String(c.effectiveType));
+        if (c.downlink != null) bits.push(c.downlink + " Mbps down");
+        if (c.rtt != null) bits.push(c.rtt + " ms RTT");
+        if (c.saveData) bits.push("save-data");
+      }
+    } catch (e) {}
+    try {
+      bits.push(navigator.onLine ? "online" : "offline");
+    } catch (eO) {}
+    try {
+      bits.push(document.visibilityState === "visible" ? "tab visible" : "tab hidden");
+    } catch (eV) {}
+    try {
+      if (typeof document.hasFocus === "function") bits.push(document.hasFocus() ? "focused" : "unfocused");
+    } catch (eF) {}
+    return bits.length ? bits.join(" · ") : "—";
+  }
+
+  function settingsRuntimeExportObject(d) {
+    var groups = [];
+    try { groups = listDetachGroups(); } catch (eG) {}
+    return {
+      jobs: settingsActiveJobsList().map(function (x) { return x.lab; }),
+      detached_groups: groups,
+      detached_tab_count: countDetachedTabs(),
+      main_tab: settingsMainTabId(),
+      panel_side_dock: !!S.panelSideDock,
+      panel_side_pct: S.panelSidePct,
+      panel_hidden: !!(function () {
+        var p = $("bs-panel");
+        return p && p.hidden;
+      })(),
+      public_receiver: isPublicReceiver(),
+      extras_on: EXTRAS_DEFS.filter(function (e) { return extraOn(e.id); }).length,
+      ls_toolbox_bytes: settingsLsToolboxBytes(),
+      peaks: (hits && hits.length) || 0,
+      audio_clips: (audioClips && audioClips.length) || 0,
+      log_rows: (trafficLogRows && trafficLogRows.length) || 0,
+      status_json_age_sec: settingsStatusJsonAgeSec(d),
+      http_ping_ms: {
+        status: settingsPulsePing.statusMs,
+        hoststats: settingsPulsePing.hostMs
+      },
+      last_decode: settingsLastDecodeSnapshot(),
+      space_pulse: settingsSatPulseSnapshot(),
+      browser_net: settingsBrowserNetLine(),
+      viewport: (window.innerWidth || 0) + "×" + (window.innerHeight || 0),
+      device_pixel_ratio: window.devicePixelRatio || 1
+    };
+  }
+
+  function settingsRuntimeWireActions(root) {
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll("[data-sys-open]"), function (btn) {
+      var url = btn.getAttribute("data-sys-open");
+      if (!url) return;
+      btn.onclick = function () {
+        try { window.open(url, "_blank"); } catch (e) {}
+      };
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("[data-bs-detach-focus]"), function (btn) {
+      var tabId = btn.getAttribute("data-bs-detach-focus");
+      if (!tabId) return;
+      btn.onclick = function () {
+        try { focusDetachedTab(tabId); } catch (e) {}
+      };
+    });
+    var copyVer = root.querySelector("[data-sys-copy-version]");
+    if (copyVer) {
+      copyVer.onclick = function () {
+        var v = Plugins.toolbox._version || "";
+        function ok() { setStatus("Copied Toolbox build " + v + "."); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(v).then(ok).catch(function () { setStatus(v); });
+        } else {
+          setStatus(v);
+        }
+      };
+    }
+    Array.prototype.forEach.call(root.querySelectorAll("[data-sys-tune-hz]"), function (btn) {
+      btn.onclick = function () {
+        var hz = Number(btn.getAttribute("data-sys-tune-hz"));
+        if (!(hz > 0)) return;
+        try {
+          tuneTo(hz);
+          setStatus("Tuned to " + fmtMhz(hz) + " (from System pulse).");
+        } catch (e) {
+          setStatus("Could not tune — try the Log or decoder row.");
+        }
+      };
+    });
+    var copyTune = root.querySelector("[data-sys-copy-tune]");
+    if (copyTune) {
+      copyTune.onclick = function () {
+        var hz = 0;
+        try { hz = Math.round(Number(currentTuneHz()) || 0); } catch (e) {}
+        var s = hz > 0 ? fmtMhz(hz) : "";
+        if (!s) {
+          setStatus("Nothing tuned to copy.");
+          return;
+        }
+        function ok() { setStatus("Copied tune " + s + "."); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(s).then(ok).catch(function () { setStatus(s); });
+        } else {
+          setStatus(s);
+        }
+      };
+    }
+  }
+
+  function settingsRuntimeRender(d) {
+    var el = $("bs-settings-runtime-body");
+    if (!el || !d) return;
+    var jobs = settingsActiveJobsList();
+    var jobChips = jobs.map(function (j) {
+      return settingsDashChip("Job", "<b>" + escapeHtml(j.lab) + "</b>", j.tone);
+    }).join("");
+    var groups = [];
+    try { groups = listDetachGroups(); } catch (eG) { groups = []; }
+    var detachHtml = "";
+    if (!groups.length) {
+      detachHtml = '<p class="bs-hint">No detached tab windows — right-click a main tab → Detach (Extras).</p>';
+    } else {
+      detachHtml = '<ul class="bs-dash-runtime-detach">';
+      groups.forEach(function (g) {
+        var tabId = g.tabIds[0] || "";
+        detachHtml += "<li><b>" + escapeHtml(g.label) + "</b> " +
+          '<span class="bs-hint">(' + escapeHtml(g.tabIds.join(", ")) + ")</span> " +
+          (tabId ? ('<button type="button" class="bs-tiny bs-btn-util" data-bs-detach-focus="' +
+            escapeHtml(tabId) + '">Focus window</button>') : "") +
+          "</li>";
+      });
+      detachHtml += "</ul>";
+    }
+    var panelBits = [];
+    try {
+      if (S.panelSideDock) panelBits.push("Side dock " + Math.round(Number(S.panelSidePct) || 30) + "%");
+      else panelBits.push("Floating panel");
+    } catch (eP) {}
+    try {
+      if (isPanelDetached()) panelBits.push("full panel detached");
+    } catch (ePd) {}
+    try {
+      var pan = $("bs-panel");
+      if (pan && pan.hidden) panelBits.push("panel closed");
+    } catch (eH) {}
+    try { panelBits.push("UI scale " + (S.uiScale || 100) + "%"); } catch (eSc) {}
+    var mainTab = settingsMainTabId() || "—";
+    var peaksN = (hits && hits.length) || 0;
+    var clipsN = (audioClips && audioClips.length) || 0;
+    var logN = (trafficLogRows && trafficLogRows.length) || 0;
+    var lsB = settingsLsToolboxBytes();
+    var extrasOn = 0;
+    try { extrasOn = EXTRAS_DEFS.filter(function (e) { return extraOn(e.id); }).length; } catch (eEx) {}
+    var stAge = settingsStatusJsonAgeSec(d);
+    var pub = isPublicReceiver() ? "Public / shared" : "Private";
+    var vp = (window.innerWidth || 0) + "×" + (window.innerHeight || 0);
+    var dpr = window.devicePixelRatio || 1;
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (eTz) {}
+    var dec = settingsLastDecodeSnapshot();
+    var decHtml = dec
+      ? ('<p class="bs-dash-runtime-decode">' +
+        '<span class="bs-hint">' + escapeHtml(dec.ago) + " · " + escapeHtml(dec.kind) + "</span> " +
+        "<b>" + escapeHtml(dec.title.slice(0, 72)) + "</b>" +
+        (dec.detail ? (" — " + escapeHtml(dec.detail.slice(0, 100))) : "") +
+        (dec.freqHz > 0
+          ? (' <button type="button" class="bs-tiny bs-btn-util" data-sys-tune-hz="' +
+            String(Math.round(dec.freqHz)) + '">' + escapeHtml(fmtMhz(dec.freqHz)) + "</button>")
+          : "") +
+        "</p>")
+      : '<p class="bs-hint">No decoder / meta lines in the Log yet — FT8, PSK, APRS, Identify, … show here.</p>';
+    var sat = settingsSatPulseSnapshot();
+    var satHtml = "";
+    if (!sat.obs) {
+      satHtml = '<p class="bs-hint">Set lat/lon under <b>More → Sats</b> for pass countdowns.</p>';
+    } else {
+      if (sat.selected) {
+        satHtml += '<p class="bs-dash-runtime-sat-sel">' +
+          (sat.following ? '<span class="bs-dash-pill bs-dash-pill-ok">Following</span> ' : "") +
+          escapeHtml(sat.selected) + "</p>";
+      }
+      if (sat.items.length) {
+        satHtml += '<ul class="bs-dash-runtime-sat">';
+        sat.items.forEach(function (it) {
+          satHtml += "<li" + (it.up ? ' class="bs-dash-runtime-sat-up"' : "") + "><b>" +
+            escapeHtml(it.name) + "</b> <span class=\"bs-hint\">" + escapeHtml(it.status) + "</span></li>";
+        });
+        satHtml += "</ul>";
+      } else {
+        satHtml += '<p class="bs-hint">Open <b>More → Passes</b> once to load TLEs — then next AOS/LOS appears here.</p>';
+      }
+    }
+    var pingSt = settingsPulsePing.statusMs;
+    var pingHs = settingsPulsePing.hostMs;
+    el.innerHTML =
+      '<div class="bs-dash-runtime">' +
+      '<h4 class="bs-dash-subhead">What is running</h4>' +
+      '<div class="bs-dash-chip-grid">' + jobChips + "</div>" +
+      '<h4 class="bs-dash-subhead">Last decode</h4>' + decHtml +
+      '<h4 class="bs-dash-subhead">Space (LEO passes)</h4>' + satHtml +
+      '<h4 class="bs-dash-subhead">Detached windows</h4>' + detachHtml +
+      '<h4 class="bs-dash-subhead">Panel & mode</h4>' +
+      '<div class="bs-dash-chip-grid">' +
+      settingsDashChip("Layout", escapeHtml(panelBits.join(" · ") || "—"), "sky") +
+      settingsDashChip("Main tab", "<b>" + escapeHtml(mainTab) + "</b>", "mint") +
+      settingsDashChip("Receiver mode", "<b>" + escapeHtml(pub) + "</b>",
+        extrasOn + " extras on", isPublicReceiver() ? "amber" : "violet") +
+      settingsDashChip("Build", "<b>" + escapeHtml(Plugins.toolbox._version || "—") + "</b>",
+        "toolbox.js", "slate") +
+      "</div>" +
+      '<h4 class="bs-dash-subhead">Data in this browser</h4>' +
+      '<div class="bs-dash-chip-grid">' +
+      settingsDashChip("Peaks", "<b>" + peaksN + "</b>" +
+        (S.maxPeaks ? " / " + S.maxPeaks : ""), "survey list", peaksN > (S.maxPeaks || 0) * 0.9 ? "amber" : "mint") +
+      settingsDashChip("Audio clips", "<b>" + clipsN + "</b>" +
+        (S.maxAudioClips ? " / " + S.maxAudioClips : ""), "IndexedDB", "violet") +
+      settingsDashChip("Log lines", "<b>" + logN + "</b>", "traffic log", "sky") +
+      settingsDashChip("Toolbox storage", "<b>" + escapeHtml(fmtHostBytes(lsB)) + "</b>", "localStorage", "slate") +
+      "</div>" +
+      '<h4 class="bs-dash-subhead">Browser & link</h4>' +
+      '<div class="bs-dash-chip-grid">' +
+      settingsDashChip("Network", escapeHtml(settingsBrowserNetLine()), location.protocol.replace(":", ""), "sky") +
+      settingsDashChip("Viewport", "<b>" + escapeHtml(vp) + "</b>", "DPR " + dpr + (tz ? " · " + escapeHtml(tz) : ""), "mint") +
+      settingsDashChip("status.json", stAge != null ? "<b>" + stAge + "s</b> ago" : "—",
+        d.ws.ok ? "WebSocket live" : "WS " + escapeHtml(d.ws.stateLab), stAge > 30 ? "amber" : "slate") +
+      settingsDashChip("HTTP ping", pingSt != null ? "<b>" + pingSt + " ms</b>" : "…",
+        pingHs != null ? "hoststats " + pingHs + " ms" : "measuring", pingSt > 400 ? "amber" : "mint") +
+      "</div>" +
+      '<div class="bs-row bs-dash-runtime-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="/status.json">status.json</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="/hoststats.json">hoststats.json</button>' +
+      (isOwrxAdmin()
+        ? '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="/clients">/clients</button>'
+        : "") +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-copy-tune">Copy MHz</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-copy-version">Copy build</button>' +
+      "</div>" +
+      '<p class="bs-hint bs-dash-foot">Live pulse refreshes ~2s while System is open — jobs, pop-outs, quotas, and quick links for debugging.</p>' +
+      "</div>";
+    settingsRuntimeWireActions(el);
+  }
+
   function settingsMainTabId() {
     try {
       var on = document.querySelector("#bs-tabs .bs-tab.bs-tab-on");
@@ -11747,6 +12891,430 @@ Plugins.toolbox.init = function () {
     html = settingsDashScrollBox("owrx-procs", procs.length, html) +
       '<p class="bs-hint">From <code>hoststats.json</code> on the receiver (refreshed ~1 min). CPU sampled on main PID(s) only.</p>';
     return html;
+  }
+
+  var SETTINGS_OWRX_PLUGIN_SKIP = { load: 1 };
+
+  var SETTINGS_OWRX_PLUGIN_KNOWN = {
+    toolbox: {
+      title: "OpenWebRX Toolbox",
+      blurb: "Survey, Explore, Log, Settings panel.",
+      use: "Active in this tab — tune, Log, surveys, System dashboard.",
+      tone: "mint"
+    },
+    band_survey: {
+      title: "Band Survey (legacy)",
+      blurb: "Older Band Survey plugin — replaced by Toolbox.",
+      use: "Do not load with toolbox — remove Plugins.load(\"band_survey\") from init.js.",
+      tone: "amber",
+      clash: true
+    },
+    notify: {
+      title: "Notify (OpenWebRX+)",
+      blurb: "On-screen toast notifications.",
+      use: "Optional — Toolbox calls Plugins.notify.show for scan-done / new-peak when After scan actions is on.",
+      tone: "sky"
+    }
+  };
+
+  function settingsOwrxPluginsSkipKey(k) {
+    if (!k || SETTINGS_OWRX_PLUGIN_SKIP[k]) return true;
+    try {
+      if (typeof Plugins[k] === "function") return true;
+    } catch (e) { return true; }
+    return false;
+  }
+
+  function settingsOwrxPluginsResourceUrls() {
+    var out = {};
+    try {
+      performance.getEntriesByType("resource").forEach(function (e) {
+        if (!e || !e.name) return;
+        var m = e.name.match(/\/plugins\/receiver\/([^/?#]+)\//i);
+        if (!m) return;
+        if (!out[m[1]]) out[m[1]] = e.name;
+      });
+    } catch (eP) {}
+    return out;
+  }
+
+  function settingsOwrxPluginsDescribe(id) {
+    var known = SETTINGS_OWRX_PLUGIN_KNOWN[id];
+    var ent = null;
+    try { ent = Plugins[id]; } catch (e) {}
+    var ver = ent && ent._version != null ? String(ent._version) : "";
+    var hasInit = !!(ent && typeof ent.init === "function");
+    var scriptUrl = settingsOwrxPluginsResourceUrls()[id] || "";
+    return {
+      id: id,
+      title: known ? known.title : id,
+      blurb: known ? known.blurb : "Custom or third-party receiver plugin.",
+      version: ver,
+      hasInit: hasInit,
+      scriptUrl: scriptUrl,
+      integration: known ? known.use : "No built-in Toolbox integration for this id.",
+      tone: known ? (known.tone || "slate") : "slate",
+      clash: !!(known && known.clash)
+    };
+  }
+
+  function settingsOwrxPluginsSnapshot() {
+    var loader = !!(window.Plugins && typeof Plugins.load === "function");
+    var ids = [];
+    if (loader) {
+      try {
+        Object.keys(Plugins).forEach(function (k) {
+          if (!settingsOwrxPluginsSkipKey(k)) ids.push(k);
+        });
+      } catch (e) {}
+    }
+    ids.sort(function (a, b) {
+      if (a === "toolbox") return -1;
+      if (b === "toolbox") return 1;
+      return a.localeCompare(b);
+    });
+    var rows = ids.map(settingsOwrxPluginsDescribe);
+    var others = rows.filter(function (r) { return r.id !== "toolbox"; });
+    var clash = false;
+    try { clash = !!(window.Plugins && Plugins.band_survey); } catch (eC) {}
+    return { loader: loader, rows: rows, others: others.length, clash: clash };
+  }
+
+  function settingsOwrxPluginsExportObject() {
+    var s = settingsOwrxPluginsSnapshot();
+    return {
+      loader: s.loader,
+      band_survey_clash: s.clash,
+      plugins: (s.rows || []).map(function (r) {
+        return {
+          id: r.id,
+          version: r.version || null,
+          has_init: r.hasInit,
+          script_url: r.scriptUrl || null,
+          toolbox_integration: r.integration
+        };
+      })
+    };
+  }
+
+  function settingsOwrxPluginsRender() {
+    var el = $("bs-settings-owrxplugins-body");
+    if (!el) return;
+    var snap = settingsOwrxPluginsSnapshot();
+    if (!snap.loader) {
+      el.innerHTML =
+        '<p class="bs-hint">No OpenWebRX+ plugin loader on this page — vanilla OpenWebRX cannot load receiver plugins.</p>';
+      return;
+    }
+    var clashHtml = snap.clash
+      ? ('<p class="bs-dash-tbassets-warn"><b>band_survey</b> and <b>toolbox</b> are both on <code>Plugins</code> — ' +
+        "edit <code>plugins/receiver/init.js</code> so only <code>Plugins.load(\"toolbox\")</code> runs, then hard-refresh.</p>")
+      : "";
+    if (!snap.rows.length) {
+      el.innerHTML = clashHtml +
+        '<p class="bs-hint">No plugin objects on <code>Plugins</code> yet (unexpected if Toolbox is open).</p>';
+      return;
+    }
+    var tableHtml = '<table class="bs-dash-table bs-dash-table-compact"><thead><tr>' +
+      "<th>Plugin id</th><th>Version</th><th>Toolbox</th><th>Integration / notes</th></tr></thead><tbody>";
+    snap.rows.forEach(function (r) {
+      var ver = r.version ? escapeHtml(r.version) : "—";
+      var tbPill = r.id === "toolbox"
+        ? '<span class="bs-dash-pill bs-dash-pill-ok">This plugin</span>'
+        : (SETTINGS_OWRX_PLUGIN_KNOWN[r.id]
+          ? '<span class="bs-dash-pill bs-dash-pill-ok">Known hook</span>'
+          : '<span class="bs-dash-pill">—</span>');
+      var notes = escapeHtml(r.integration);
+      if (r.scriptUrl) {
+        notes += '<br><span class="bs-hint bs-dash-mono">' +
+          escapeHtml(r.scriptUrl.replace(/^https?:\/\/[^/]+/, "")) + "</span>";
+      } else if (r.hasInit) {
+        notes += '<br><span class="bs-hint"><code>init()</code> registered</span>';
+      }
+      if (r.clash) notes = '<span class="bs-dash-tbassets-warn">' + notes + "</span>";
+      tableHtml += "<tr>" +
+        "<td><b>" + escapeHtml(r.id) + "</b>" +
+        (r.title !== r.id ? "<br><span class=\"bs-hint\">" + escapeHtml(r.title) + "</span>" : "") + "</td>" +
+        '<td class="bs-dash-mono">' + ver + "</td>" +
+        "<td>" + tbPill + "</td>" +
+        "<td>" + notes + "</td></tr>";
+    });
+    tableHtml += "</tbody></table>";
+    var foot = snap.others
+      ? ("<b>" + snap.others + "</b> other receiver plugin(s) besides Toolbox — compatibility notes for your <code>init.js</code>.")
+      : "Only <b>toolbox</b> on <code>Plugins</code> — normal for a Toolbox-only install.";
+    el.innerHTML =
+      '<div class="bs-dash-owrxplugins">' + clashHtml +
+      settingsDashScrollBox("owrx-plugins", snap.rows.length, tableHtml) +
+      '<p class="bs-hint bs-dash-foot">' + foot +
+      " From <code>window.Plugins</code> plus script URLs under <code>/plugins/receiver/</code> (Performance API).</p></div>";
+  }
+
+  function settingsToolboxTextStats(text) {
+    text = String(text || "");
+    var lines = text ? text.split(/\n/).length : 0;
+    return {
+      lines: lines,
+      chars: text.length,
+      nonWs: text.replace(/\s+/g, "").length
+    };
+  }
+
+  function settingsToolboxFilePerf(name) {
+    var re = new RegExp("/" + name.replace(".", "\\.") + "(\\?|$)");
+    var best = null;
+    try {
+      performance.getEntriesByType("resource").forEach(function (e) {
+        if (!e || !e.name || !re.test(e.name)) return;
+        if (!best || (e.responseEnd || 0) > (best.responseEnd || 0)) best = e;
+      });
+    } catch (eP) {}
+    if (!best) return null;
+    return {
+      transfer: best.transferSize || 0,
+      encoded: best.encodedBodySize || 0,
+      decoded: best.decodedBodySize || 0,
+      durationMs: Math.round(best.duration || 0),
+      fromCache: !!(best.transferSize === 0 && best.decodedBodySize > 0)
+    };
+  }
+
+  function settingsToolboxAssetsMeta(d) {
+    var meta = toolboxInstallMeta();
+    var jsUrl = "";
+    var cssUrl = "";
+    try { jsUrl = toolboxAssetUrl("toolbox.js"); } catch (eJ) {}
+    try { cssUrl = toolboxAssetUrl("toolbox.css"); } catch (eC) {}
+    var jsAbs = "";
+    var cssAbs = "";
+    try { jsAbs = toolboxAbsoluteAssetUrl("toolbox.js"); } catch (eJ2) {}
+    try { cssAbs = toolboxAbsoluteAssetUrl("toolbox.css"); } catch (eC2) {}
+    var installLab = meta.remote
+      ? (meta.pinned ? "CDN (pinned tag/commit)" : "CDN (floating @main)")
+      : "Local htdocs on this host";
+    var hardPublic = false;
+    try { hardPublic = !ownerOverrideAllowed(); } catch (eH) {}
+    var srvVer = "";
+    try {
+      if (d && d.remote && d.remote.toolbox_version) srvVer = String(d.remote.toolbox_version);
+    } catch (eSv) {}
+    return {
+      build: Plugins.toolbox._version || "—",
+      jsUrl: jsUrl,
+      cssUrl: cssUrl,
+      jsAbs: jsAbs,
+      cssAbs: cssAbs,
+      install: installLab,
+      remote: !!meta.remote,
+      pinned: !!meta.pinned,
+      scriptTag: meta.script || Plugins.toolbox._script_loaded || "",
+      hardPublic: hardPublic,
+      serverVersion: srvVer,
+      diskKb: d && d.tbDisk != null ? d.tbDisk : null,
+      xferTotal: d && d.tbXfer != null ? d.tbXfer : toolboxTransferBytes()
+    };
+  }
+
+  function settingsToolboxAssetsExportObject(d) {
+    return {
+      meta: settingsToolboxAssetsMeta(d),
+      scanned_at: settingsToolboxAssetsProbe.at
+        ? new Date(settingsToolboxAssetsProbe.at).toISOString()
+        : null,
+      js: settingsToolboxAssetsProbe.js,
+      css: settingsToolboxAssetsProbe.css,
+      perf_js: settingsToolboxFilePerf("toolbox.js"),
+      perf_css: settingsToolboxFilePerf("toolbox.css")
+    };
+  }
+
+  function settingsToolboxAssetsEnsureProbe(force) {
+    if (settingsToolboxAssetsProbe.busy) return;
+    if (!force && settingsToolboxAssetsProbe.at && (Date.now() - settingsToolboxAssetsProbe.at) < 300000) return;
+    settingsToolboxAssetsProbe.busy = true;
+    settingsToolboxAssetsProbe.err = "";
+    var names = ["toolbox.js", "toolbox.css"];
+    var pending = names.length;
+    function doneOne(name, ok, stats, http) {
+      var slot = name === "toolbox.js" ? "js" : "css";
+      if (ok && stats) {
+        settingsToolboxAssetsProbe[slot] = {
+          name: name,
+          lines: stats.lines,
+          chars: stats.chars,
+          nonWs: stats.nonWs,
+          http: http || {}
+        };
+      }
+      pending--;
+      if (pending <= 0) {
+        settingsToolboxAssetsProbe.busy = false;
+        settingsToolboxAssetsProbe.at = Date.now();
+        try {
+          if ($("bs-settings-tbassets-body") && settingsHostStatsLastD) {
+            settingsToolboxAssetsRender(settingsHostStatsLastD);
+          }
+        } catch (eRe) {}
+      }
+    }
+    names.forEach(function (name) {
+      var url = toolboxAbsoluteAssetUrl(name);
+      fetch(url, { credentials: "same-origin", cache: "force-cache" })
+        .then(function (res) {
+          var http = {
+            ok: res.ok,
+            status: res.status,
+            len: res.headers.get("content-length"),
+            lm: res.headers.get("last-modified"),
+            cc: res.headers.get("cache-control")
+          };
+          if (!res.ok) throw new Error("http");
+          return res.text().then(function (text) {
+            return { text: text, http: http };
+          });
+        })
+        .then(function (pack) {
+          var st = settingsToolboxTextStats(pack.text);
+          doneOne(name, true, st, pack.http);
+        })
+        .catch(function () {
+          settingsToolboxAssetsProbe.err = "Could not read " + name + " from the server.";
+          doneOne(name, false, null, null);
+        });
+    });
+  }
+
+  function settingsToolboxAssetsFileCard(title, fileName, meta, probeSlot, perf) {
+    var prob = probeSlot || null;
+    var lines = prob ? prob.lines : null;
+    var chars = prob ? prob.chars : null;
+    var nonWs = prob ? prob.nonWs : null;
+    var url = fileName === "toolbox.js" ? meta.jsUrl : meta.cssUrl;
+    var abs = fileName === "toolbox.js" ? meta.jsAbs : meta.cssAbs;
+    var tone = fileName === "toolbox.js" ? "violet" : "sky";
+    var sub = prob
+      ? (lines + " lines · " + fmtHostBytes(chars) + " chars · " + fmtHostBytes(nonWs) + " non-whitespace")
+      : (settingsToolboxAssetsProbe.busy ? "Scanning source on server…" : "Click Re-scan to count lines and characters.");
+    var xfer = perf && perf.transfer ? fmtHostBytes(perf.transfer) + (perf.fromCache ? " (cache)" : "") : "—";
+    var enc = perf && perf.encoded ? fmtHostBytes(perf.encoded) : "—";
+    var dec = perf && perf.decoded ? fmtHostBytes(perf.decoded) : "—";
+    var httpNote = "";
+    if (prob && prob.http) {
+      if (prob.http.lm) httpNote = "Modified " + prob.http.lm;
+      else if (prob.http.len) httpNote = "Content-Length " + prob.http.len;
+    }
+    return (
+      '<article class="bs-dash-tb-file bs-dash-tone-' + tone + '">' +
+      "<h5>" + escapeHtml(title) + "</h5>" +
+      '<p class="bs-dash-tb-file-sub">' + escapeHtml(sub) + "</p>" +
+      '<div class="bs-dash-stat-grid bs-dash-stat-grid-tight">' +
+      settingsHostDashStat("Lines", lines != null ? "<b>" + lines.toLocaleString() + "</b>" : "…", "physical newlines", null, tone) +
+      settingsHostDashStat("Transfer", "<b>" + escapeHtml(xfer) + "</b>", "this page load", null, "slate") +
+      settingsHostDashStat("Encoded", "<b>" + escapeHtml(enc) + "</b>", "gzip/br on wire", null, "mint") +
+      settingsHostDashStat("Decoded", "<b>" + escapeHtml(dec) + "</b>", "uncompressed body", null, "amber") +
+      "</div>" +
+      '<code class="bs-dash-code bs-dash-tb-file-url" title="' + escapeHtml(abs) + '">' +
+      escapeHtml(url || fileName) + "</code>" +
+      (httpNote ? ('<p class="bs-hint">' + escapeHtml(httpNote) + "</p>") : "") +
+      '<div class="bs-row bs-dash-tb-file-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="' + escapeHtml(url || fileName) + '">Open</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-tbassets-copy="' + escapeHtml(abs || url || fileName) + '">Copy URL</button>' +
+      "</div></article>"
+    );
+  }
+
+  function settingsToolboxAssetsWire(root) {
+    if (!root || root._bsTbAssetsWired) return;
+    root._bsTbAssetsWired = true;
+    root.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var copy = t.closest("[data-tbassets-copy]");
+      if (copy && root.contains(copy)) {
+        var u = copy.getAttribute("data-tbassets-copy") || "";
+        function ok() { setStatus("Copied " + u.replace(/^https?:\/\/[^/]+/, "")); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(u).then(ok).catch(function () { prompt("Copy URL:", u); });
+        } else prompt("Copy URL:", u);
+        return;
+      }
+      if (t.closest("#bs-tbassets-rescan")) {
+        settingsToolboxAssetsEnsureProbe(true);
+        try { settingsToolboxAssetsRender(settingsHostStatsLastD); } catch (eR) {}
+        setStatus("Re-scanning toolbox.js and toolbox.css on the server…");
+      }
+      if (t.closest("#bs-tbassets-copy-build")) {
+        var v = Plugins.toolbox._version || "";
+        function okB() { setStatus("Copied build " + v); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(v).then(okB).catch(okB);
+        } else okB();
+      }
+    });
+  }
+
+  function settingsToolboxAssetsRender(d) {
+    var el = $("bs-settings-tbassets-body");
+    if (!el || !d) return;
+    settingsToolboxAssetsEnsureProbe(false);
+    var meta = settingsToolboxAssetsMeta(d);
+    var jsPerf = settingsToolboxFilePerf("toolbox.js");
+    var cssPerf = settingsToolboxFilePerf("toolbox.css");
+    var totalLines = 0;
+    var totalChars = 0;
+    if (settingsToolboxAssetsProbe.js) {
+      totalLines += settingsToolboxAssetsProbe.js.lines;
+      totalChars += settingsToolboxAssetsProbe.js.chars;
+    }
+    if (settingsToolboxAssetsProbe.css) {
+      totalLines += settingsToolboxAssetsProbe.css.lines;
+      totalChars += settingsToolboxAssetsProbe.css.chars;
+    }
+    var combined = totalLines > 0
+      ? totalLines.toLocaleString() + " lines · " + fmtHostBytes(totalChars) + " characters combined"
+      : "Line counts appear after the first server scan (cached ~5 min).";
+    var pubPol = isHardPublicInstall() ? "Hard public bake (TOOLBOX_ALLOW_OWNER_OVERRIDE = false)" :
+      (ownerOverrideAllowed() ? "Owner override allowed" : "—");
+    var scriptShort = meta.scriptTag ? meta.scriptTag.replace(/^https?:\/\/[^/]+/, "") : "—";
+    toolboxDashSetHtml(el,
+      '<div class="bs-dash-tbassets">' +
+      '<div class="bs-dash-chip-grid">' +
+      settingsDashChip("Build", "<b>" + escapeHtml(meta.build) + "</b>", meta.install, "mint") +
+      (meta.serverVersion
+        ? settingsDashChip("Host reports", "<b>" + escapeHtml(meta.serverVersion) + "</b>", "hoststats / status", "sky")
+        : "") +
+      settingsDashChip("On disk (host)", meta.diskKb != null ? "<b>" + meta.diskKb + " KB</b>" : "—",
+        "both files (approx)", "slate") +
+      settingsDashChip("Downloaded", "<b>" + escapeHtml(fmtHostBytes(meta.xferTotal)) + "</b>",
+        "JS + CSS this session", "violet") +
+      settingsDashChip("Install", "<b>" + escapeHtml(meta.remote ? "CDN" : "Local") + "</b>",
+        escapeHtml(pubPol), meta.remote ? "amber" : "mint") +
+      "</div>" +
+      '<p class="bs-hint bs-dash-tbassets-lead">' + escapeHtml(combined) +
+      " — single-file plugin (no bundler). Decoded size is what the browser parses; transfer is what came over the network.</p>" +
+      (settingsToolboxAssetsProbe.err
+        ? ('<p class="bs-hint bs-dash-tbassets-warn">' + escapeHtml(settingsToolboxAssetsProbe.err) + "</p>")
+        : "") +
+      '<div class="bs-dash-tbassets-files">' +
+      settingsToolboxAssetsFileCard("toolbox.js", "toolbox.js", meta, settingsToolboxAssetsProbe.js, jsPerf) +
+      settingsToolboxAssetsFileCard("toolbox.css", "toolbox.css", meta, settingsToolboxAssetsProbe.css, cssPerf) +
+      "</div>" +
+      '<details class="bs-dash-tbassets-detail">' +
+      "<summary>Loader &amp; paths</summary>" +
+      '<p class="bs-hint">Script tag that loaded the plugin (when known):</p>' +
+      '<code class="bs-dash-code">' + escapeHtml(scriptShort) + "</code>" +
+      '<p class="bs-hint">Typical server path: <code>plugins/receiver/toolbox/</code> under OpenWebRX htdocs. Watchdog mirror: <code>sdr-watchdog/owrx-plugins/receiver/toolbox/</code>.</p>' +
+      "</details>" +
+      '<div class="bs-row bs-dash-runtime-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-tbassets-rescan">Re-scan files</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-tbassets-copy-build">Copy build</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="' + escapeHtml(meta.jsUrl || "toolbox.js") + '">toolbox.js</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" data-sys-open="' + escapeHtml(meta.cssUrl || "toolbox.css") + '">toolbox.css</button>' +
+      "</div>" +
+      '<p class="bs-hint bs-dash-foot">Counts are from a same-origin fetch of the live files (not the in-memory string). Re-scan after deploy. Nerd vault export also includes a <code>toolbox_files</code> block.</p>' +
+      "</div>");
+    settingsToolboxAssetsWire(el);
+    try { settingsRuntimeWireActions(el); } catch (eWire) {}
   }
 
   function settingsTbStatsRender(d) {
@@ -12469,6 +14037,111 @@ Plugins.toolbox.init = function () {
     return o;
   }
 
+  function settingsNerdFftSnapshot() {
+    var out = {};
+    try {
+      var data = wf();
+      if (!data || !data.length) return out;
+      var n = data.length;
+      var center = Number(window.center_freq) || 0;
+      var bw = Number(window.bandwidth) || 0;
+      out.bins = n;
+      out.center_hz = center;
+      out.bw_hz = bw;
+      out.hz_per_bin = bw > 0 ? bw / n : 0;
+      var min = Infinity;
+      var max = -Infinity;
+      var sum = 0;
+      var i;
+      for (i = 0; i < n; i++) {
+        var v = data[i];
+        if (v < min) min = v;
+        if (v > max) max = v;
+        sum += v;
+      }
+      out.min_db = min;
+      out.max_db = max;
+      out.mean_db = sum / n;
+      var tuneHz = 0;
+      try { tuneHz = Number(currentTuneHz()) || 0; } catch (eT) {}
+      if (tuneHz > 0 && bw > 0 && center) {
+        out.tune_hz = tuneHz;
+        out.tune_bin = Math.round((tuneHz - (center - bw / 2)) / out.hz_per_bin);
+        if (out.tune_bin >= 0 && out.tune_bin < n) out.tune_bin_db = data[out.tune_bin];
+      }
+      var p90 = 0;
+      try {
+        var sorted = Array.prototype.slice.call(data).sort(function (a, b) { return a - b; });
+        p90 = sorted[Math.floor(n * 0.9)];
+      } catch (eS) {}
+      out.p90_db = p90;
+    } catch (e) {}
+    try {
+      if (window.Waterfall) {
+        if (Waterfall.config) {
+          out.wf_min_db = Waterfall.config.min_db;
+          out.wf_max_db = Waterfall.config.max_db;
+        }
+        if (typeof Waterfall.continuousRange === "boolean") out.wf_continuous = Waterfall.continuousRange;
+      }
+    } catch (eW) {}
+    return out;
+  }
+
+  function settingsNerdHooksRuntime() {
+    var o = {
+      radio_job: radioJob || null,
+      survey_running: !!surveyRunning,
+      scan_running: !!running,
+      listen_scan: !!listenScanRunning,
+      listen_paused: !!listenPaused,
+      detect_job: detectRadioJob() || null
+    };
+    try { o.sa_live = !!(sa && sa.running); } catch (eSa) {}
+    try { o.id_live_timer = !!(idState && idState.liveTimer); } catch (eId) {}
+    try { o.recording = !!recordingOn; } catch (eRec) {}
+    try { o.clip_preview = !!(clipPreview && clipPreview.running); } catch (eCp) {}
+    try { o.detached_tabs = countDetachedTabs(); } catch (eDt) {}
+    try { o.detach_groups = listDetachGroups().length; } catch (eDg) {}
+    o.wf_levels_hooked = !!window._bs_wf_levels_hooked;
+    o.tune_hooked = !!window._bs_tune_hooked;
+    o.panel_user_closed = !!window._bs_user_closed_panel;
+    o.mute_on_tab_hide = S.muteOnTabHide !== false;
+    o.stop_clip_on_tab = S.stopClipOnTabLeave !== false;
+    o.public_receiver = isPublicReceiver();
+    o.http_ping_status_ms = settingsPulsePing.statusMs;
+    o.http_ping_hoststats_ms = settingsPulsePing.hostMs;
+    return o;
+  }
+
+  function settingsNerdLsKeysTop(limit) {
+    limit = limit || 18;
+    var rows = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k) continue;
+        if (k.indexOf("owrx_") < 0 && k.indexOf("band_survey") < 0) continue;
+        var v = localStorage.getItem(k) || "";
+        rows.push({ key: k, bytes: (k.length + v.length) * 2 });
+      }
+    } catch (e) {}
+    rows.sort(function (a, b) { return b.bytes - a.bytes; });
+    return rows.slice(0, limit);
+  }
+
+  function settingsNerdSessionStorageKeys() {
+    var keys = [];
+    try {
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (!k || k.indexOf("owrx") < 0) continue;
+        keys.push(k);
+      }
+    } catch (e) {}
+    return keys;
+  }
+
   function settingsNerdPerfInfo(d) {
     var o = {
       toolbox_version: Plugins.toolbox._version,
@@ -12482,6 +14155,14 @@ Plugins.toolbox.init = function () {
         o.js_heap_limit = performance.memory.jsHeapSizeLimit;
       }
     } catch (eM) {}
+    try {
+      var nav = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+      if (nav) {
+        o.nav_dom_ms = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
+        o.nav_load_ms = Math.round(nav.loadEventEnd - nav.startTime);
+        o.nav_ttfb_ms = Math.round(nav.responseStart - nav.requestStart);
+      }
+    } catch (eNav) {}
     o.toolbox_xfer = d && d.tbXfer ? d.tbXfer : toolboxTransferBytes();
     var res = [];
     try {
@@ -12548,15 +14229,22 @@ Plugins.toolbox.init = function () {
       status_slim: settingsNerdStatusSlim(d.status),
       hoststats_slim: settingsNerdHostSlim(d.remoteFull),
       owrx_globals: settingsNerdOwrxGlobals(),
+      fft_snapshot: settingsNerdFftSnapshot(),
       demod: settingsNerdDemodDeep(),
       websocket: settingsNerdWsDeep(),
       network: settingsNerdNetInfo(),
       perf: settingsNerdPerfInfo(d),
+      hooks_runtime: settingsNerdHooksRuntime(),
+      local_storage_top: settingsNerdLsKeysTop(),
+      session_storage_keys: settingsNerdSessionStorageKeys(),
       log: settingsNerdLogStats(),
       toolbox_buffers: settingsNerdToolboxBuffers(),
       meta: settingsNerdMetaPackets(),
       decoder_panels: settingsNerdPanelDumps(),
       footer_bars: settingsOwrxBarSnapshot(),
+      runtime_pulse: settingsRuntimeExportObject(d),
+      toolbox_files: settingsToolboxAssetsExportObject(d),
+      owrx_receiver_plugins: settingsOwrxPluginsExportObject(),
       tune_hz: (function () {
         try { return Math.round(Number(currentTuneHz()) || 0); } catch (e) { return 0; }
       })(),
@@ -12612,6 +14300,7 @@ Plugins.toolbox.init = function () {
       listeners: settingsListenersMerged(d),
       owrx_clients_admin: d.owrxClients || [],
       tune_trail: settingsTuneHist.slice(),
+      runtime: settingsRuntimeExportObject(d),
       session_started_at: S.sessionStartedAt || null,
       traffic_log: logRows,
       decoder_archive: decoderArchiveRows.slice(-1200).map(function (r) {
@@ -12698,6 +14387,10 @@ Plugins.toolbox.init = function () {
       '<span class="bs-hint">Export data = listeners + log + QSO + nerd snapshot. Refreshes ~2s while System is open.</span>' +
       "</div>" +
       '<div class="bs-dash-nerd-grid">' +
+      '<section class="bs-dash-nerd-section"><h5>FFT · near VFO</h5>' +
+      settingsNerdKvTable(snap.fft_snapshot || {}, "nerd-fft") + "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>Toolbox hooks · jobs</h5>' +
+      settingsNerdKvTable(snap.hooks_runtime || {}, "nerd-hooks") + "</section>" +
       '<section class="bs-dash-nerd-section"><h5>RF · waterfall globals</h5>' +
       settingsNerdKvTable(snap.owrx_globals, "nerd-owrx-globals") + "</section>" +
       '<section class="bs-dash-nerd-section"><h5>Demodulator / digi</h5>' +
@@ -12711,7 +14404,10 @@ Plugins.toolbox.init = function () {
         js_heap_used: snap.perf.js_heap_used,
         js_heap_total: snap.perf.js_heap_total,
         js_heap_limit: snap.perf.js_heap_limit,
-        toolbox_xfer: snap.perf.toolbox_xfer
+        toolbox_xfer: snap.perf.toolbox_xfer,
+        nav_ttfb_ms: snap.perf.nav_ttfb_ms,
+        nav_dom_ms: snap.perf.nav_dom_ms,
+        nav_load_ms: snap.perf.nav_load_ms
       }, "nerd-perf-kv") +
       (snap.perf.resources && snap.perf.resources.length
         ? settingsNerdPre(JSON.stringify(snap.perf.resources, null, 2), "nerd-perf-res") : "") +
@@ -12720,6 +14416,20 @@ Plugins.toolbox.init = function () {
       settingsNerdPre(JSON.stringify(snap.log, null, 2), "nerd-log") + "</section>" +
       '<section class="bs-dash-nerd-section"><h5>Toolbox buffers</h5>' +
       settingsNerdKvTable(snap.toolbox_buffers, "nerd-buffers") + "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>localStorage · largest owrx keys</h5>' +
+      (snap.local_storage_top && snap.local_storage_top.length
+        ? settingsNerdPre(JSON.stringify(snap.local_storage_top, null, 2), "nerd-ls-top")
+        : '<p class="bs-hint">No owrx_* keys in localStorage.</p>') +
+      "</section>" +
+      '<section class="bs-dash-nerd-section"><h5>sessionStorage keys</h5>' +
+      settingsNerdPre(JSON.stringify(snap.session_storage_keys || [], null, 2), "nerd-ss-keys") +
+      "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>OpenWebRX footer bars</h5>' +
+      settingsNerdPre(JSON.stringify(snap.footer_bars || [], null, 2), "nerd-footer-bars") +
+      "</section>" +
+      '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>Live pulse snapshot</h5>' +
+      settingsNerdPre(JSON.stringify(snap.runtime_pulse || {}, null, 2), "nerd-runtime-pulse") +
+      "</section>" +
       '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>status.json (slim)</h5>' +
       settingsNerdPre(JSON.stringify(snap.status_slim, null, 2), "nerd-status") + "</section>" +
       '<section class="bs-dash-nerd-section bs-dash-nerd-wide"><h5>hoststats.json (slim)</h5>' +
@@ -12838,12 +14548,16 @@ Plugins.toolbox.init = function () {
 
   function settingsHostStatsRender() {
     try { settingsTuneHistSample(); } catch (eTu) {}
+    try { settingsPulsePingMaybe(); } catch (ePing) {}
     var scrollSaved = settingsSystemScrollCapture();
     var d = settingsHostStatsShared();
     settingsHostStatsLastD = d;
     try { settingsSystemHeroRender(d); } catch (eH) {}
     try { settingsListenersRender(d); } catch (eL) {}
     try { settingsSessionRender(d); } catch (eS) {}
+    try { settingsRuntimeRender(d); } catch (eRt) {}
+    try { settingsToolboxAssetsRender(d); } catch (eTbA) {}
+    try { settingsOwrxPluginsRender(); } catch (ePl) {}
     try { settingsRadioRender(d); } catch (eRad) {}
     try { settingsOwrxInternalsRender(d); } catch (eOwrx) {}
     try { settingsDecoderReportRender(d); } catch (eDec) {}
@@ -13441,7 +15155,7 @@ Plugins.toolbox.init = function () {
   }
 
   function sigWatchSyncArmButtons() {
-    var row = document.querySelector("#bs-tab-watch .bs-watch-arm-row");
+    var row = tabPaneQuery("watch", "#bs-tab-watch .bs-watch-arm-row");
     if (!row) return;
     Array.prototype.forEach.call(row.querySelectorAll("[data-watch-arm]"), function (btn) {
       var gid = btn.getAttribute("data-watch-arm");
@@ -14495,7 +16209,7 @@ Plugins.toolbox.init = function () {
   }
   function occHeatMatrix(daysBack) {
     ensureOccHeatLoaded();
-    daysBack = Math.max(1, Math.min(30, Number(daysBack) || 7));
+    daysBack = Math.max(1, Math.min(30, Number(daysBack) || OCC_DAYS_DEFAULT));
     var cut = Date.now() - daysBack * 86400000;
     var bands = {};
     var cells = {};
@@ -14520,7 +16234,7 @@ Plugins.toolbox.init = function () {
       return;
     }
     host.hidden = false;
-    var days = Number(($("bs-occ-days") && $("bs-occ-days").value) || S.occDays || 7);
+    var days = Number(($("bs-occ-days") && $("bs-occ-days").value) || S.occDays || OCC_DAYS_DEFAULT);
     S.occDays = days;
     var mat = occHeatMatrix(days);
     if (!mat.bands.length) {
@@ -14649,7 +16363,7 @@ Plugins.toolbox.init = function () {
       ctx.font = "bold 13px sans-serif";
       ctx.fillText("Occupancy (last surveys) — darker = busier hour", 24, y);
       y += 12;
-      var mat = occHeatMatrix(Number(S.occDays) || 7);
+      var mat = occHeatMatrix(Number(S.occDays) || OCC_DAYS_DEFAULT);
       var cellW = Math.floor((w - 100) / 24);
       var cellH = 12;
       mat.bands.slice(0, 8).forEach(function (b, bi) {
@@ -14785,6 +16499,8 @@ Plugins.toolbox.init = function () {
         try { job = detectRadioJob(); } catch (eJob) { job = null; }
         if (job === "analyzer") {
           try { saStop(); } catch (eSa) {}
+        } else if (job === "identify") {
+          try { idStopLive({ clearWanted: true }); } catch (eIdK) {}
         } else if (job === "nest") {
           try { exploreToggleNest(); } catch (eNest) {}
         } else if (running || listenScanRunning || surveyRunning) {
@@ -15064,12 +16780,24 @@ Plugins.toolbox.init = function () {
     if (d.jumpFmDetect !== "channel" && d.jumpFmDetect !== "blob") d.jumpFmDetect = "both";
     if (typeof d.jumpCenterScreen !== "boolean") d.jumpCenterScreen = false;
     if (typeof d.hideToolbar !== "boolean") d.hideToolbar = false;
-    if (typeof d.findInToolbox !== "boolean") d.findInToolbox = false;
-    if (typeof d.showMinimalButton !== "boolean") d.showMinimalButton = false;
+    if (typeof d.hideDetachHttpNote !== "boolean") d.hideDetachHttpNote = false;
+    if (typeof d.muteScanBeep !== "boolean") d.muteScanBeep = false;
+    if (typeof d.findInToolbox !== "boolean") d.findInToolbox = true;
+    if (typeof d.showMinimalButton !== "boolean") d.showMinimalButton = true;
+    if (!d._headerFindMinimalB280) {
+      d.findInToolbox = true;
+      d.showMinimalButton = true;
+      if (!d.headerChrome || typeof d.headerChrome !== "object") d.headerChrome = defaultPublicHeaderChrome();
+      d.headerChrome.find = true;
+      d.headerChrome.minimal = true;
+      d._headerFindMinimalB280 = true;
+    }
     d.panelOpacity = sanitizePanelOpacity(d.panelOpacity);
     d.panelShade = sanitizePanelShade(d.panelShade);
     if (typeof d.hideStockReceiver !== "boolean") d.hideStockReceiver = false;
     if (typeof d.muteOnTabHide !== "boolean") d.muteOnTabHide = true;
+    if (typeof d.stopClipOnTabLeave !== "boolean") d.stopClipOnTabLeave = true;
+    if (typeof d.stopClipOnPanelHide !== "boolean") d.stopClipOnPanelHide = true;
     if (typeof d.btnColoursOff !== "boolean") d.btnColoursOff = false;
     if (typeof d.btnShadeHoverHint !== "boolean") d.btnShadeHoverHint = true;
     if (typeof d.hoverHelp !== "boolean") d.hoverHelp = true;
@@ -15159,10 +16887,16 @@ Plugins.toolbox.init = function () {
     if (typeof d.digiForceOn !== "boolean") d.digiForceOn = false;
     if (typeof d.dayNightBeforeSched !== "boolean") d.dayNightBeforeSched = false;
     if (d.peaksView !== "heatmap") d.peaksView = "list";
-    d.occDays = Math.max(1, Math.min(30, Number(d.occDays) || 7));
+    d.occDays = Math.max(1, Math.min(30, Number(d.occDays) || OCC_DAYS_DEFAULT));
     if (typeof d.showNewOnly !== "boolean") d.showNewOnly = false;
     if (typeof d.showDiffOnly !== "boolean") d.showDiffOnly = false;
     if (typeof d.hideKnownPeaks !== "boolean") d.hideKnownPeaks = false;
+    if (typeof d.recordBusy !== "boolean") d.recordBusy = true;
+    /* B253: Record busy on by default (Bookmarks → Options); re-enable once for older saves. */
+    if (!d._recordBusyDefaultOnB253) {
+      d.recordBusy = true;
+      d._recordBusyDefaultOnB253 = true;
+    }
     if (!d.bandMeta || typeof d.bandMeta !== "object" || Array.isArray(d.bandMeta)) d.bandMeta = {};
     if (!Array.isArray(d.bandOrder)) d.bandOrder = [];
     if (typeof d.exploreSdrShowOnly !== "string") d.exploreSdrShowOnly = "";
@@ -15192,6 +16926,14 @@ Plugins.toolbox.init = function () {
     if (!d.moreSubsVisVer) {
       d.hiddenMoreSubs = buildDefaultHiddenMoreSubs();
       d.moreSubsVisVer = MORE_SUBS_VIS_VER;
+    }
+    if (d.moreSubsVisVer < 4) {
+      d.moreSubsVisVer = 4;
+      d.hiddenMoreSubs = (d.hiddenMoreSubs || []).filter(function (id) {
+        var g = MORE_PANE_GROUP[id];
+        return g !== "read" && g !== "spots" && g !== "space" && g !== "tune" &&
+          g !== "sky" && g !== "here" && g !== "sked";
+      });
     }
     if (!Array.isArray(d.hiddenExtraSubs)) d.hiddenExtraSubs = [];
     d.hiddenExtraSubs = d.hiddenExtraSubs.filter(function (k) {
@@ -15261,9 +17003,21 @@ Plugins.toolbox.init = function () {
   }
 
   function saveSettings() {
+    var policyDraft = null;
+    if (isHardPublicInstall() && canEditPublicPolicy() && S.publicPolicy) {
+      policyDraft = S.publicPolicy;
+    }
     try { scrubPublicSettingsBeforeSave(); } catch (eScrub) {}
+    if (policyDraft) S.publicPolicy = policyDraft;
     try {
       var payload = JSON.stringify(S);
+      if (isHardPublicInstall() && policyDraft) {
+        try {
+          var parsed = JSON.parse(payload);
+          parsed.publicPolicy = null;
+          payload = JSON.stringify(parsed);
+        } catch (ePolOmit) {}
+      }
       window.localStorage.setItem(LS, payload);
       /* Verify write — silent QuotaExceeded / private-mode failures left prefs looking “stuck”. */
       var round = window.localStorage.getItem(LS);
@@ -15720,8 +17474,12 @@ Plugins.toolbox.init = function () {
   }
 
   function closeBtnShadeMenu() {
-    var menu = $("bs-shade-menu");
-    if (menu) menu.hidden = true;
+    eachPanelLikeDocument(function (d) {
+      try {
+        var menu = d.getElementById("bs-shade-menu");
+        if (menu) menu.hidden = true;
+      } catch (e) {}
+    });
   }
 
   function openBtnShadeMenu(ev, btn) {
@@ -15732,6 +17490,9 @@ Plugins.toolbox.init = function () {
     }
     var menu = $("bs-shade-menu");
     if (!menu || !btn) return;
+    try {
+      mountToolboxOverlay(menu, overlayTabFromAnchor(btn, currentPanelTab() || ""));
+    } catch (eOv) {}
     var key = btnShadeKey(btn);
     if (!key) return;
     var map = ensureBtnShadesObj();
@@ -15755,16 +17516,7 @@ Plugins.toolbox.init = function () {
     menu.setAttribute("data-btn-default", def);
     menu.removeAttribute("data-role");
     menu.hidden = false;
-    var x = ev.clientX;
-    var y = ev.clientY;
-    menu.style.left = "0px";
-    menu.style.top = "0px";
-    var w = menu.offsetWidth || 220;
-    var h = menu.offsetHeight || 160;
-    var left = Math.min(x, window.innerWidth - w - 8);
-    var top = Math.min(y, window.innerHeight - h - 8);
-    menu.style.left = Math.max(8, left) + "px";
-    menu.style.top = Math.max(8, top) + "px";
+    placeFixedAtClient(menu, ev);
   }
 
   function bindButtonPressFlash(root) {
@@ -16252,17 +18004,20 @@ Plugins.toolbox.init = function () {
 
   function setSurveyRunning(on) {
     surveyRunning = !!on;
-    var label = surveyRunning ? "Scanning bands" : "Scan bands";
-    var title = surveyRunning
-      ? "Toolbox is running — click Stop to end."
-      : "Walk ticked bands and add to Seen counts.";
-    var btn = $("bs-start");
-    if (btn) {
-      btn.textContent = label;
-      btn.title = title;
-      btn.disabled = surveyRunning;
-      btn.classList.toggle("bs-on", surveyRunning);
-      btn.classList.toggle("bs-running", surveyRunning);
+    /* Range scan also toggles surveyRunning — do not relabel the Bands scan button. */
+    if (radioJob === "bands") {
+      var label = surveyRunning ? "Scanning bands" : "Scan bands";
+      var title = surveyRunning
+        ? "Toolbox is running — click Stop to end."
+        : "Walk ticked bands and add to Seen counts.";
+      var btn = $("bs-start");
+      if (btn) {
+        btn.textContent = label;
+        btn.title = title;
+        btn.disabled = surveyRunning;
+        btn.classList.toggle("bs-on", surveyRunning);
+        btn.classList.toggle("bs-running", surveyRunning);
+      }
     }
     applyToolbarVisibility();
   }
@@ -16293,6 +18048,42 @@ Plugins.toolbox.init = function () {
 
   function resumeListenScan() {
     listenCmd = "continue";
+  }
+
+  function onListenScanClick() {
+    if (listenScanRunning && !listenPaused) return;
+    if (listenPaused) {
+      resumeListenScan();
+      if (listenScanRunning) setListenPaused(false);
+      return;
+    }
+    startListenScan();
+  }
+
+  /** Scan strip bookmark row — re-bind after #bs-toolbar moves to a tab pop-out. */
+  function bindBookmarkScanToolbarControls() {
+    var listenBtn = $("bs-listen-top");
+    if (listenBtn) listenBtn.onclick = onListenScanClick;
+    var stopBm = $("bs-stop-bm");
+    if (stopBm) stopBm.onclick = stopSurvey;
+    var holdBtn = $("bs-hold");
+    if (holdBtn) {
+      holdBtn.onclick = function () {
+        var wasHold = listenCmd === "hold";
+        listenCmd = wasHold ? "" : "hold";
+        holdBtn.classList.toggle("bs-on", listenCmd === "hold");
+        if (wasHold && listenPaused) resumeListenScan();
+        if (listenCmd === "hold") armHoldReset();
+        else clearHoldResetTimer();
+        setStatus(listenCmd === "hold" ? "Holding this frequency." : "Hold released.");
+      };
+    }
+    var skipBtn = $("bs-skip");
+    if (skipBtn) skipBtn.onclick = function () { listenCmd = "skip"; };
+    var lockBtn = $("bs-lockout");
+    if (lockBtn) lockBtn.onclick = function () { listenCmd = "lock"; };
+    var alwaysBtn = $("bs-alwaysskip");
+    if (alwaysBtn) alwaysBtn.onclick = function () { alwaysSkipAndContinue(); };
   }
 
   function sameListenFreq(freq) {
@@ -16462,7 +18253,7 @@ Plugins.toolbox.init = function () {
             "Guests can use Help and the other tabs; Toolbox Settings stays locked so visitors cannot change shared options.";
       }
     }
-    if (stack) stack.hidden = !admin;
+    if (stack) stack.hidden = owrxAdmin === false;
     if (body) {
       body.classList.toggle("bs-settings-locked", !admin);
       Array.prototype.forEach.call(body.querySelectorAll(".bs-settings-admin-only"), function (el) {
@@ -16487,7 +18278,7 @@ Plugins.toolbox.init = function () {
         pubWrap.classList.toggle("bs-public-policy-locked", !isOwrxAdmin());
       }
       if (typeof setSettingsSubTab === "function") {
-        setSettingsSubTab(owrxAdmin === false ? "general" : null, { skipSave: true });
+        setSettingsSubTab(owrxAdmin === false ? "general" : null, { skipSave: true, skipAdminRefresh: true });
       }
     } catch (ePubGate) {}
   }
@@ -16496,7 +18287,7 @@ Plugins.toolbox.init = function () {
     if (typeof val === "undefined") return;
     serverPublicMode = !!val;
     try {
-      if (S && S.extras) S.extras.publicMode = !!val;
+      if (S && S.extras && serverPublicMode) S.extras.publicMode = true;
     } catch (e) {}
     try {
       if (typeof applyPublicModeExtra === "function") applyPublicModeExtra();
@@ -16603,6 +18394,7 @@ Plugins.toolbox.init = function () {
 
   function radioJobLabel(job) {
     if (job === "analyzer") return "Analyzer Live";
+    if (job === "identify") return "Identify Live";
     if (job === "bands") return "Scan bands";
     if (job === "range") return "Scan range";
     if (job === "bookmarks") return "Scan bookmarks";
@@ -16614,14 +18406,18 @@ Plugins.toolbox.init = function () {
     try {
       if (typeof sa !== "undefined" && sa && sa.running) return "analyzer";
     } catch (eSa) {}
+    try {
+      if (idState && idState.liveOn && idState.liveTimer) return "identify";
+    } catch (eId) {}
     if (listenScanRunning) return "bookmarks";
     try {
       if (exCtl && exCtl.nestOn) return "nest";
     } catch (eNest) {}
     if (surveyRunning || running) {
-      if (radioJob === "range" || radioJob === "bands" || radioJob === "bookmarks") return radioJob;
-      return radioJob || "bands";
+      if (radioJob) return radioJob;
+      return "bands";
     }
+    if (radioJob) return radioJob;
     return null;
   }
 
@@ -16630,6 +18426,13 @@ Plugins.toolbox.init = function () {
     if (job === "analyzer") {
       try { if (typeof saStop === "function") saStop(); } catch (e1) {}
       if (radioJob === "analyzer") radioJob = null;
+      if (!detectRadioJob()) radioJobLeaseTouch(null);
+      return;
+    }
+    if (job === "identify") {
+      try { idStopLive({ clearWanted: true }); } catch (eId) {}
+      if (radioJob === "identify") radioJob = null;
+      if (!detectRadioJob()) radioJobLeaseTouch(null);
       return;
     }
     if (job === "nest") {
@@ -16649,6 +18452,7 @@ Plugins.toolbox.init = function () {
     }
     /* bands / range / bookmarks */
     stopFlag = true;
+    try { stopSurvey(); } catch (eSt) {}
     try { cancelRangeRepeat(); } catch (e3) {}
     running = false;
     listenPaused = false;
@@ -16659,7 +18463,9 @@ Plugins.toolbox.init = function () {
     if (btn) btn.classList.remove("bs-running");
     try { muteOff(); } catch (e6) {}
     try { applyToolbarVisibility(); } catch (e7) {}
+    try { syncRangeScanRunningUi(false); } catch (eRgUi) {}
     if (radioJob === "bands" || radioJob === "range" || radioJob === "bookmarks") radioJob = null;
+    if (!detectRadioJob()) radioJobLeaseTouch(null);
   }
 
   /**
@@ -16669,9 +18475,37 @@ Plugins.toolbox.init = function () {
   function claimRadioJob(want) {
     if (!want) return radioJobGen;
     var cur = detectRadioJob();
+    if (cur && cur === want) {
+      try {
+        setStatus(radioJobLabel(want) + " is already running — press Stop first.");
+      } catch (eSame) {}
+      return null;
+    }
+    var foreign = radioJobForeignLease();
+    if (foreign && foreign.job && foreign.job !== want) {
+      var fmsg = radioJobLabel(foreign.job) +
+        " is running in another Toolbox window (same browser).\n\nStop it and start " +
+        radioJobLabel(want) + " here?";
+      if (!toolboxUserConfirm(fmsg, want)) {
+        try {
+          setStatus(radioJobLabel(want) + " cancelled — other window still has " +
+            radioJobLabel(foreign.job) + ".");
+        } catch (eFc) {}
+        return null;
+      }
+      radioJobRequestForeignStop(foreign.owner);
+      if (radioJobForeignLease()) {
+        try {
+          setStatus("Asked the other Toolbox window to stop " + radioJobLabel(foreign.job) +
+            " — try again in a moment.");
+          toast("Stop " + radioJobLabel(foreign.job) + " in the other window, then retry.");
+        } catch (eFw) {}
+        return null;
+      }
+    }
     if (cur && cur !== want) {
       var msg = radioJobLabel(cur) + " is running.\n\nStop it and start " + radioJobLabel(want) + "?";
-      if (!window.confirm(msg)) {
+      if (!toolboxUserConfirm(msg, want)) {
         try {
           setStatus(radioJobLabel(want) + " cancelled — " + radioJobLabel(cur) + " still running.");
         } catch (eMsg) {}
@@ -16687,12 +18521,14 @@ Plugins.toolbox.init = function () {
       radioJobGen++;
     }
     radioJob = want;
+    radioJobLeaseTouch(want);
     return radioJobGen;
   }
 
   function releaseRadioJob(want, gen) {
     if (gen != null && gen !== radioJobGen) return false;
     if (!want || radioJob === want) radioJob = null;
+    if (!detectRadioJob()) radioJobLeaseTouch(null);
     return true;
   }
 
@@ -16885,7 +18721,7 @@ Plugins.toolbox.init = function () {
         if (surveyRunning || running || listenScanRunning) return false;
       } catch (e) {}
     }
-    var b = S.networkBudget || "full";
+    var b = effectiveNetworkBudget();
     if (b === "offline") return false;
     if (b === "more-off") return false;
     return true;
@@ -17052,13 +18888,20 @@ Plugins.toolbox.init = function () {
         { id: "bs-hop-master-box",
           help: "Global hop settle after profile changes. Per-kind overrides live under SDR behaviour profiles." }) +
       settingsBoxHtml("Storage quotas",
-        '<div class="bs-row">' +
-        '<label title="0 = unlimited. Trim oldest peaks when over cap.">Max peaks <input type="number" id="bs-set-max-peaks" min="0" max="5000" step="50" style="width:5em"></label>' +
-        '<label title="Audio clip archive cap (5–200).">Max clips <input type="number" id="bs-set-max-clips" min="5" max="200" step="1" style="width:4.5em"></label>' +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label title="Log tab decoder feed rows kept in this browser (unpinned oldest drop first; pinned lines stay).">Max logs <input type="number" id="bs-set-max-logs" min="25" max="10000" step="25" style="width:4.5em"></label>' +
+        '<label title="0 = unlimited. Trim oldest stored peaks when over cap.">Max peaks <input type="number" id="bs-set-max-peaks" min="0" max="10000" step="25" style="width:4.5em"></label>' +
+        '<label title="[load] / user bookmarks in this browser (not blue OpenWebRX bookmarks).">Max bookmarks <input type="number" id="bs-set-max-bookmarks" min="25" max="10000" step="25" style="width:4.5em"></label>' +
+        '<label title="Audio clips in IndexedDB — oldest dropped when full.">Max audio <input type="number" id="bs-set-max-clips" min="25" max="10000" step="25" style="width:4.5em"></label>' +
+        '<label title="Always-skip MHz list (Skip tab).">Max skip <input type="number" id="bs-set-max-skip" min="25" max="10000" step="25" style="width:4.5em"></label>' +
+        "</div>" +
+        '<div class="bs-row bs-chk-grid">' +
+        '<label title="Log → Decoder archive saved lines.">Max decoder log <input type="number" id="bs-set-max-decoder" min="25" max="10000" step="25" style="width:4.5em"></label>' +
+        '<label title="Log → QSO pad contacts in this browser.">Max QSO <input type="number" id="bs-set-max-qso" min="25" max="10000" step="25" style="width:4.5em"></label>' +
         '<label title="More → Noise log samples kept in this browser.">Noise samples <input type="number" id="bs-set-max-noise" min="5" max="100" step="1" style="width:4em"></label>' +
         '<label title="Band × hour heatmap history days.">Heat days <input type="number" id="bs-set-occ-days" min="1" max="30" step="1" style="width:3.5em"></label>' +
         "</div>" +
-        '<p class="bs-hint">Mirrors Peaks / Audio / More → Noise / heatmap caps in one box.</p>',
+        '<p class="bs-hint">Defaults are ' + STORAGE_QUOTA_DEFAULT + ' each (peaks: 0 = unlimited). Peaks / Audio tab fields mirror Max peaks and Max audio here.</p>',
         { id: "bs-storage-quotas-box", wide: true,
           help: "Unified caps for peaks, audio clips, noise log, and occupancy heatmap." }) +
       settingsBoxHtml("Keyboard remap",
@@ -17126,9 +18969,123 @@ Plugins.toolbox.init = function () {
     );
   }
 
+  function normalizeStorageQuotas(d) {
+    d = d || S;
+    if (!d || typeof d !== "object") return;
+    function capVal(key, allowZero) {
+      var n = Number(d[key]);
+      if (allowZero && n === 0) {
+        d[key] = 0;
+        return;
+      }
+      if (!isFinite(n) || n < STORAGE_QUOTA_MIN) n = STORAGE_QUOTA_DEFAULT;
+      d[key] = Math.min(STORAGE_QUOTA_MAX, Math.round(n));
+    }
+    capVal("maxTrafficLogRows", false);
+    capVal("maxLoadedBookmarks", false);
+    capVal("maxSkipFreqs", false);
+    capVal("maxDecoderArchiveRows", false);
+    capVal("maxQsoRows", false);
+    var mp = Number(d.maxPeaks);
+    if (!isFinite(mp) || mp < 0) d.maxPeaks = STORAGE_QUOTA_DEFAULT;
+    else if (mp === 0) d.maxPeaks = 0;
+    else d.maxPeaks = Math.min(STORAGE_QUOTA_MAX, Math.round(mp));
+    capVal("maxAudioClips", false);
+  }
+
+  function maxTrafficLogCap() {
+    normalizeStorageQuotas(S);
+    return S.maxTrafficLogRows;
+  }
+  function maxLoadedBookmarksCap() {
+    normalizeStorageQuotas(S);
+    return S.maxLoadedBookmarks;
+  }
+  function maxSkipFreqsCap() {
+    normalizeStorageQuotas(S);
+    return S.maxSkipFreqs;
+  }
+  function decoderArchiveCap() {
+    normalizeStorageQuotas(S);
+    return S.maxDecoderArchiveRows;
+  }
+  function maxQsoRowsCap() {
+    normalizeStorageQuotas(S);
+    return S.maxQsoRows;
+  }
+
   function maxAudioClipsCap() {
-    var n = Number(S.maxAudioClips);
-    return (isFinite(n) && n >= 5) ? Math.min(200, Math.round(n)) : 40;
+    normalizeStorageQuotas(S);
+    return S.maxAudioClips;
+  }
+
+  function trimLoadedBookmarksIfNeeded() {
+    var cap = maxLoadedBookmarksCap();
+    if (!loadedBookmarks || loadedBookmarks.length <= cap) return;
+    loadedBookmarks = loadedBookmarks.slice(-cap);
+    try { saveLoadedBookmarks(); } catch (eBm) {}
+  }
+
+  function trimSkipFreqsIfNeeded() {
+    var cap = maxSkipFreqsCap();
+    if (!S.ignoredFreqs || S.ignoredFreqs.length <= cap) return;
+    S.ignoredFreqs = S.ignoredFreqs.slice(-cap);
+    try { saveSettings(); } catch (eSk) {}
+  }
+
+  function trimDecoderArchiveIfNeeded() {
+    var cap = decoderArchiveCap();
+    if (!decoderArchiveRows || decoderArchiveRows.length <= cap) return;
+    decoderArchiveRows = decoderArchiveRows.slice(-cap);
+    try { saveDecoderArchive(); } catch (eDa) {}
+  }
+
+  function trimQsoRowsIfNeeded() {
+    var cap = maxQsoRowsCap();
+    if (!qsoRows || qsoRows.length <= cap) return;
+    qsoRows = qsoRows.slice(-cap);
+    try { saveQso(); } catch (eQ) {}
+  }
+
+  function applyAllStorageQuotaTrims() {
+    try { trafficLogTrim(); saveTrafficLog(); } catch (eLog) {}
+    try { trimPeaksIfNeeded(); saveHits(); } catch (ePk) {}
+    try { trimLoadedBookmarksIfNeeded(); } catch (eBm) {}
+    try { trimSkipFreqsIfNeeded(); } catch (eSk) {}
+    try { trimDecoderArchiveIfNeeded(); } catch (eDa) {}
+    try { trimQsoRowsIfNeeded(); } catch (eQ) {}
+    try { trimAudioStorage(); } catch (eAud) {}
+  }
+
+  function readStorageQuotasFromForm() {
+    if (!$("bs-set-max-logs") && !$("bs-set-max-peaks") && !$("bs-set-max-bookmarks") &&
+        !$("bs-set-max-clips") && !$("bs-max-peaks") && !$("bs-max-clips")) return;
+    normalizeStorageQuotas(S);
+    function readNum(ids, field, allowZero) {
+      var el = null;
+      var i;
+      for (i = 0; i < ids.length; i++) {
+        el = $(ids[i]);
+        if (el) break;
+      }
+      if (!el) return;
+      var n = Number(el.value);
+      if (allowZero && n === 0) S[field] = 0;
+      else S[field] = Math.max(STORAGE_QUOTA_MIN, Math.min(STORAGE_QUOTA_MAX, Math.round(n) || STORAGE_QUOTA_DEFAULT));
+    }
+    readNum(["bs-set-max-logs"], "maxTrafficLogRows", false);
+    readNum(["bs-set-max-peaks", "bs-max-peaks"], "maxPeaks", true);
+    readNum(["bs-set-max-bookmarks"], "maxLoadedBookmarks", false);
+    readNum(["bs-set-max-clips", "bs-max-clips"], "maxAudioClips", false);
+    readNum(["bs-set-max-skip"], "maxSkipFreqs", false);
+    readNum(["bs-set-max-decoder"], "maxDecoderArchiveRows", false);
+    readNum(["bs-set-max-qso"], "maxQsoRows", false);
+    if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks || 0;
+    if ($("bs-set-max-peaks")) $("bs-set-max-peaks").value = S.maxPeaks || 0;
+    if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips;
+    if ($("bs-set-max-clips")) $("bs-set-max-clips").value = S.maxAudioClips;
+    normalizeStorageQuotas(S);
+    applyAllStorageQuotaTrims();
   }
 
   function getMagicKey() {
@@ -17262,13 +19219,14 @@ Plugins.toolbox.init = function () {
   }
 
   function notifyNewPeak(msg, hit) {
-    if (!extraOn("afterScan") || !S.notifyNew || !msg) return;
+    if (!extraOn("afterScan") || !msg) return;
     var alertHit = hit && isAlertFreq(hit.freq);
-    if (S.soundNewPeak !== false || alertHit) beep();
-    if (alertHit && S.notifyNew) {
-      msg = "Alert " + msg;
-      if (S.soundNewPeak !== false) beep();
+    if (!S.muteScanBeep) {
+      if (S.soundNewPeak !== false || alertHit) beep();
+      if (alertHit && S.notifyNew && S.soundNewPeak !== false) beep();
     }
+    if (!S.notifyNew) return;
+    if (alertHit) msg = "Alert " + msg;
     try {
       if (window.Plugins && Plugins.notify && typeof Plugins.notify.show === "function") {
         Plugins.notify.show(msg);
@@ -17330,6 +19288,7 @@ Plugins.toolbox.init = function () {
     if (!id) return false;
     /* Settings stays in the header for everyone; non-admins see an unlock hint inside. */
     if (id === "settings") return false;
+    if (id === "help" && isPublicReceiver() && !publicAllowsHeaderChrome("help")) return true;
     var anlzId = id === "identify" || id === "analyzer";
     var anlzIdOn = (id === "identify" && !!S.expIdentify) || (id === "analyzer" && !!S.expAnalyzer);
     if (anlzId && !anlzIdOn) return true;
@@ -17340,8 +19299,12 @@ Plugins.toolbox.init = function () {
       if (!(anlzId && anlzIdOn && isOwrxAdmin()) && !(id === "more" && adminShown)) return true;
     }
 
-    if (uxFeelOn("leanChrome") && UX_LEAN_HIDE_TABS.indexOf(id) >= 0) return true;
-    if (uxFeelOn("simpleMode") && UX_LEAN_HIDE_TABS.indexOf(id) >= 0) return true;
+    if (uxFeelOn("leanChrome") && UX_LEAN_HIDE_TABS.indexOf(id) >= 0) {
+      if (!((id === "identify" && S.expIdentify) || (id === "analyzer" && S.expAnalyzer))) return true;
+    }
+    if (uxFeelOn("simpleMode") && UX_LEAN_HIDE_TABS.indexOf(id) >= 0) {
+      if (!((id === "identify" && S.expIdentify) || (id === "analyzer" && S.expAnalyzer))) return true;
+    }
     var list = S.hiddenTabs;
     return Array.isArray(list) && list.indexOf(id) >= 0;
   }
@@ -17422,7 +19385,7 @@ Plugins.toolbox.init = function () {
     log: "Log — decoder feed, QSO pad, callsigns, export.",
     watch: "Watch — alert when a callsign, flight, ship, or talkgroup appears in Log.",
     memory: "Memory — Trace, Digital IDs, Bench. Enable here under Visible tabs.",
-    more: "More — Spots, Space, Tune, Sky, Here, Sked, Read, Feeds. To add panes: Settings → General — More sections at the bottom. Guests: Settings → Public → More · … boxes.",
+    more: "More — Spots, Space, Tune, Sky, Here, Sked, Read. Hover each group and inner tab for what that pane does. Add panes: Settings → General → More sections. Guests: Settings → Public → More · …",
     peaks: "Peaks — ranked list of signals found by scans.",
     bookmarks: "Bookmarks — local and loaded frequencies; scan bookmarks.",
     audio: "Audio — record clips, play, and export WAV.",
@@ -17433,7 +19396,7 @@ Plugins.toolbox.init = function () {
 
   var SETTINGS_ST_SUB_TIPS = {
     general: "General — install, visible tabs, Explore boxes, panel startup, appearance, layout, data, Extras, Jump FM, More sections, then SDR devices / profiles / hop budget / sync at the bottom.",
-    system: "System — receiver CPU/RAM, browser memory, WebSocket + audio/network traffic, Toolbox hooks (live while this sub-tab is open).",
+    system: "System — receiver CPU/RAM, browser memory, WebSocket + audio/network traffic, other OpenWebRX+ plugins vs Toolbox, Toolbox hooks (live while this sub-tab is open).",
     public: "Public / shared receiver mode and visitor allowlist — guest tabs, features, extras, and More · … boxes at the bottom for which More panes visitors may open."
   };
 
@@ -17448,18 +19411,30 @@ Plugins.toolbox.init = function () {
   }
 
   function syncMoreTabHoverHints() {
+    var root = $("bs-tab-more");
     var bar = $("bs-more-subs");
     if (bar) {
       setHoverTip(bar,
-        "Pick a group (Spots, Space, …), then a pane. Missing a button? Settings → General — More sections at the bottom. " +
-        "On a shared receiver, admins set guest panes under Settings → Public → More · … at the bottom.");
+        "Pick a group (Spots, Space, …), then an inner tab. Hover each button for what that pane shows. " +
+        "Missing a button? Settings → General → More sections. Guests: Settings → Public → More · …");
+    }
+    if (root) {
+      Array.prototype.forEach.call(root.querySelectorAll(".bs-more-group[data-more-group]"), function (btn) {
+        var gid = btn.getAttribute("data-more-group");
+        var g = gid && MORE_GROUP_META[gid];
+        if (g) setHoverTip(btn, g.title || g.lab);
+      });
+      Array.prototype.forEach.call(root.querySelectorAll(".bs-more-sub[data-more-sub]"), function (btn) {
+        var sid = btn.getAttribute("data-more-sub");
+        setHoverTip(btn, moreSubHoverTip(sid));
+      });
     }
     var inners = document.querySelectorAll("#bs-tab-more .bs-more-inners");
     Array.prototype.forEach.call(inners, function (inner) {
       if (inner.getAttribute("data-more-inner-tip")) return;
       inner.setAttribute("data-more-inner-tip", "1");
       setHoverTip(inner,
-        "Inner panes for this group. Add more under Settings → General → More sections. Guests: Settings → Public.");
+        "Inner tabs for this group — hover each for a short description. Enable more panes under Settings → General → More sections.");
     });
   }
 
@@ -17474,35 +19449,83 @@ Plugins.toolbox.init = function () {
         btn.removeAttribute("title");
       });
     }
-    var helpTog = $("bs-help-tog");
-    if (helpTog) {
-      helpTog.setAttribute("data-tip", TAB_HOVER_TIPS.help);
-      helpTog.removeAttribute("title");
-    }
     try { syncSettingsSubHoverTips(); } catch (eSt) {}
     try { syncMoreTabHoverHints(); } catch (eMore) {}
   }
 
-  function applyHiddenTabs() {
-    var staySettings = false;
-    try { staySettings = currentPanelTab() === "settings"; } catch (eStay) {}
-    var scrollY = staySettings ? captureSettingsScroll() : null;
-    var pageScroll = staySettings ? capturePageScroll() : null;
-    var settingsEl = staySettings ? settingsScrollEl() : null;
+  function settingsHeaderTabOn() {
+    try {
+      var bar = $("bs-tabs");
+      return !!(bar && bar.querySelector('.bs-tab[data-tab="settings"].bs-tab-on'));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function settingsTabIsActive() {
+    try {
+      if (settingsHeaderTabOn()) return true;
+      var pane = $("bs-tab-settings");
+      if (pane && pane.classList.contains("bs-tab-on")) return true;
+      return currentMainPanelTab() === "settings";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Block programmatic main-tab switches while Settings / Public is in use (Public buttons were jumping to Explore). */
+  var settingsUiLockUntil = 0;
+
+  function touchSettingsUiLock(ms) {
+    ms = typeof ms === "number" && ms > 0 ? ms : 15000;
+    settingsUiLockUntil = Date.now() + ms;
+  }
+
+  function settingsEngaged() {
+    try {
+      if (Date.now() < settingsUiLockUntil) return true;
+      if (settingsTabIsActive()) return true;
+      var pane = $("bs-tab-settings");
+      if (pane && pane.classList.contains("bs-tab-on")) return true;
+      var st = $("bs-settings");
+      if (st) {
+        var sub = st.querySelector(".bs-st-subpane.bs-st-sub-on:not([hidden])");
+        if (sub && sub.getAttribute("data-st-sub") === "public") return true;
+      }
+    } catch (eEng) {}
+    return false;
+  }
+
+  /** Auto switchTab only — do not block user header clicks or non-Public Settings work. */
+  function blockAutoLeaveSettingsForPublic() {
+    try {
+      if (Date.now() < settingsUiLockUntil) return true;
+      var pub = $("bs-settings-public-pane");
+      if (pub && pub.classList.contains("bs-st-sub-on") && !pub.hidden) return true;
+      var pane = $("bs-tab-settings");
+      if (pane && pane.classList.contains("bs-tab-on") && !settingsHeaderTabOn()) return true;
+    } catch (eBlk) {}
+    return false;
+  }
+
+  /** Header strip + help toggles only — never switch the main tab (Settings → Public safe). */
+  function syncMainHeaderTabVisibility() {
     syncExperimentalHiddenTabs();
+    try { removeLegacyHelpHeaderBtn(); } catch (eLeg) {}
+    try { ensureHelpMainTabInBar(); } catch (eHelpTab) {}
     try { syncMainTabOrder(); } catch (eOrd) {}
     var bar = $("bs-tabs");
     if (bar) {
       Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
         var id = btn.getAttribute("data-tab");
         var hide = isTabHidden(id);
-        /* Unticked tabs leave the header; Settings → Visible tabs (or Show all) restores. */
         btn.hidden = hide;
         if (hide) {
           btn.setAttribute("hidden", "");
           btn.style.setProperty("display", "none", "important");
           btn.setAttribute("aria-hidden", "true");
           btn.classList.add("bs-tab-hidden");
+          btn.classList.remove("bs-tab-on");
         } else {
           btn.removeAttribute("hidden");
           btn.style.removeProperty("display");
@@ -17512,38 +19535,51 @@ Plugins.toolbox.init = function () {
         btn.classList.remove("bs-tab-dim");
         btn.removeAttribute("aria-disabled");
         btn.removeAttribute("tabIndex");
-        if (hide) btn.classList.remove("bs-tab-on");
       });
       scheduleHeadTabStripFit();
     }
-    /* Also hide deferred panes so a stale Ident view cannot stick after untick. */
     ["analyzer", "identify"].forEach(function (id) {
       var pane = document.getElementById("bs-tab-" + id);
       if (!pane) return;
-      if (isTabHidden(id)) {
-        pane.classList.remove("bs-tab-on");
-      }
+      if (isTabHidden(id)) pane.classList.remove("bs-tab-on");
     });
-    var helpTog = $("bs-help-tog");
-    if (helpTog) {
-      var helpHide = isTabHidden("help");
-      helpTog.hidden = helpHide;
-      if (helpHide) helpTog.classList.remove("bs-on");
-      helpTog.setAttribute("aria-pressed", helpTog.classList.contains("bs-on") ? "true" : "false");
-    }
     try { syncExploreIdentBtn(); } catch (eIdentBtn) {}
     syncTabHoverTips();
     fillVisibleTabsForm();
     try { applyHiddenMoreSubs(); } catch (eMoreVis) {}
-    try { applyHiddenExploreBoxes(); } catch (eExVis) {}
+    if (!settingsEngaged()) {
+      try { applyHiddenExploreBoxes(); } catch (eExVis) {}
+    }
+    if (settingsEngaged()) pinMainToolboxTab("settings");
+  }
+
+  function applyHiddenTabs() {
+    var staySettings = false;
+    try { staySettings = settingsEngaged(); } catch (eStay) {}
+    var scrollY = staySettings ? captureSettingsScroll() : null;
+    var pageScroll = staySettings ? capturePageScroll() : null;
+    var settingsEl = staySettings ? settingsScrollEl() : null;
+    syncMainHeaderTabVisibility();
     try { syncSettingsAdminGate(); } catch (eGate) {}
-    var cur = currentPanelTab();
-    if (!cur || isTabHidden(cur)) switchTab(firstVisibleTab(), true);
     if (staySettings) {
+      pinMainToolboxTab("settings");
       try {
-        if (currentPanelTab() === "settings") {
-          restoreAllPanelScroll(scrollY, null, pageScroll, settingsEl);
-        }
+        restoreAllPanelScroll(scrollY, null, pageScroll, settingsEl);
+      } catch (eScrStay) {}
+      return;
+    }
+    if (!staySettings) {
+      var cur = currentPanelTab();
+      if (!cur || isTabHidden(cur)) {
+        var paneTab = tabFromVisiblePane();
+        if (paneTab && !isTabHidden(paneTab)) switchTab(paneTab, true);
+        else switchTab(firstVisibleTab(), true);
+      }
+    }
+    if (staySettings) {
+      pinMainToolboxTab("settings");
+      try {
+        restoreAllPanelScroll(scrollY, null, pageScroll, settingsEl);
       } catch (eScr) {}
     }
   }
@@ -17692,6 +19728,36 @@ Plugins.toolbox.init = function () {
       if (!isMoreSubHidden(MORE_SUB_IDS[i])) return MORE_SUB_IDS[i];
     }
     return "dx";
+  }
+
+  function navigableMoreSubs() {
+    return MORE_SUB_IDS.filter(function (id) {
+      return !isMoreSubHidden(id);
+    });
+  }
+
+  function moreTabRoot() {
+    return $("bs-tab-more");
+  }
+
+  function currentMoreSubTab() {
+    var root = moreTabRoot();
+    if (!root) return "";
+    var on = root.querySelector(".bs-more-subpane.bs-more-sub-on:not([hidden])");
+    return on ? (on.getAttribute("data-more-sub") || "") : "";
+  }
+
+  function switchMoreSubRelative(delta) {
+    var order = navigableMoreSubs();
+    if (!order.length) return;
+    var cur = currentMoreSubTab();
+    var idx = order.indexOf(cur);
+    if (idx < 0) {
+      idx = delta > 0 ? 0 : order.length - 1;
+    } else {
+      idx = (idx + delta + order.length) % order.length;
+    }
+    setMoreSubTab(order[idx]);
   }
 
   function eachMoreSubVisInput(fn) {
@@ -18204,14 +20270,1748 @@ Plugins.toolbox.init = function () {
   }
 
   function removeTabContextMenuUi() {
+    removeFloatingUiById("bs-tab-menu");
+    removeFloatingUiById("bs-tab-detach-pick");
+  }
+
+  function tabDetachExtraOn() {
+    return extraOn("detachTabs");
+  }
+
+  function enableDetachTabsExtra(opts) {
+    opts = opts || {};
+    if (!S.extras) S.extras = extrasDefaults();
+    S.extras.detachTabs = true;
+    var el = $("bs-extra-detachTabs");
+    if (el) el.checked = true;
+    try { saveSettings(); } catch (eSave) {}
+    try { applyExtrasUi(); } catch (eUi) {}
+    if (!opts.silent) {
+      setStatus("Detach main tabs is on — right-click tabs to pop out or reattach.");
+    }
+  }
+
+  var detachedTabGroups = {};
+  var detachedTabToGroup = {};
+  var detachedGroupSeq = 0;
+  var TAB_DETACH_GROUP_MAX = 8;
+  var TAB_DETACH_BULK_CHUNK = 3;
+  var TAB_NO_DETACH = { settings: 1, help: 1 };
+
+  function mainTabAllowsDetach(tabId) {
+    return !!(tabId && !TAB_NO_DETACH[tabId]);
+  }
+
+  function detachPopoutIsDockedInTab(win) {
     try {
-      var menu = $("bs-tab-menu");
-      if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+      if (!win) return false;
+      var fe = win.frameElement;
+      return !!(fe && fe.classList && fe.classList.contains("bs-tab-dock-detach-iframe"));
+    } catch (eDock) {
+      return false;
+    }
+  }
+
+  function detachPopoutWindowOpen(g) {
+    if (!g || !g.win) return false;
+    try {
+      if (g.dockInTab || detachPopoutIsDockedInTab(g.win)) {
+        var fe = g.win.frameElement;
+        return !!(fe && fe.parentNode);
+      }
+      return !g.win.closed;
+    } catch (eOpen) {
+      return false;
+    }
+  }
+
+  function ensureDockTabDetachOverlay() {
+    var overlay = document.getElementById("bs-tab-dock-detach-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "bs-tab-dock-detach-overlay";
+      overlay.className = "bs-tab-dock-detach-overlay";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-label", "Detached Toolbox tabs");
+      document.body.appendChild(overlay);
+    }
+    try { document.documentElement.classList.add("bs-tab-dock-detach-open"); } catch (eCls) {}
+    return overlay;
+  }
+
+  function syncDockTabDetachFramesVisibility(activeGroupId) {
+    var overlay = document.getElementById("bs-tab-dock-detach-overlay");
+    if (!overlay) return;
+    var frames = overlay.querySelectorAll(".bs-tab-dock-detach-iframe");
+    var multi = frames.length > 1;
+    Array.prototype.forEach.call(frames, function (fr) {
+      var gid = fr.getAttribute("data-bs-detach-group") || "";
+      if (!multi) fr.hidden = false;
+      else fr.hidden = !!(activeGroupId && gid !== activeGroupId);
+    });
+  }
+
+  function teardownDockTabDetachOverlayIfEmpty() {
+    var overlay = document.getElementById("bs-tab-dock-detach-overlay");
+    if (!overlay || overlay.childElementCount) return;
+    try {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     } catch (eRm) {}
+    try { document.documentElement.classList.remove("bs-tab-dock-detach-open"); } catch (eCls) {}
+  }
+
+  function openDockTabDetachFrame(groupId, popUrl) {
+    var overlay = ensureDockTabDetachOverlay();
+    var iframe = document.createElement("iframe");
+    iframe.className = "bs-tab-dock-detach-iframe";
+    iframe.setAttribute("data-bs-detach-group", groupId);
+    iframe.setAttribute("title", "Detached Toolbox tabs");
+    iframe.src = popUrl;
+    overlay.appendChild(iframe);
+    syncDockTabDetachFramesVisibility(groupId);
+    return iframe;
+  }
+  var DETACH_HTTP_NOTE_TITLE =
+    "Pop-out uses the same address as this receiver. HTTP = no TLS on browser to server. " +
+    "Use HTTPS on the server or VPN-only access for remote use.";
+
+  function detachHttpSecurityNoteHtml() {
+    try {
+      if (S.hideDetachHttpNote) return "";
+      if (!window.location || window.location.protocol !== "http:") return "";
+    } catch (e) {
+      return "";
+    }
+    return (
+      '<p class="bs-tab-detach-http-note" title="' + escapeHtml(DETACH_HTTP_NOTE_TITLE) + '">' +
+      '<span class="bs-tab-detach-http-text">' +
+      "<strong>Same receiver (HTTP).</strong> “Not secure” in the address bar means this page has no HTTPS — " +
+      "that is normal here, not because the detached window is less trusted than the main Toolbox tab." +
+      '<span class="bs-tab-detach-http-detail">Same site and origin as the main window. ' +
+      "Traffic between your browser and the receiver is not encrypted on this connection; " +
+      "if you sign in, credentials travel in cleartext unless you use HTTPS. " +
+      "On a trusted home LAN that is often acceptable; for remote access prefer HTTPS on the server " +
+      "or VPN-only access (e.g. Meshnet).</span></span>" +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-detach-http-hide" title="Hide this note on detached tabs (Settings → Appearance).">Hide</button>' +
+      "</p>"
+    );
+  }
+
+  function setHideDetachHttpNote(hide) {
+    S.hideDetachHttpNote = !!hide;
+    try { saveSettings(); } catch (eSv) {}
+    applyHideDetachHttpNotePref();
+  }
+
+  function removeDetachHttpNotesInDoc(doc) {
+    if (!doc || !doc.querySelectorAll) return;
+    var nodes = doc.querySelectorAll(".bs-tab-detach-http-note");
+    var i;
+    for (i = 0; i < nodes.length; i++) {
+      try {
+        if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+      } catch (eRm) {}
+    }
+  }
+
+  function applyHideDetachHttpNotePref() {
+    var hide = !!S.hideDetachHttpNote;
+    if ($("bs-hide-detach-http-note")) $("bs-hide-detach-http-note").checked = hide;
+    if (!hide) return;
+    removeDetachHttpNotesInDoc(document);
+    var gid;
+    for (gid in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gid)) continue;
+      var g = detachedTabGroups[gid];
+      if (!g || !g.win) continue;
+      try {
+        if (g.win.closed) continue;
+        removeDetachHttpNotesInDoc(g.win.document);
+      } catch (eWin) {}
+    }
+  }
+
+  function wireDetachHttpNoteShell(shell) {
+    if (!shell) return;
+    var btn = shell.querySelector(".bs-tab-detach-http-hide");
+    if (!btn || btn._bsWired) return;
+    btn._bsWired = true;
+    btn.onclick = function (ev) {
+      try { if (ev) ev.preventDefault(); } catch (eP) {}
+      setHideDetachHttpNote(true);
+    };
+  }
+
+  function detachHttpSecurityNotePlain() {
+    try {
+      if (S.hideDetachHttpNote) return "";
+      if (!window.location || window.location.protocol !== "http:") return "";
+    } catch (e) {
+      return "";
+    }
+    return (
+      " HTTP: same receiver — “Not secure” means no HTTPS, not an unsafe detach. " +
+      "Traffic is unencrypted; use HTTPS or VPN-only when remote."
+    );
+  }
+
+  function detachGroupNextId() {
+    detachedGroupSeq += 1;
+    return "dg" + detachedGroupSeq;
+  }
+
+  /** Bands / Bookmarks scan strip lives in #bs-toolbar (above tab panes) — move with detach pop-outs. */
+  var DETACH_TOOLBAR_TAB_IDS = { bands: 1, bookmarks: 1 };
+
+  function detachGroupUsesToolbar(g) {
+    if (!g || !g.tabIds || !g.tabIds.length) return false;
+    var i;
+    for (i = 0; i < g.tabIds.length; i++) {
+      if (DETACH_TOOLBAR_TAB_IDS[g.tabIds[i]]) return true;
+    }
+    return false;
+  }
+
+  function pinMainToolboxTab(tabId) {
+    if (!tabId) return;
+    var bar = document.getElementById("bs-tabs");
+    if (bar) {
+      Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
+        btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === tabId);
+      });
+    }
+    var body = document.getElementById("bs-body");
+    if (body) {
+      Array.prototype.forEach.call(body.querySelectorAll(".bs-tab-pane"), function (pane) {
+        pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === tabId);
+      });
+    }
+  }
+
+  function currentMainPanelTab() {
+    var mainBar = document.getElementById("bs-tabs");
+    if (!mainBar) return "";
+    var paneTab = "";
+    try { paneTab = tabFromVisiblePane(); } catch (ePane) { paneTab = ""; }
+    if (paneTab) {
+      var aligned = mainBar.querySelector('.bs-tab.bs-tab-on[data-tab="' + paneTab + '"]');
+      if (aligned) return paneTab;
+    }
+    var onBtns = mainBar.querySelectorAll(".bs-tab.bs-tab-on");
+    if (onBtns.length > 1) {
+      if (paneTab) return paneTab;
+      var i, id;
+      for (i = 0; i < onBtns.length; i++) {
+        id = onBtns[i].getAttribute("data-tab");
+        if (id === "settings") return "settings";
+      }
+    }
+    if (onBtns.length === 1) return onBtns[0].getAttribute("data-tab") || "";
+    var mainBtn = mainBar.querySelector(".bs-tab.bs-tab-on");
+    return (mainBtn && mainBtn.getAttribute("data-tab")) || "";
+  }
+
+  /** Which main tab pane is visible (#bs-body), when the header strip drifted out of sync. */
+  function tabFromVisiblePane() {
+    try {
+      var body = $("bs-body");
+      if (!body) return "";
+      var pane = body.querySelector(".bs-tab-pane.bs-tab-on[data-tab]");
+      return (pane && pane.getAttribute("data-tab")) || "";
+    } catch (ePane) {
+      return "";
+    }
+  }
+
+  function detachToolbarOwnerGroup() {
+    var mainTab = currentMainPanelTab();
+    if (mainTab && !isTabDetached(mainTab) && DETACH_TOOLBAR_TAB_IDS[mainTab]) {
+      return null;
+    }
+    if (mainTab && isTabDetached(mainTab)) {
+      var gid0 = detachedTabToGroup[mainTab];
+      var g0 = gid0 && detachedTabGroups[gid0];
+      if (g0 && detachGroupUsesToolbar(g0)) {
+        try {
+          if (g0.win && !g0.win.closed) return g0;
+        } catch (e0) {}
+      }
+    }
+    var gid;
+    for (gid in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gid)) continue;
+      var g = detachedTabGroups[gid];
+      if (!g || !detachGroupUsesToolbar(g)) continue;
+      try {
+        if (!g.win || g.win.closed) continue;
+      } catch (eC) {
+        continue;
+      }
+      if (g.activeTabId && DETACH_TOOLBAR_TAB_IDS[g.activeTabId]) return g;
+    }
+    try {
+      var scanTab = scanRunsOnDetachedTab();
+      if (scanTab === "bands" || scanTab === "bookmarks") {
+        var gidSc = detachedTabToGroup[scanTab];
+        var gSc = gidSc && detachedTabGroups[gidSc];
+        if (gSc && detachGroupUsesToolbar(gSc)) {
+          try {
+            if (gSc.win && !gSc.win.closed) return gSc;
+          } catch (eScG) {}
+        }
+      }
+    } catch (eScO) {}
+    return null;
+  }
+
+  function detachToolbarElement() {
+    var tb = document.getElementById("bs-toolbar");
+    if (tb) return tb;
+    return $("bs-toolbar");
+  }
+
+  function toolbarHostPanel(tb) {
+    if (!tb) return document.getElementById("bs-panel");
+    try {
+      var pp = tb.closest("#bs-panel");
+      if (pp) return pp;
+    } catch (e) {}
+    return document.getElementById("bs-panel");
+  }
+
+  function moveToolbarNodeToParent(tb, parent, before, targetDoc) {
+    if (!tb || !parent || !targetDoc) return tb;
+    if (tb.ownerDocument !== targetDoc) {
+      try {
+        tb = targetDoc.adoptNode(tb);
+      } catch (eAd) {
+        return tb;
+      }
+    }
+    try {
+      if (before) {
+        if (tb.parentNode !== parent || tb.nextElementSibling !== before) {
+          parent.insertBefore(tb, before);
+        }
+      } else if (tb.parentNode !== parent) {
+        parent.appendChild(tb);
+      }
+    } catch (eIns) {}
+    return tb;
+  }
+
+  /** Pull #bs-toolbar out of a pop-out before close — otherwise the node is destroyed with that window. */
+  function restoreToolbarToMainPanel(popWin) {
+    var mainPanel = document.getElementById("bs-panel");
+    var mainBody = document.getElementById("bs-body");
+    if (!mainPanel || !mainBody) return false;
+    var tb = null;
+    if (popWin) {
+      try {
+        if (!popWin.closed && popWin.document) tb = popWin.document.getElementById("bs-toolbar");
+      } catch (eW) {}
+    }
+    if (!tb) tb = detachToolbarElement();
+    if (!tb) return false;
+    moveToolbarNodeToParent(tb, mainPanel, mainBody, document);
+    try { bindBookmarkScanToolbarControls(); } catch (eTbRb) {}
+    return true;
+  }
+
+  function syncDetachToolbarPlacement() {
+    var tb = detachToolbarElement();
+    if (!tb) return;
+    var mainPanel = document.getElementById("bs-panel");
+    var mainBody = document.getElementById("bs-body");
+    if (!mainPanel || !mainBody) return;
+    var owner = detachToolbarOwnerGroup();
+    var targetPanel = null;
+    var before = null;
+    var targetDoc = document;
+    if (owner) {
+      try {
+        var doc = owner.win.document;
+        targetPanel = doc.getElementById("bs-panel");
+        before = doc.getElementById("bs-body");
+        targetDoc = doc;
+      } catch (eW) {}
+    }
+    if (targetPanel && before) {
+      moveToolbarNodeToParent(tb, targetPanel, before, targetDoc);
+    } else {
+      moveToolbarNodeToParent(tb, mainPanel, mainBody, document);
+    }
+    try { bindBookmarkScanToolbarControls(); } catch (eTbBind) {}
+  }
+
+  function ensureDetachToolbarInPanel(panelShell, popBody, tabIds) {
+    if (!panelShell || !popBody || !detachGroupUsesToolbar({ tabIds: tabIds || [] })) return;
+    var tb = detachToolbarElement();
+    if (!tb || tb.parentNode === panelShell && tb.nextElementSibling === popBody) return;
+    try {
+      panelShell.insertBefore(tb, popBody);
+    } catch (eIns) {}
+  }
+
+  function detachGroupLabel(tabIds) {
+    return (tabIds || []).map(function (id) {
+      var m = TAB_HEAD_META[id];
+      return (m && m.lab) || id;
+    }).join(" · ");
+  }
+
+  function clearDetachedTabBarChrome(tabId) {
+    delete detachedTabToGroup[tabId];
+    var bar = $("bs-tabs");
+    if (bar) {
+      var btn = bar.querySelector('.bs-tab[data-tab="' + tabId + '"]');
+      if (btn) btn.classList.remove("bs-tab-detached-out");
+    }
+  }
+
+  /** Put a main tab pane back in #bs-body — move from a dead pop-out or rebuild HTML if gone. */
+  function recoverMissingTabPane(tabId, deadWin) {
+    if (TAB_BAR_IDS.indexOf(tabId) < 0) return false;
+    var body = $("bs-body");
+    if (!body) return false;
+    var pane = document.getElementById("bs-tab-" + tabId);
+    if (!pane && deadWin) {
+      try {
+        if (deadWin.document) pane = deadWin.document.getElementById("bs-tab-" + tabId);
+      } catch (eWin) {}
+    }
+    if (pane) {
+      if (!body.contains(pane)) {
+        try {
+          pane.classList.remove("bs-tab-on");
+          body.appendChild(pane);
+        } catch (eMv) {
+          return false;
+        }
+      }
+      try { pane = dedupeTabPanes(tabId, pane); } catch (eDu) {}
+      try { syncTabPaneAfterMove(tabId); } catch (eSync) {}
+      return true;
+    }
+    var html = null;
+    try { html = panelTabHtmlByName(tabId); } catch (eHtml) { return false; }
+    if (!html) return false;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    var newPane = wrap.firstElementChild;
+    if (!newPane || !newPane.id) return false;
+    newPane.classList.remove("bs-tab-on");
+    body.appendChild(newPane);
+    try { newPane.removeAttribute("data-bs-pending"); } catch (eP) {}
+    try { afterDeferredTabBuilt(tabId); } catch (eAfter) {}
+    try { dedupeTabPanes(tabId, newPane); } catch (eDu2) {}
+    try { syncTabPaneAfterMove(tabId); } catch (eSyncN) {}
+    return true;
+  }
+
+  function tabsNeedingRecovery() {
+    var ids = [];
+    var seen = {};
+    function add(id) {
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      ids.push(id);
+    }
+    var k;
+    for (k in detachedTabToGroup) {
+      if (Object.prototype.hasOwnProperty.call(detachedTabToGroup, k)) add(k);
+    }
+    var body = $("bs-body");
+    TAB_BAR_IDS.forEach(function (id) {
+      if (isTabHidden(id)) return;
+      var bar = $("bs-tabs");
+      var btn = bar && bar.querySelector('.bs-tab[data-tab="' + id + '"]');
+      if (btn && btn.classList.contains("bs-tab-detached-out")) add(id);
+      if (!body) return;
+      var pane = document.getElementById("bs-tab-" + id);
+      if (!pane) add(id);
+      else if (!body.contains(pane) && !isTabDetached(id)) add(id);
+    });
+    return ids;
+  }
+
+  function reconcileDetachedTabState(opts) {
+    opts = opts || {};
+    var recovered = [];
+    var gids = Object.keys(detachedTabGroups).slice();
+    gids.forEach(function (gid) {
+      var g = detachedTabGroups[gid];
+      if (!g) return;
+      var dead = false;
+      try { dead = !detachPopoutWindowOpen(g); } catch (eDead) { dead = true; }
+      if (!dead) return;
+      var deadWin = g.win;
+      var i;
+      for (i = 0; i < g.tabIds.length; i++) {
+        var tid = g.tabIds[i];
+        if (recoverMissingTabPane(tid, deadWin)) recovered.push(tid);
+        clearDetachedTabBarChrome(tid);
+      }
+      delete detachedTabGroups[gid];
+    });
+    TAB_BAR_IDS.forEach(function (tid) {
+      if (isTabHidden(tid)) return;
+      var body = $("bs-body");
+      var bar = $("bs-tabs");
+      var btn = bar && bar.querySelector('.bs-tab[data-tab="' + tid + '"]');
+      var lostChrome = !!(btn && btn.classList.contains("bs-tab-detached-out"));
+      var pane = document.getElementById("bs-tab-" + tid);
+      var missing = !pane || (body && !body.contains(pane) && !isTabDetached(tid));
+      if (!lostChrome && !missing) return;
+      if (isTabDetached(tid)) return;
+      if (recoverMissingTabPane(tid)) {
+        recovered.push(tid);
+        try { syncTabPaneAfterMove(tid); } catch (eSyncR) {}
+      }
+      clearDetachedTabBarChrome(tid);
+    });
+    try { syncMainTabOrder(); } catch (eOrd) {}
+    TAB_BAR_IDS.forEach(function (tid) {
+      if (!mainTabAllowsDetach(tid) && isTabDetached(tid)) {
+        try { reattachMainTab(tid, { silent: true }); } catch (eRa) {}
+      }
+    });
+    if (!opts.silent && recovered.length) {
+      setStatus("Recovered " + recovered.length + " tab(s) into the main Toolbox.");
+    }
+    return recovered;
+  }
+
+  function purgeDetachGroup(groupId, opts) {
+    opts = opts || {};
+    var g = detachedTabGroups[groupId];
+    if (!g) return;
+    var i;
+    for (i = 0; i < g.tabIds.length; i++) {
+      var tid = g.tabIds[i];
+      if (!opts.skipRecover) {
+        try { recoverMissingTabPane(tid, g.win); } catch (eRec) {}
+      }
+      clearDetachedTabBarChrome(tid);
+    }
+    delete detachedTabGroups[groupId];
+  }
+
+  function isTabDetached(tabId) {
+    var gid = detachedTabToGroup[tabId];
+    if (!gid) return false;
+    var g = detachedTabGroups[gid];
+    if (!g) {
+      delete detachedTabToGroup[tabId];
+      return false;
+    }
+    try {
+      if (detachPopoutWindowOpen(g)) return true;
+    } catch (e) {}
+    purgeDetachGroup(gid);
+    return false;
+  }
+
+  function countDetachedTabs() {
+    var n = 0;
+    var k;
+    for (k in detachedTabToGroup) {
+      if (Object.prototype.hasOwnProperty.call(detachedTabToGroup, k) && isTabDetached(k)) n++;
+    }
+    return n;
+  }
+
+  function listDetachGroups() {
+    var out = [];
+    var gid;
+    for (gid in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gid)) continue;
+      var g = detachedTabGroups[gid];
+      if (!g || !g.tabIds || !g.tabIds.length) continue;
+      try {
+        if (!detachPopoutWindowOpen(g)) {
+          purgeDetachGroup(gid);
+          continue;
+        }
+      } catch (eW) {
+        purgeDetachGroup(gid);
+        continue;
+      }
+      out.push({ groupId: gid, tabIds: g.tabIds.slice(), label: detachGroupLabel(g.tabIds) });
+    }
+    return out;
+  }
+
+  function focusDetachedTab(tabId) {
+    var gid = detachedTabToGroup[tabId];
+    if (!gid) return;
+    var g = detachedTabGroups[gid];
+    if (!g) return;
+    try {
+      if (!detachPopoutWindowOpen(g)) return;
+      if (g.dockInTab || detachPopoutIsDockedInTab(g.win)) {
+        syncDockTabDetachFramesVisibility(gid);
+      }
+      g.win.focus();
+      switchDetachedGroupTab(gid, tabId, true);
+    } catch (eF) {}
+  }
+
+  function firstVisibleTabNotDetached(skipId) {
+    var i;
+    for (i = 0; i < TAB_IDS.length; i++) {
+      var id = TAB_IDS[i];
+      if (id === skipId) continue;
+      if (!isTabHidden(id) && !isTabDetached(id)) return id;
+    }
+    if (!isTabHidden("help")) return "help";
+    return firstVisibleTab();
+  }
+
+  function tabDetachMaxCount() {
+    return TAB_BAR_IDS.length;
+  }
+
+  function normalizeDetachTabIds(tabIds) {
+    var want = {};
+    var i;
+    for (i = 0; i < tabIds.length; i++) want[tabIds[i]] = true;
+    return TAB_BAR_IDS.filter(function (id) {
+      return want[id] && mainTabAllowsDetach(id) && !isTabHidden(id) && !isTabDetached(id);
+    });
+  }
+
+  function switchDetachedGroupTab(groupId, name, force) {
+    var g = detachedTabGroups[groupId];
+    if (!g || !g.win) return;
+    try {
+      if (!detachPopoutWindowOpen(g)) return;
+    } catch (eC) {
+      return;
+    }
+    var doc = g.win.document;
+    var bar = doc.getElementById("bs-tab-detach-tabs");
+    var body = doc.getElementById("bs-body");
+    if (!body || !g.tabIds.length) return;
+    if (TAB_IDS.indexOf(name) < 0) name = g.tabIds[0];
+    if (g.tabIds.indexOf(name) < 0) name = g.tabIds[0];
+    if (!force && name === "identify") {
+      try { openIdentifyTabSafe(); } catch (eId) {}
+      return;
+    }
+    var fromDetachedTab = g.activeTabId || "";
+    g.activeTabId = name;
+    if (bar) {
+      Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
+        btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
+      });
+    }
+    Array.prototype.forEach.call(body.querySelectorAll(".bs-tab-pane"), function (pane) {
+      pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === name);
+    });
+    runTabSwitchSideEffects(name, fromDetachedTab);
+    try { syncDetachedTabPane(name); } catch (eSyncDet) {}
+    try { syncDetachToolbarPlacement(); } catch (eTbSw) {}
+    try { applyToolbarVisibility(); } catch (eTbVis) {}
+    try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eRf) {}
+  }
+
+  function syncRangeScanRunningUi(on) {
+    var doc = tabPaneDocument("range");
+    if (!doc) return;
+    var start = doc.getElementById("bs-range-start-btn");
+    var fresh = doc.getElementById("bs-range-fresh");
+    var stop = doc.getElementById("bs-range-stop");
+    if (start) {
+      start.disabled = !!on;
+      start.classList.toggle("bs-running", !!on);
+    }
+    if (fresh) fresh.disabled = !!on;
+    if (stop) stop.hidden = !on;
+  }
+
+  function bindRangeTabControls() {
+    var doc = tabPaneDocument("range");
+    if (!doc) return;
+    function el(id) { return doc.getElementById(id); }
+    function wireClick(node, fn, flag) {
+      if (!node || node[flag]) return;
+      node[flag] = true;
+      node.onclick = fn;
+    }
+    function wireChange(node, fn, flag) {
+      if (!node || node[flag]) return;
+      node[flag] = true;
+      node.onchange = fn;
+    }
+    function wireInput(node, fn, flag) {
+      if (!node || node[flag]) return;
+      node[flag] = true;
+      node.oninput = fn;
+    }
+    var subs = el("bs-rg-subs");
+    if (subs && !subs._bsRgSubsWired) {
+      subs._bsRgSubsWired = true;
+      subs.onclick = function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".bs-rg-sub");
+        if (!btn) return;
+        var name = btn.getAttribute("data-rg-sub");
+        if (name) setRangeSubTab(name);
+      };
+    }
+    wireClick(el("bs-range-start-btn"), function () { runRangeSurvey(false); }, "_bsRangeScanWired");
+    wireClick(el("bs-range-fresh"), function () { runRangeSurvey(true); }, "_bsRangeScanWired");
+    wireClick(el("bs-range-stop"), stopSurvey, "_bsRangeScanWired");
+    var freqSync = function () {
+      readRangeForm();
+      fillRangeFreqFields({ force: true, doc: doc });
+    };
+    var startIn = el("bs-range-start");
+    var endIn = el("bs-range-end");
+    if (startIn && !startIn._bsRgFreqWired) {
+      startIn._bsRgFreqWired = true;
+      startIn.onchange = freqSync;
+      startIn.oninput = readRangeForm;
+      startIn.onblur = freqSync;
+    }
+    if (endIn && !endIn._bsRgFreqWired) {
+      endIn._bsRgFreqWired = true;
+      endIn.onchange = freqSync;
+      endIn.oninput = readRangeForm;
+      endIn.onblur = freqSync;
+    }
+    [
+      "bs-range-step", "bs-range-offset", "bs-range-grid", "bs-range-passes",
+      "bs-range-ask-passes", "bs-range-dwell", "bs-range-thresh", "bs-range-minhits",
+      "bs-range-hidespurs", "bs-range-mute", "bs-range-wideband", "bs-range-ownradio",
+      "bs-range-alone", "bs-range-mode-full", "bs-range-mode-bands", "bs-range-mode-profile",
+      "bs-range-mode-loudest", "bs-range-mode-profile-sel", "bs-range-hide-bookmarked"
+    ].forEach(function (id) {
+      wireChange(el(id), readRangeForm, "_bsRgFormWired");
+    });
+    var gridPreset = el("bs-range-grid-preset");
+    if (gridPreset && !gridPreset._bsRgFormWired) {
+      gridPreset._bsRgFormWired = true;
+      try { syncRangeGridPresetSelect(); } catch (eGp) {}
+      gridPreset.onchange = function () {
+        applyRangeGridPreset(gridPreset.value, true);
+      };
+    }
+    wireClick(el("bs-range-preset-load"), function () { loadSelectedRangePreset(); }, "_bsRgFormWired");
+    wireClick(el("bs-range-preset-save"), function () { saveCurrentRangePreset(); }, "_bsRgFormWired");
+    wireClick(el("bs-range-preset-del"), function () { deleteSelectedRangePreset(); }, "_bsRgFormWired");
+    [
+      "bs-range-mode-lock", "bs-range-autobm", "bs-range-repeat-min",
+      "bs-range-max-hops", "bs-range-max-min", "bs-range-spec-diff"
+    ].forEach(function (id) {
+      var node = el(id);
+      if (!node || node._bsRgExtraWired) return;
+      node._bsRgExtraWired = true;
+      node.onchange = function () {
+        readRangeForm();
+        saveSettings();
+        if (id === "bs-range-spec-diff") {
+          try { scheduleDrawRangeSpectrum(); } catch (eDiff) {}
+        }
+      };
+    });
+    try { bindScanTricks(el("bs-tab-range")); } catch (eSt) {}
+    try { gatePublicActions(); } catch (eGate) {}
+  }
+
+  function dedupeTabPanes(tabId, keepPane) {
+    var body = $("bs-body");
+    if (!body || !tabId) return keepPane || null;
+    var matches = [];
+    Array.prototype.forEach.call(body.querySelectorAll(".bs-tab-pane"), function (pane) {
+      var dt = pane.getAttribute("data-tab");
+      if (dt === tabId || pane.id === "bs-tab-" + tabId) matches.push(pane);
+    });
+    if (!matches.length) return keepPane || null;
+    if (matches.length === 1) return matches[0];
+    var keep = keepPane;
+    if (!keep || !body.contains(keep)) keep = matches[matches.length - 1];
+    matches.forEach(function (p) {
+      if (p !== keep) {
+        try { p.remove(); } catch (eRm) {}
+      }
+    });
+    return keep;
+  }
+
+  /** Re-bind / redraw a tab pane after it moves between main panel and a detach pop-out. */
+  function syncTabPaneAfterMove(tabId) {
+    if (!tabId) return;
+    var pane = tabPaneEl(tabId);
+    if (pane) {
+      try { injectBoxHelpButtons(pane); } catch (eH) {}
+      try { restoreCollapsibleBoxes(pane); } catch (eR) {}
+      try { bindCollapsibleBoxes(pane); } catch (eCol) {}
+      try { bindBoxHelp(pane); } catch (eBh) {}
+      try {
+        requestAnimationFrame(function () {
+          try { refreshTabScrollBackToTopHosts(pane); } catch (eBtt) {}
+        });
+      } catch (eBtt0) {}
+    }
+    if (tabId === "analyzer") {
+      try {
+        if (sa._drawRo) {
+          sa._drawRo.disconnect();
+          sa._drawRo = null;
+        }
+      } catch (eRo) {}
+      try { saEnsureDrawObserver(); } catch (eObs) {}
+      sa.dirty = true;
+      try { ensureAnalyzerSdrShowUi(); } catch (eSaSdr) {}
+      try { ensureSaMainWfCheckbox(); } catch (eMwc) {}
+      try {
+        if (currentPanelTab() === "analyzer") {
+          saOnTab("analyzer");
+        } else {
+          finishAnalyzerBoxes($("bs-tab-analyzer"));
+          saScheduleDraw();
+        }
+      } catch (eSa) {}
+      return;
+    }
+    if (tabId === "range") {
+      try { ensureRangeSdrShowUi(); } catch (eRgSdr) {}
+      try { bindRangeTabControls(); } catch (eRgBind) {}
+      try { fillRangeTabUi(); } catch (eRgUi) {}
+      try { restoreRangeSubTab(); } catch (eRgSub) {}
+      try { syncRangeScanRunningUi(!!(running && radioJob === "range")); } catch (eRgRun) {}
+    } else if (tabId === "bands") {
+      try { fillBands(); } catch (eB) {}
+      try { fillBandsEdit(); } catch (eBe) {}
+      try { ensureBandsSdrShowUi(); } catch (eBdSdr) {}
+      try { bindBandsTabPaneControls(tabPaneGet("bands", "bs-tab-bands")); } catch (eBdBind) {}
+      try { restoreBandsSubTab(); } catch (eBdSub) {}
+    } else if (tabId === "explore") {
+      try { bindScanTricks(tabPaneGet("explore", "bs-tab-explore")); } catch (eExSt) {}
+      try { scheduleExploreMasonryRepack(); } catch (eExM) {}
+      try { ensureExploreBoxesPacked(); } catch (eExP) {}
+      try { exploreSyncTuneAndAudioScopeAfterTabMove("explore"); } catch (eExTune) {}
+      try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eExRf) {}
+    } else if (tabId === "skip") {
+      try { bindScanTricks(tabPaneGet("skip", "bs-tab-skip")); } catch (eSkSt) {}
+    } else if (tabId === "identify") {
+      try { finishIdentifyBoxes($("bs-tab-identify")); } catch (eId) {}
+    } else if (tabId === "bookmarks") {
+      try { bindBookmarksTabControls(); } catch (eBmBind) {}
+      try { bindBookmarkScanToolbarControls(); } catch (eBmTb) {}
+    } else if (tabId === "more") {
+      try { bindMoreTab(); } catch (eMoreBind) {}
+      try { moreOnTab(); } catch (eMoreOn) {}
+    } else if (tabId === "log") {
+      try { bindTrafficLog(); } catch (eLogBind) {}
+      try { trafficLogRender(); } catch (eLogR) {}
+      try { restoreLogSubTab(); } catch (eLogSub) {}
+    } else if (tabId === "watch") {
+      try { bindSigWatch(); } catch (eWatchBind) {}
+      try { sigWatchRender(); } catch (eWatchR) {}
+      try { sigWatchSyncArmButtons(); } catch (eWatchArm) {}
+      try { restoreWatchSubTab(); } catch (eWatchSub) {}
+    } else if (tabId === "memory") {
+      try { bindMemoryTab(); } catch (eMemBind) {}
+      try { memoryOnTab(); } catch (eMemOn) {}
+    } else if (tabId === "peaks") {
+      try { bindPeaksTabControls(); } catch (ePkBind) {}
+      try { restorePeaksSubTab(); } catch (ePkSub) {}
+      try { renderHits(); } catch (ePkHit) {}
+    } else if (tabId === "audio") {
+      try { bindAudioTabControls(); } catch (eAudBind) {}
+      try { restoreAudioSubTab(); } catch (eAudSub) {}
+      try { renderAudioClips(); } catch (eAudR) {}
+    } else if (tabId === "settings") {
+      try { bindSettingsSubTabs(); } catch (eStBind) {}
+      try { restoreSettingsSubTab(); } catch (eStSub) {}
+      try { bindSettingsBoxBulkClicks(pane); } catch (eStBulk) {}
+    } else if (tabId === "help") {
+      try { bindHelpTabActions(); } catch (eHelpBind) {}
+    }
+  }
+
+  function syncDetachedTabPane(tabId) {
+    syncTabPaneAfterMove(tabId);
+  }
+
+  function refreshDetachGroupChrome(groupId) {
+    var g = detachedTabGroups[groupId];
+    if (!g || !g.win) return;
+    var doc = g.win.document;
+    var label = detachGroupLabel(g.tabIds);
+    try {
+      g.win.document.title = "Toolbox — " + label;
+    } catch (eT) {}
+    var bar = doc.getElementById("bs-tab-detach-tabs");
+    if (!bar) return;
+    var single = g.tabIds.length === 1;
+    bar.classList.toggle("bs-tab-detach-tabs-single", single);
+    var tabsHtml = single ? "" : g.tabIds.map(function (id) {
+      var m = TAB_HEAD_META[id] || { lab: id, title: id };
+      var on = id === g.activeTabId ? " bs-tab-on" : "";
+      return (
+        '<button type="button" class="bs-tab' + on + '" data-tab="' + id + '" role="tab" title="' + m.title + '">' +
+        m.lab + "</button>"
+      );
+    }).join("");
+    bar.innerHTML = tabsHtml +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-reattach" title="Move these tabs back to the main Toolbox window.">Reattach all</button>';
+    var reBtn = bar.querySelector(".bs-tab-reattach");
+    if (reBtn) {
+      reBtn.onclick = function () { reattachDetachGroup(groupId, { confirmWin: g.win }); };
+    }
+  }
+
+  function bindDetachGroupTabBar(groupId) {
+    var g = detachedTabGroups[groupId];
+    if (!g || !g.win) return;
+    var bar = g.win.document.getElementById("bs-tab-detach-tabs");
+    if (!bar || bar._bsDetachClickBound) return;
+    bar._bsDetachClickBound = true;
+    bar.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest(".bs-tab[data-tab]");
+      if (!btn || !bar.contains(btn)) return;
+      switchDetachedGroupTab(groupId, btn.getAttribute("data-tab"), true);
+    });
+  }
+
+  function whenTabPopoutDocumentReady(win, cb) {
+    var done = false;
+    function run() {
+      if (done) return;
+      try {
+        if (!win) return;
+        if (!detachPopoutIsDockedInTab(win) && win.closed) return;
+        var doc = win.document;
+        if (!doc || !doc.body) return;
+        done = true;
+        cb();
+      } catch (e) {}
+    }
+    try {
+      win.addEventListener("load", run, { once: true });
+    } catch (eL) {}
+    var tries = 0;
+    (function tick() {
+      if (done) return;
+      run();
+      if (!done && tries++ < 200) setTimeout(tick, 25);
+    })();
+  }
+
+  function finishTabPopoutMount(win, groupId, tabIds, activeTabId, opts) {
+    opts = opts || {};
+    if (!win) return;
+    try {
+      if (!opts.dockInTab && !detachPopoutIsDockedInTab(win) && win.closed) return;
+    } catch (eWinChk) {
+      return;
+    }
+    try {
+      if (!opts.remount && win.document && win.document.documentElement &&
+          win.document.documentElement.getAttribute("data-bs-detach-mounted") === "1") {
+        return;
+      }
+    } catch (eDup) {}
+    whenTabPopoutDocumentReady(win, function () {
+      try {
+        if (!mountDetachedTabGroup(win, groupId, tabIds, activeTabId || tabIds[0], opts)) {
+          if (!opts.remount) {
+            setStatus("Could not open detach window.");
+            try { closeDetachPopoutWindow(win); } catch (eC) {}
+          } else {
+            tabPopoutShowBootMessage(win, "Remount failed — use Reattach all on the main receiver tab.");
+          }
+        }
+      } catch (eM) {
+        if (!opts.remount) {
+          setStatus("Detach window failed — hard-refresh the receiver, then try again.");
+          try { closeDetachPopoutWindow(win); } catch (eC2) {}
+        } else {
+          tabPopoutShowBootMessage(win, "Remount failed — keep the receiver tab open and try F5 again.");
+        }
+      }
+    });
+  }
+
+  function tabPopoutGroupIdFromUrl(popWin) {
+    try {
+      return new URLSearchParams(popWin.location.search).get("group") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function detachGroupIdForPopoutWin(popWin) {
+    var gid = tabPopoutGroupIdFromUrl(popWin);
+    if (gid && detachedTabGroups[gid]) return gid;
+    var gk;
+    for (gk in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gk)) continue;
+      try {
+        if (detachedTabGroups[gk].win === popWin) return gk;
+      } catch (eW) {}
+    }
+    try {
+      var tabId = new URLSearchParams(popWin.location.search).get("tab");
+      if (tabId && detachedTabToGroup[tabId]) return detachedTabToGroup[tabId];
+    } catch (eT) {}
+    return gid || null;
+  }
+
+  function tabPopoutShowBootMessage(popWin, msg) {
+    try {
+      var wait = popWin.document.querySelector(".bs-tab-popout-wait");
+      if (wait) wait.textContent = msg;
+    } catch (e) {}
+  }
+
+  function remountDetachedTabPopout(popWin, groupId) {
+    if (!popWin || popWin.closed) return false;
+    groupId = groupId || detachGroupIdForPopoutWin(popWin);
+    if (!groupId) return false;
+    var g = detachedTabGroups[groupId];
+    if (!g) {
+      try { reconcileDetachedTabState({ silent: true }); } catch (eRec) {}
+      g = detachedTabGroups[groupId];
+    }
+    if (!g || !g.tabIds || !g.tabIds.length) return false;
+    g.win = popWin;
+    finishTabPopoutMount(popWin, groupId, g.tabIds.slice(), g.activeTabId || g.tabIds[0], { remount: true });
+    return true;
+  }
+
+  function bindDetachPopoutUnload(win, groupId) {
+    if (!win || !groupId) return;
+    if (win._bsDetachUnloadBound === groupId) return;
+    win._bsDetachUnloadBound = groupId;
+    win.addEventListener("unload", function () {
+      if (detachedTabGroups[groupId] && detachedTabGroups[groupId].win === win) {
+        reattachDetachGroup(groupId, { fromUnload: true, silent: true });
+      }
+    });
+  }
+
+  function installTabPopoutBootHandler() {
+    if (installTabPopoutBootHandler._done) return;
+    installTabPopoutBootHandler._done = true;
+    window.__owrxToolboxTabPopoutBoot = function (popWin) {
+      if (!popWin) return;
+      var job = window.__owrxTabPopoutPending;
+      if (job) {
+        if (job.win && job.win !== popWin && !job.win.closed) return;
+        job.win = popWin;
+        window.__owrxTabPopoutPending = null;
+        finishTabPopoutMount(popWin, job.groupId, job.tabIds, job.activeTabId, {
+          dockInTab: !!job.dockInTab
+        });
+        return;
+      }
+      var gid = detachGroupIdForPopoutWin(popWin);
+      if (!gid) return;
+      remountDetachedTabPopout(popWin, gid);
+    };
+  }
+
+  function mountDetachedTabGroup(win, groupId, tabIds, activeTabId, opts) {
+    opts = opts || {};
+    try {
+      var oldShell = win.document.getElementById("bs-tab-detach-shell");
+      if (oldShell && oldShell.parentNode) oldShell.parentNode.removeChild(oldShell);
+    } catch (eClr) {}
+    try {
+      var wait = win.document.querySelector(".bs-tab-popout-wait");
+      if (wait && wait.parentNode) wait.parentNode.removeChild(wait);
+    } catch (eW) {}
+    try {
+      copyToolboxStyles(win.document);
+    } catch (eCss) {}
+    var mainPanel = $("bs-panel");
+    var label = detachGroupLabel(tabIds);
+    var shell = win.document.createElement("div");
+    shell.id = "bs-tab-detach-shell";
+    shell.className = "bs-tab-detach-shell";
+    var httpNote = detachHttpSecurityNoteHtml();
+    shell.innerHTML =
+      httpNote +
+      '<div class="bs-tab-detach-body" id="bs-tab-detach-body"></div>';
+    win.document.body.appendChild(shell);
+    wireDetachHttpNoteShell(shell);
+    var mount = win.document.getElementById("bs-tab-detach-body");
+    if (!mount) {
+      try { closeDetachPopoutWindow(win); } catch (eM) {}
+      return false;
+    }
+    var panelShell = win.document.createElement("div");
+    panelShell.id = "bs-panel";
+    panelShell.className = "bs-tab-popout-panel bs-detached bs-tab-popout-group";
+    if (mainPanel) {
+      if (mainPanel.classList.contains("bs-ui-scaled")) panelShell.classList.add("bs-ui-scaled");
+      var uiSc = mainPanel.getAttribute("data-bs-ui-scale");
+      if (uiSc) panelShell.setAttribute("data-bs-ui-scale", uiSc);
+    }
+    var popTabs = win.document.createElement("div");
+    popTabs.id = "bs-tab-detach-tabs";
+    popTabs.className = "bs-tabs bs-tab-detach-tabs";
+    popTabs.setAttribute("role", "tablist");
+    var popBody = win.document.createElement("div");
+    popBody.id = "bs-body";
+    popBody.className = "bs-body";
+    mount.appendChild(panelShell);
+    panelShell.appendChild(popTabs);
+    panelShell.appendChild(popBody);
+    var moved = [];
+    var i;
+    for (i = 0; i < tabIds.length; i++) {
+      var tid = tabIds[i];
+      var pane = document.getElementById("bs-tab-" + tid);
+      var mainBody = $("bs-body");
+      if (!pane || (mainBody && !mainBody.contains(pane))) {
+        try { recoverMissingTabPane(tid); } catch (eRec) {}
+        pane = document.getElementById("bs-tab-" + tid);
+      }
+      if (!pane) continue;
+      if (mainBody && !mainBody.contains(pane)) {
+        try { recoverMissingTabPane(tid); } catch (eRec2) {}
+        pane = document.getElementById("bs-tab-" + tid);
+        if (!pane || (mainBody && !mainBody.contains(pane))) continue;
+      }
+      moved.push(tid);
+      popBody.appendChild(pane);
+      pane.classList.toggle("bs-tab-on", tid === activeTabId);
+      var barBtn = $("bs-tabs") && $("bs-tabs").querySelector('.bs-tab[data-tab="' + tid + '"]');
+      if (barBtn) {
+        barBtn.classList.remove("bs-tab-on");
+        barBtn.classList.add("bs-tab-detached-out");
+      }
+      detachedTabToGroup[tid] = groupId;
+    }
+    if (!moved.length) {
+      if (!opts.remount) {
+        try { closeDetachPopoutWindow(win); } catch (eEmpty) {}
+      } else {
+        tabPopoutShowBootMessage(win, "Tab content missing — on the receiver use Reattach all, then detach again.");
+      }
+      return false;
+    }
+    if (moved.indexOf(activeTabId) < 0) activeTabId = moved[0];
+    var dockInTab = !!(opts.dockInTab || detachPopoutIsDockedInTab(win));
+    detachedTabGroups[groupId] = {
+      win: win,
+      tabIds: moved,
+      activeTabId: activeTabId || moved[0],
+      dockInTab: dockInTab
+    };
+    if (dockInTab) syncDockTabDetachFramesVisibility(groupId);
+    ensureDetachToolbarInPanel(panelShell, popBody, moved);
+    refreshDetachGroupChrome(groupId);
+    bindDetachGroupTabBar(groupId);
+    switchDetachedGroupTab(groupId, activeTabId || tabIds[0], true);
+    moved.forEach(function (tid) {
+      try { syncDetachedTabPane(tid); } catch (eSyncT) {}
+    });
+    bindDetachPopoutUnload(win, groupId);
+    win.addEventListener("resize", function () {
+      try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eRz) {}
+    });
+    try { win.focus(); } catch (eF) {}
+    try {
+      win.document.documentElement.setAttribute("data-bs-detach-mounted", "1");
+    } catch (eMk) {}
+    try { syncDetachToolbarPlacement(); } catch (eTbMt) {}
+    try { applyToolbarVisibility(); } catch (eTbMtVis) {}
+    if (!opts.remount) {
+      setStatus(dockInTab
+        ? label + " detached in this tab — use Reattach on the pop-out bar or Reattach all."
+        : label + " detached — use the pop-out tab bar or Reattach all.");
+    } else {
+      setStatus(label + " pop-out reloaded — tabs restored in this window.");
+    }
+    return true;
+  }
+
+  function detachTabsToNewGroup(tabIds, activeTabId, opts) {
+    opts = opts || {};
+    if (!tabDetachExtraOn()) return;
+    if (isPanelDetached()) {
+      setStatus("Dock the full Toolbox first — then detach individual tabs.");
+      return;
+    }
+    tabIds = normalizeDetachTabIds(tabIds);
+    if (!tabIds.length) {
+      setStatus("Help and Settings stay on the main Toolbox.");
+      return;
+    }
+    if (tabIds.length > TAB_DETACH_GROUP_MAX) {
+      setStatus("Up to " + TAB_DETACH_GROUP_MAX + " tabs per detached window — trim your selection.");
+      tabIds = tabIds.slice(0, TAB_DETACH_GROUP_MAX);
+    }
+    if (countDetachedTabs() + tabIds.length > tabDetachMaxCount()) {
+      setStatus("Too many tabs detached — reattach some first.");
+      return;
+    }
+    var pending = null;
+    var pi;
+    for (pi = 0; pi < tabIds.length; pi++) {
+      if (tabPaneIsPending(tabIds[pi])) {
+        pending = tabIds[pi];
+        break;
+      }
+    }
+    if (pending) {
+      ensureTabContentBuilt(pending, function () { detachTabsToNewGroup(tabIds, activeTabId, opts); });
+      return;
+    }
+    var cur = currentPanelTab();
+    if (cur && tabIds.indexOf(cur) >= 0) {
+      try { switchTab(firstVisibleTabNotDetached(cur), true); } catch (eSw) {}
+    }
+    if (activeTabId && tabIds.indexOf(activeTabId) < 0) activeTabId = tabIds[0];
+    var groupId = detachGroupNextId();
+    var label = detachGroupLabel(tabIds);
+    var openInDockTab = opts.target === "dock";
+    var openAsTab = opts.target === "tab";
+    var feats = "popup=yes,width=920,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes";
+    installTabPopoutBootHandler();
+    var popUrl = toolboxTabPopoutUrl(tabIds[0], label, groupId);
+    window.__owrxTabPopoutPending = {
+      win: null,
+      groupId: groupId,
+      tabIds: tabIds,
+      activeTabId: activeTabId || tabIds[0],
+      dockInTab: openInDockTab
+    };
+    var win;
+    if (openInDockTab) {
+      var iframe = openDockTabDetachFrame(groupId, popUrl);
+      iframe.onload = function () {
+        try {
+          var cw = iframe.contentWindow;
+          if (!cw) return;
+          window.__owrxTabPopoutPending.win = cw;
+          if (typeof window.__owrxToolboxTabPopoutBoot === "function") {
+            window.__owrxToolboxTabPopoutBoot(cw);
+          }
+        } catch (eIfLd) {}
+      };
+      win = iframe.contentWindow;
+    } else {
+      win = openAsTab
+        ? window.open(popUrl, "_blank")
+        : window.open(popUrl, "owrx-toolbox-tab-" + groupId, feats);
+    }
+    window.__owrxTabPopoutPending.win = win;
+    if (!win) {
+      window.__owrxTabPopoutPending = null;
+      setStatus(openInDockTab
+        ? "Could not open in-tab detach — try again or use Detach to new window."
+        : "Pop-out blocked — allow pop-ups for this receiver, then Detach again.");
+      return;
+    }
+    setTimeout(function () {
+      try {
+        if (!win) return;
+        if (openInDockTab) {
+          if (!detachPopoutIsDockedInTab(win)) return;
+        } else if (win.closed) {
+          return;
+        }
+        if (win.document.documentElement.getAttribute("data-bs-detach-mounted") === "1") return;
+      } catch (eChk) {}
+      var job = window.__owrxTabPopoutPending;
+      if (job && job.groupId === groupId) window.__owrxTabPopoutPending = null;
+      finishTabPopoutMount(win, groupId, tabIds, activeTabId || tabIds[0], {
+        dockInTab: openInDockTab
+      });
+    }, 1200);
+  }
+
+  function addTabToDetachGroup(groupId, tabId) {
+    if (!tabDetachExtraOn() || isPanelDetached()) return;
+    var g = detachedTabGroups[groupId];
+    if (!g || !g.win || g.tabIds.indexOf(tabId) >= 0) return;
+    if (isTabDetached(tabId) || isTabHidden(tabId) || !mainTabAllowsDetach(tabId)) return;
+    if (g.tabIds.length >= TAB_DETACH_GROUP_MAX) {
+      setStatus("That window already has " + TAB_DETACH_GROUP_MAX + " tabs — start another window.");
+      return;
+    }
+    if (tabPaneIsPending(tabId)) {
+      ensureTabContentBuilt(tabId, function () { addTabToDetachGroup(groupId, tabId); });
+      return;
+    }
+    var pane = $("bs-tab-" + tabId);
+    var popBody = g.win.document.getElementById("bs-body");
+    if (!pane || !popBody) return;
+    var cur = currentPanelTab();
+    if (cur === tabId) try { switchTab(firstVisibleTabNotDetached(tabId), true); } catch (eC) {}
+    popBody.appendChild(pane);
+    g.tabIds.push(tabId);
+    detachedTabToGroup[tabId] = groupId;
+    var barBtn = $("bs-tabs") && $("bs-tabs").querySelector('.bs-tab[data-tab="' + tabId + '"]');
+    if (barBtn) {
+      barBtn.classList.remove("bs-tab-on");
+      barBtn.classList.add("bs-tab-detached-out");
+    }
+    refreshDetachGroupChrome(groupId);
+    switchDetachedGroupTab(groupId, tabId, true);
+    try { ensureDetachToolbarInPanel(
+      g.win.document.getElementById("bs-panel"),
+      g.win.document.getElementById("bs-body"),
+      g.tabIds
+    ); } catch (eTbAdd) {}
+    try { applyToolbarVisibility(); } catch (eTbVisAdd) {}
+    setStatus(((TAB_HEAD_META[tabId] && TAB_HEAD_META[tabId].lab) || tabId) + " added to detached window.");
+  }
+
+  function eachPanelLikeDocument(fn) {
+    var seen = [];
+    function addDoc(d) {
+      if (!d || seen.indexOf(d) >= 0) return;
+      seen.push(d);
+      fn(d);
+    }
+    addDoc(panelDocument());
+    if (document !== panelDocument()) addDoc(document);
+    var gid;
+    for (gid in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gid)) continue;
+      try {
+        var gw = detachedTabGroups[gid].win;
+        if (gw && !gw.closed && gw.document) addDoc(gw.document);
+      } catch (eW) {}
+    }
+  }
+
+  function closeDetachPopoutWindow(win) {
+    if (!win) return false;
+    try {
+      if (detachPopoutIsDockedInTab(win)) {
+        try { restoreToolbarToMainPanel(win); } catch (eTbD) {}
+        var fe = win.frameElement;
+        if (fe && fe.parentNode) fe.parentNode.removeChild(fe);
+        teardownDockTabDetachOverlayIfEmpty();
+        try { applyToolbarVisibility(); } catch (eVisD) {}
+        return true;
+      }
+      if (win.closed) return false;
+      try { restoreToolbarToMainPanel(win); } catch (eTb) {}
+      win._bsClosingFromReattach = true;
+      win.close();
+      try { applyToolbarVisibility(); } catch (eVis) {}
+      return true;
+    } catch (eC) {
+      return false;
+    }
+  }
+
+  function reattachDetachGroup(groupId, opts) {
+    opts = opts || {};
+    var g = detachedTabGroups[groupId];
+    if (!g) return 0;
+    if (!opts.silent && !opts.fromUnload && !opts.skipConfirm) {
+      var lab = detachGroupLabel(g.tabIds);
+      var confirmWin = opts.confirmWin;
+      if (!confirmWin && g.win && !g.win.closed) confirmWin = g.win;
+      if (!toolboxUserConfirm(
+        "Reattach " + lab + " to the main Toolbox and close this pop-out window?",
+        confirmWin
+      )) {
+        return 0;
+      }
+    }
+    var win = g.win;
+    var ids = g.tabIds.slice();
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      reattachMainTab(ids[i], { silent: true, fromUnload: true, keepWindow: true });
+    }
+    purgeDetachGroup(groupId);
+    try { restoreToolbarToMainPanel(win); } catch (eTbG) {}
+    var closed = 0;
+    if (win && !opts.fromUnload) {
+      if (closeDetachPopoutWindow(win)) closed = 1;
+    }
+    if (!opts.silent) {
+      setStatus(closed
+        ? "Tabs reattached — pop-out window closed."
+        : "Detached window reattached.");
+    }
+    for (i = 0; i < ids.length; i++) {
+      try { syncTabPaneAfterMove(ids[i]); } catch (eSyncG) {}
+    }
+    try {
+      var pick = ids[0];
+      if (pick && !isTabDetached(pick)) switchTab(pick, true);
+    } catch (eSwG) {}
+    try { applyToolbarVisibility(); } catch (eVisG) {}
+    try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eRf) {}
+    return closed;
+  }
+
+  function reattachAllDetachedTabs(opts) {
+    opts = opts || {};
+    reconcileDetachedTabState({ silent: true });
+    var gids = Object.keys(detachedTabGroups).slice();
+    var winCount = gids.length;
+    var tabCount = countDetachedTabs();
+    if (!tabCount) tabCount = tabsNeedingRecovery().length;
+    if (!opts.silent && !opts.skipConfirm && (winCount > 0 || tabCount > 0)) {
+      var msg = "Reattach ";
+      msg += tabCount ? tabCount + " detached tab(s)" : "tab pane(s) into the main Toolbox";
+      if (winCount) msg += " and close " + winCount + " pop-out window(s)";
+      msg += "?";
+      if (!window.confirm(msg)) return;
+    }
+    var closed = 0;
+    var i;
+    for (i = 0; i < gids.length; i++) {
+      closed += reattachDetachGroup(gids[i], { silent: true, skipConfirm: true });
+    }
+    detachedTabGroups = {};
+    detachedTabToGroup = {};
+    var recovered = reconcileDetachedTabState({ silent: true });
+    try {
+      var pick = firstVisibleTabNotDetached();
+      if (pick) switchTab(pick, true);
+    } catch (eSw) {}
+    try { restoreToolbarToMainPanel(null); } catch (eTbAll) {}
+    try { applyToolbarVisibility(); } catch (eVisAll) {}
+    try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eRf) {}
+    if (!opts.silent) {
+      var parts = [];
+      if (recovered.length) parts.push("recovered " + recovered.length + " tab(s)");
+      else parts.push("tabs reattached");
+      if (closed) parts.push("closed " + closed + " pop-out window(s)");
+      setStatus(parts.join(" — ") + ".");
+    }
+  }
+
+  function reattachMainTab(tabId, opts) {
+    opts = opts || {};
+    var gid = detachedTabToGroup[tabId];
+    if (!gid) return;
+    var g = detachedTabGroups[gid];
+    if (!g) {
+      delete detachedTabToGroup[tabId];
+      return;
+    }
+    var win = g.win;
+    var pane = null;
+    try {
+      if (win && detachPopoutWindowOpen(g) && win.document) pane = win.document.getElementById("bs-tab-" + tabId);
+    } catch (e0) {}
+    if (!pane) pane = document.getElementById("bs-tab-" + tabId);
+    var body = $("bs-body");
+    if (pane && body) {
+      pane.classList.remove("bs-tab-on");
+      body.appendChild(pane);
+      try { pane = dedupeTabPanes(tabId, pane); } catch (eDu) {}
+    }
+    clearDetachedTabBarChrome(tabId);
+    g.tabIds = g.tabIds.filter(function (id) { return id !== tabId; });
+    if (!g.tabIds.length) {
+      purgeDetachGroup(gid, { skipRecover: true });
+      try { restoreToolbarToMainPanel(win); } catch (eTbRm) {}
+      if (win && detachPopoutWindowOpen(g) && !opts.fromUnload && !opts.keepWindow) {
+        try { closeDetachPopoutWindow(win); } catch (e2) {
+          try { if (!detachPopoutIsDockedInTab(win)) win.close(); } catch (e2b) {}
+        }
+      }
+    } else {
+      if (g.activeTabId === tabId) g.activeTabId = g.tabIds[0];
+      refreshDetachGroupChrome(gid);
+      switchDetachedGroupTab(gid, g.activeTabId, true);
+    }
+    if (!opts.silent) {
+      var meta = TAB_HEAD_META[tabId] || { lab: tabId };
+      setStatus(meta.lab + " reattached.");
+    }
+    try { syncTabPaneAfterMove(tabId); } catch (eSyncR) {}
+    try { syncDetachToolbarPlacement(); } catch (eTbRt) {}
+    try { applyToolbarVisibility(); } catch (eTbRtVis) {}
+    try {
+      if (currentPanelTab() === tabId) switchTab(tabId, true);
+    } catch (eSw) {}
+    try { scheduleExploreFreeReflowAfterPanelLayout(); } catch (eRf) {}
+  }
+
+  function detachMainTab(tabId, opts) {
+    if (!mainTabAllowsDetach(tabId)) {
+      setStatus("Help and Settings stay on the main Toolbox.");
+      return;
+    }
+    if (isTabDetached(tabId)) {
+      focusDetachedTab(tabId);
+      return;
+    }
+    detachTabsToNewGroup([tabId], tabId, opts || {});
+  }
+
+  function openTabDetachAddToWindowPicker(seedTabId) {
+    removeTabContextMenuUi();
+    try { hideFloatTip(); } catch (eTip) {}
+    if (!tabDetachExtraOn() || isPanelDetached()) return;
+    if (isTabDetached(seedTabId) || isTabHidden(seedTabId) || !mainTabAllowsDetach(seedTabId)) return;
+    var groups = listDetachGroups();
+    if (!groups.length) {
+      setStatus("No pop-out open — use Detach to new window first.");
+      return;
+    }
+    if (groups.length === 1) {
+      addTabToDetachGroup(groups[0].groupId, seedTabId);
+      return;
+    }
+    var wrap = document.createElement("div");
+    wrap.id = "bs-tab-detach-pick";
+    wrap.className = "bs-tab-detach-pick";
+    wrap.innerHTML =
+      '<p class="bs-tab-menu-title">Add to pop-out</p>' +
+      '<p class="bs-tab-menu-hint">Pick which open window gets “' +
+      ((TAB_HEAD_META[seedTabId] && TAB_HEAD_META[seedTabId].lab) || seedTabId) +
+      '”.</p>' +
+      '<div class="bs-tab-detach-pick-list"></div>' +
+      '<div class="bs-tab-detach-pick-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-detach-pick-go">Add tab</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-detach-pick-cancel">Cancel</button>' +
+      "</div>";
+    var list = wrap.querySelector(".bs-tab-detach-pick-list");
+    groups.forEach(function (grp, idx) {
+      var lab = document.createElement("label");
+      lab.className = "bs-tab-detach-pick-row";
+      lab.innerHTML =
+        '<input type="radio" name="bs-detach-add-grp" data-group="' + grp.groupId + '"' +
+        (idx === 0 ? " checked" : "") + "> " + grp.label;
+      list.appendChild(lab);
+    });
+    try {
+      mountToolboxOverlay(wrap, overlayTabContext(seedTabId));
+    } catch (eMt) {
+      try { document.body.appendChild(wrap); } catch (eFb) {}
+    }
+    function closePick() {
+      try {
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      } catch (eRm) {}
+    }
+    wrap.querySelector(".bs-tab-detach-pick-cancel").onclick = closePick;
+    wrap.querySelector(".bs-tab-detach-pick-go").onclick = function () {
+      var picked = wrap.querySelector('input[name="bs-detach-add-grp"]:checked');
+      var gid = picked && picked.getAttribute("data-group");
+      closePick();
+      if (gid) addTabToDetachGroup(gid, seedTabId);
+    };
+    var hostDoc = wrap.ownerDocument;
+    setTimeout(function () {
+      hostDoc.addEventListener("click", function (ev) {
+        if (!wrap.contains(ev.target)) closePick();
+      }, { once: true });
+    }, 0);
+  }
+
+  function openTabDetachTogetherPicker(seedTabId, opts) {
+    opts = opts || {};
+    var openInDockTab = opts.target === "dock";
+    var openAsTab = opts.target === "tab";
+    removeTabContextMenuUi();
+    try { hideFloatTip(); } catch (eTip) {}
+    if (!tabDetachExtraOn() || isPanelDetached()) return;
+    var candidates = TAB_BAR_IDS.filter(function (id) {
+      return mainTabAllowsDetach(id) && !isTabHidden(id) && !isTabDetached(id);
+    });
+    if (!candidates.length) return;
+    var wrap = document.createElement("div");
+    wrap.id = "bs-tab-detach-pick";
+    wrap.className = "bs-tab-detach-pick";
+    wrap.innerHTML =
+      '<p class="bs-tab-menu-title">' + (openInDockTab
+        ? "Detach together in this tab"
+        : openAsTab ? "Detach together to browser tab" : "Detach together") + "</p>" +
+      '<p class="bs-tab-menu-hint">' + (openInDockTab
+        ? "Pick tabs to show fullscreen in this receiver tab (over the waterfall / side dock)."
+        : openAsTab
+        ? "Pick tabs to open together in one new browser tab (same receiver page)."
+        : "Pick 2–3 (or more) tabs for one pop-out window.") + "</p>" +
+      '<div class="bs-tab-detach-pick-list"></div>' +
+      '<div class="bs-tab-detach-pick-actions">' +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-detach-pick-go">' +
+      (openInDockTab ? "Detach in this tab" : openAsTab ? "Detach to new tab" : "Detach selected") + "</button>" +
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-detach-pick-cancel">Cancel</button>' +
+      "</div>";
+    var list = wrap.querySelector(".bs-tab-detach-pick-list");
+    candidates.forEach(function (id) {
+      var m = TAB_HEAD_META[id] || { lab: id };
+      var lab = document.createElement("label");
+      lab.className = "bs-tab-detach-pick-row";
+      var checked = id === seedTabId || candidates.length <= TAB_DETACH_BULK_CHUNK;
+      lab.innerHTML =
+        '<input type="checkbox" data-tab="' + id + '"' + (checked ? " checked" : "") + "> " + m.lab;
+      list.appendChild(lab);
+    });
+    try {
+      mountToolboxOverlay(wrap, overlayTabContext(seedTabId));
+    } catch (eMt2) {
+      try { document.body.appendChild(wrap); } catch (eFb2) {}
+    }
+    function closePick() {
+      try {
+        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      } catch (eRm) {}
+    }
+    wrap.querySelector(".bs-tab-detach-pick-cancel").onclick = closePick;
+    wrap.querySelector(".bs-tab-detach-pick-go").onclick = function () {
+      var picked = [];
+      Array.prototype.forEach.call(wrap.querySelectorAll("input[data-tab]:checked"), function (inp) {
+        var id = inp.getAttribute("data-tab");
+        if (id) picked.push(id);
+      });
+      closePick();
+      if (!picked.length) {
+        setStatus("Select at least one tab.");
+        return;
+      }
+      detachTabsToNewGroup(
+        picked,
+        seedTabId && picked.indexOf(seedTabId) >= 0 ? seedTabId : picked[0],
+        openInDockTab ? { target: "dock" } : openAsTab ? { target: "tab" } : {}
+      );
+    };
+    var hostDoc2 = wrap.ownerDocument;
+    setTimeout(function () {
+      hostDoc2.addEventListener("click", function (ev) {
+        if (!wrap.contains(ev.target)) closePick();
+      }, { once: true });
+    }, 0);
+  }
+
+  function openTabContextMenu(ev, tabId) {
+    removeTabContextMenuUi();
+    try { hideFloatTip(); } catch (eTip) {}
+    try { reconcileDetachedTabState({ silent: true }); } catch (eRec) {}
+    var detachExtra = tabDetachExtraOn();
+    var detachLocked = !mainTabAllowsDetach(tabId);
+    var meta = TAB_HEAD_META[tabId] || { lab: tabId };
+    var menu = document.createElement("div");
+    menu.id = "bs-tab-menu";
+    menu.setAttribute("role", "menu");
+    var detached = isTabDetached(tabId);
+    var title = document.createElement("p");
+    title.className = "bs-tab-menu-title";
+    title.textContent = meta.lab + " tab";
+    menu.appendChild(title);
+    var reattachN = tabsNeedingRecovery().length;
+    if (!reattachN) reattachN = countDetachedTabs();
+    function addItem(label, fn, disabled) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "bs-tab-menu-item";
+      b.textContent = label;
+      if (disabled) {
+        b.disabled = true;
+        b.classList.add("bs-tab-menu-disabled");
+      } else {
+        b.onclick = function (e) {
+          e.preventDefault();
+          closeTabContextMenu();
+          fn();
+        };
+      }
+      menu.appendChild(b);
+    }
+    addItem(
+      reattachN ? "Reattach all tabs (" + reattachN + ")" : "Reattach all tabs",
+      function () { reattachAllDetachedTabs(); },
+      reattachN < 1
+    );
+    function addSep() {
+      var s = document.createElement("div");
+      s.className = "bs-tab-menu-sep";
+      menu.appendChild(s);
+    }
+    addSep();
+    if (!detachExtra) {
+      addItem("Turn on “Detach main tabs”", function () { enableDetachTabsExtra(); });
+      addItem("Turn on and detach this tab", function () {
+        enableDetachTabsExtra({ silent: true });
+        detachMainTab(tabId);
+      }, isPanelDetached() || detachLocked);
+      addSep();
+    }
+    if (detached) {
+      addItem("Focus detached window", function () { focusDetachedTab(tabId); });
+      addItem("Reattach this tab", function () { reattachMainTab(tabId); });
+    } else {
+      var openGroups = listDetachGroups();
+      var canAddOpen = openGroups.some(function (grp) {
+        return grp.tabIds.indexOf(tabId) < 0 && grp.tabIds.length < TAB_DETACH_GROUP_MAX;
+      });
+      addItem("Detach to new window", function () { detachMainTab(tabId); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach to new browser tab", function () { detachMainTab(tabId, { target: "tab" }); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach in this tab (dock page)", function () { detachMainTab(tabId, { target: "dock" }); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach together to new window…", function () { openTabDetachTogetherPicker(tabId); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach together to new browser tab…", function () { openTabDetachTogetherPicker(tabId, { target: "tab" }); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach together in this tab…", function () { openTabDetachTogetherPicker(tabId, { target: "dock" }); }, !detachExtra || isPanelDetached() || detachLocked);
+      if (canAddOpen) {
+        if (openGroups.length === 1) {
+          addItem(
+            "Add to open pop-out (" + openGroups[0].label + ")",
+            function () { addTabToDetachGroup(openGroups[0].groupId, tabId); },
+            openGroups[0].tabIds.length >= TAB_DETACH_GROUP_MAX
+          );
+        } else {
+          addItem("Add to open pop-out…", function () { openTabDetachAddToWindowPicker(tabId); });
+        }
+      }
+      openGroups.forEach(function (grp) {
+        if (grp.tabIds.indexOf(tabId) >= 0) return;
+        if (openGroups.length <= 1) return;
+        addItem(
+          "Add to: " + grp.label,
+          function () { addTabToDetachGroup(grp.groupId, tabId); },
+          grp.tabIds.length >= TAB_DETACH_GROUP_MAX
+        );
+      });
+    }
+    var hint = document.createElement("p");
+    hint.className = "bs-tab-menu-hint";
+    hint.textContent = detachLocked
+      ? "Help and Settings stay on the main Toolbox — use Reattach all if a pop-out still has them."
+      : detachExtra
+      ? "In this tab = fullscreen over the receiver (side dock stays in the same browser tab). Bands / Bookmarks include the Scan strip. Help and Settings stay on the main panel." +
+        (detachHttpSecurityNotePlain() || " Use HTTPS on the server to avoid browser “Not secure” on HTTP.")
+      : "Turn on detach above, or Settings → Extras → Detach main tabs. Missing tabs? Use Reattach all.";
+    menu.appendChild(hint);
+    try {
+      mountToolboxOverlay(menu, tabId);
+    } catch (eMenu) {
+      try { document.body.appendChild(menu); } catch (eFbM) {}
+    }
+    placeFixedAtClient(menu, ev);
+    var menuDoc = menu.ownerDocument;
+    setTimeout(function () {
+      menuDoc.addEventListener("click", closeTabContextMenu, { once: true });
+      menuDoc.addEventListener("contextmenu", closeTabContextMenu, { once: true });
+      menuDoc.addEventListener("keydown", function (eK) {
+        if (eK.key === "Escape") closeTabContextMenu();
+      }, { once: true });
+    }, 0);
   }
 
   function tryOpenTabContextMenu(ev) {
-    return false;
+    var t = ev.target;
+    if (!t || !t.closest) return false;
+    if (t.nodeType === 3) t = t.parentElement;
+    var btn = t.closest("#bs-tabs .bs-tab[data-tab], #bs-tab-detach-tabs .bs-tab[data-tab]");
+    if (!btn) return false;
+    var tabId = btn.getAttribute("data-tab");
+    if (!tabId) return false;
+    ev.preventDefault();
+    if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+    try { hideFloatTip(); } catch (eTip0) {}
+    openTabContextMenu(ev, tabId);
+    return true;
   }
 
   function closeTabContextMenu() {
@@ -18225,15 +22025,110 @@ Plugins.toolbox.init = function () {
   }
 
   function currentPanelTab() {
-    var helpOn = panelQs("#bs-tab-help.bs-tab-on") || panelQs("#bs-help-tog.bs-on");
+    if (settingsHeaderTabOn()) return "settings";
+    try {
+      var settingsPane = $("bs-tab-settings");
+      if (settingsPane && settingsPane.classList.contains("bs-tab-on")) return "settings";
+    } catch (eSetPane) {}
+    var mainTab = currentMainPanelTab();
+    /* Header strip wins for Settings — stale explore pane must not steal focus after Public prefs refresh. */
+    if (mainTab === "settings") return "settings";
+    var paneTab = tabFromVisiblePane();
+    if (paneTab && mainTab && paneTab !== mainTab) return paneTab;
+    if (mainTab) return mainTab;
+    if (paneTab) return paneTab;
+    var gid;
+    for (gid in detachedTabGroups) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gid)) continue;
+      var g = detachedTabGroups[gid];
+      if (!g || !g.activeTabId) continue;
+      try {
+        if (!g.win || g.win.closed) continue;
+        var pane = g.win.document.getElementById("bs-tab-" + g.activeTabId);
+        if (pane && pane.classList.contains("bs-tab-on")) return g.activeTabId;
+      } catch (eDet) {}
+    }
+    var helpOn = panelQs("#bs-tab-help.bs-tab-on");
     if (helpOn) return "help";
-    var on = panelQs("#bs-tabs .bs-tab.bs-tab-on");
-    return (on && on.getAttribute("data-tab")) || "";
+    return "";
   }
 
   function setElHidden(el, hide) {
     if (!el) return;
     el.hidden = !!hide;
+  }
+
+  var TAB_SCAN_TRACK_IDS = { range: 1, bands: 1, bookmarks: 1 };
+
+  function tabScanTrackHtml(tabId) {
+    return (
+      '<div class="bs-tab-scan-track" id="bs-tab-scan-track-' + tabId + '" hidden>' +
+      '<span class="bs-tab-scan-status" id="bs-tab-scan-status-' + tabId + '" role="status"></span>' +
+      '<div class="bs-progress bs-tab-scan-progress" id="bs-tab-scan-progress-' + tabId + '">' +
+      '<i id="bs-tab-scan-bar-' + tabId + '"></i></div></div>'
+    );
+  }
+
+  function ensureTabScanTrack(tabId) {
+    if (!TAB_SCAN_TRACK_IDS[tabId]) return;
+    if (tabPaneGet(tabId, "bs-tab-scan-track-" + tabId)) return;
+    var anchor = null;
+    if (tabId === "range") anchor = tabPaneGet(tabId, "bs-range-est");
+    else if (tabId === "bands") anchor = tabPaneGet(tabId, "bs-bd-subs");
+    else if (tabId === "bookmarks") anchor = tabPaneGet(tabId, "bs-bm-subs");
+    if (!anchor || !anchor.insertAdjacentHTML) return;
+    anchor.insertAdjacentHTML("afterend", tabScanTrackHtml(tabId));
+  }
+
+  function scanBusyForTab(tabId) {
+    if (!tabId) return false;
+    var job;
+    try {
+      job = detectRadioJob();
+    } catch (eJ) {
+      job = null;
+    }
+    if (job !== tabId) return false;
+    var active = !!(running || surveyRunning || (tabId === "bookmarks" && listenScanRunning));
+    if (!active) return false;
+    if (tabId === "bookmarks") return job === "bookmarks";
+    if (tabId === "range" || tabId === "bands") return job === tabId;
+    return false;
+  }
+
+  function scanRunsOnDetachedTab() {
+    var job;
+    try {
+      job = detectRadioJob();
+    } catch (eJ2) {
+      return "";
+    }
+    if (!job || !TAB_SCAN_TRACK_IDS[job]) return "";
+    if (!isTabDetached(job)) return "";
+    if (!scanBusyForTab(job)) return "";
+    return job;
+  }
+
+  function syncTabScanChrome() {
+    var ids = ["range", "bands", "bookmarks"];
+    var i;
+    for (i = 0; i < ids.length; i++) ensureTabScanTrack(ids[i]);
+    var mainSt = $("bs-status");
+    var mainBar = $("bs-bar");
+    var msg = mainSt ? mainSt.textContent : "";
+    var width = mainBar && mainBar.style ? mainBar.style.width : "";
+    for (i = 0; i < ids.length; i++) {
+      var tid = ids[i];
+      var track = tabPaneGet(tid, "bs-tab-scan-track-" + tid);
+      if (!track) continue;
+      var on = scanBusyForTab(tid) && isTabDetached(tid);
+      track.hidden = !on;
+      if (!on) continue;
+      var st = tabPaneGet(tid, "bs-tab-scan-status-" + tid);
+      var bar = tabPaneGet(tid, "bs-tab-scan-bar-" + tid);
+      if (st) st.textContent = msg;
+      if (bar) bar.style.width = width || "0%";
+    }
   }
 
   /** Keep scan status on the same row as the visible Stop button. */
@@ -18305,24 +22200,56 @@ Plugins.toolbox.init = function () {
   }
 
   function applyToolbarVisibility() {
-    var tb = $("bs-toolbar");
-    var p = $("bs-panel");
+    try { syncDetachToolbarPlacement(); } catch (eTbPl) {}
+    var tb = detachToolbarElement();
+    var p = toolbarHostPanel(tb);
     var hidePref = !!S.hideToolbar;
-    var tab = currentPanelTab();
+    var inTabPopout = false;
+    try {
+      inTabPopout = !!(p && p.classList && p.classList.contains("bs-tab-popout-group"));
+    } catch (ePop) {}
+    var tab = currentMainPanelTab() || currentPanelTab();
+    if (inTabPopout && p) {
+      var gidTb;
+      for (gidTb in detachedTabGroups) {
+        if (!Object.prototype.hasOwnProperty.call(detachedTabGroups, gidTb)) continue;
+        var gTb = detachedTabGroups[gidTb];
+        if (!gTb || !gTb.win) continue;
+        try {
+          if (gTb.win.closed) continue;
+          if (gTb.win.document.getElementById("bs-panel") === p && gTb.activeTabId) {
+            tab = gTb.activeTabId;
+            break;
+          }
+        } catch (ePopTab) {}
+      }
+    }
     var survey = !!(running || surveyRunning);
     var listen = !!listenScanRunning;
     var busy = survey || listen;
+    var scanJob = "";
+    try {
+      var dj = detectRadioJob();
+      if (dj === "range" || dj === "bands" || dj === "bookmarks") scanJob = dj;
+    } catch (eScanJob) {}
+    var scanDetachedMain = !!(scanJob && isTabDetached(scanJob) && busy);
     /* While a scan is running, always show Stop + status — even if “Show scan
        strip” is off. Otherwise Stop vanishes and looks dead. */
     var hideChrome = hidePref && !busy;
+    if (inTabPopout && (tab === "bands" || tab === "bookmarks" || busy)) {
+      hideChrome = false;
+    }
     try { applyToolboxFindVisibility(); } catch (eFindVis) {}
     try { applyMinimalButtonVisibility(); } catch (eMinVis) {}
     if (p) p.classList.toggle("bs-hide-toolbar", hideChrome);
 
-    var showBand = !hideChrome && tab === "bands";
-    var showBm = !hideChrome && (tab === "bookmarks" || listen);
-    var showBusyStop = !hideChrome && busy && !showBand && !showBm;
-    var showStatus = !hideChrome && (showBand || showBm || showBusyStop || busy);
+    var bandsScanActive = busy && scanJob === "bands";
+    var bmScanActive = busy && scanJob === "bookmarks";
+    var showBand = !hideChrome && tab === "bands" && (!busy || bandsScanActive);
+    var showBm = !hideChrome && (listen || (tab === "bookmarks" && (!busy || bmScanActive)));
+    var showBusyStop = !hideChrome && busy && !showBand && !showBm && scanJob === "bands";
+    var showGlobalScanFeedback = busy && !scanDetachedMain;
+    var showStatus = !hideChrome && (showBand || showBm || showBusyStop || showGlobalScanFeedback);
     var showAny = showBand || showBm || showBusyStop || showStatus;
 
     setElHidden($("bs-tb-bands-note"), !showBand);
@@ -18342,6 +22269,7 @@ Plugins.toolbox.init = function () {
       tb.classList.toggle("bs-tb-busy-on", !!showBusyStop && !showBand);
     }
     syncStatusPlacement(showBm, showStatus);
+    try { syncTabScanChrome(); } catch (eTscVis) {}
     syncScanStripPrefUiFromS();
   }
 
@@ -18605,7 +22533,171 @@ Plugins.toolbox.init = function () {
     } catch (eSt) {}
   }
 
+  function headChromeGridOk(root) {
+    root = root || $("bs-panel");
+    if (!root) return false;
+    var head = root.querySelector(".bs-head") || $("bs-drag");
+    if (!head || !head.querySelector(".bs-head-chrome")) return false;
+    var tools = head.querySelector(".bs-head-chrome .bs-head-tools");
+    if (!tools) return false;
+    var util = tools.querySelector(".bs-head-tools-util");
+    var win = tools.querySelector(".bs-head-tools-win");
+    return !!(util && win && util.querySelector("#bs-find-tog") && win.querySelector("#bs-side-dock"));
+  }
+
+  /** Version centred on row 1; 4+4 tool grid in right column (rows 1–2). */
+  function migrateHeadVerLayout(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    var head = root.querySelector(".bs-head") || $("bs-drag");
+    if (!head) return;
+    var ver = root.querySelector("#bs-head-ver");
+    var tabs = root.querySelector("#bs-tabs");
+    var bar = head.querySelector(".bs-head-bar");
+    var verSlot = head.querySelector(".bs-head-ver-band");
+    var chrome = head.querySelector(".bs-head-chrome");
+    var actions = chrome ? chrome.querySelector(".bs-head-actions") : head.querySelector(".bs-head-actions");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "bs-head-bar";
+    }
+    if (!verSlot) {
+      verSlot = document.createElement("div");
+      verSlot.className = "bs-head-ver-band";
+    }
+    if (!chrome) {
+      chrome = document.createElement("div");
+      chrome.className = "bs-head-chrome";
+    }
+    if (!actions) {
+      actions = document.createElement("div");
+      actions.className = "bs-head-actions";
+    }
+    if (tabs && tabs.parentNode !== bar) {
+      try { tabs.parentNode.removeChild(tabs); } catch (eT) {}
+      bar.appendChild(tabs);
+    }
+    Array.prototype.forEach.call(bar.querySelectorAll(".bs-head-actions, .bs-head-chrome, .bs-head-tools"), function (x) {
+      try { if (x.parentNode === bar) x.parentNode.removeChild(x); } catch (eB) {}
+    });
+    if (ver) {
+      if (ver.parentNode !== verSlot) {
+        try { ver.parentNode.removeChild(ver); } catch (eV) {}
+        verSlot.appendChild(ver);
+      }
+    }
+    if (actions.parentNode !== chrome) {
+      try { actions.parentNode.removeChild(actions); } catch (eAc) {}
+      chrome.appendChild(actions);
+    }
+    if (chrome.parentNode !== head) {
+      try { chrome.parentNode.removeChild(chrome); } catch (eCh) {}
+      head.appendChild(chrome);
+    }
+    Array.prototype.forEach.call(head.querySelectorAll(".bs-head-util-row"), function (u) {
+      try { if (u.parentNode) u.parentNode.removeChild(u); } catch (eU) {}
+    });
+    if (verSlot.parentNode !== head) {
+      try { verSlot.parentNode.removeChild(verSlot); } catch (eVs) {}
+      head.insertBefore(verSlot, head.firstChild);
+    }
+    if (bar.parentNode !== head) {
+      head.appendChild(bar);
+    }
+    if (head.firstChild !== verSlot) {
+      try { head.insertBefore(verSlot, head.firstChild); } catch (eOrd) {}
+    }
+    if (verSlot.nextElementSibling !== bar) {
+      try { head.insertBefore(bar, chrome); } catch (eOrd2) {}
+    }
+    if (bar.nextElementSibling !== chrome) {
+      try { head.appendChild(chrome); } catch (eOrd3) {}
+    }
+  }
+
+  function migrateHeadActionsLayout(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    if (headChromeGridOk(root)) {
+      try { migrateHeadVerLayout(root); } catch (eGridOk) {}
+      return;
+    }
+    var head = root.querySelector(".bs-head") || $("bs-drag");
+    var actions = root.querySelector(".bs-head-actions");
+    if (!actions) return;
+    if (actions.querySelector(".bs-head-tools") && headChromeGridOk(root)) return;
+    var utilIds = ["bs-find-tog", "bs-ui-scale-cycle", "bs-side-pct-reset", "bs-density-tog"];
+    var winIds = ["bs-side-dock", "bs-hard-refresh", "bs-minimize", "bs-close"];
+    var picked = {};
+    function grab(id) {
+      var el = root.querySelector("#" + id);
+      if (el && el.parentNode) {
+        picked[id] = el;
+        try { el.parentNode.removeChild(el); } catch (eRm) {}
+      }
+    }
+    utilIds.forEach(grab);
+    winIds.forEach(grab);
+    Array.prototype.forEach.call(actions.querySelectorAll(".bs-head-ver-row, .bs-head-actions-btns, .bs-head-tools"), function (w) {
+      try { if (w.parentNode) w.parentNode.removeChild(w); } catch (eW) {}
+    });
+    while (actions.firstChild) {
+      try { actions.removeChild(actions.firstChild); } catch (eClr) { break; }
+    }
+    var tools = document.createElement("div");
+    tools.className = "bs-head-tools";
+    var rowUtil = document.createElement("div");
+    rowUtil.className = "bs-head-tools-row bs-head-tools-util";
+    var rowWin = document.createElement("div");
+    rowWin.className = "bs-head-tools-row bs-head-tools-win";
+    utilIds.forEach(function (id) {
+      if (picked[id]) rowUtil.appendChild(picked[id]);
+    });
+    winIds.forEach(function (id) {
+      if (picked[id]) rowWin.appendChild(picked[id]);
+    });
+    tools.appendChild(rowWin);
+    tools.appendChild(rowUtil);
+    actions.appendChild(tools);
+    try { migrateHeadVerLayout(root); } catch (eVer2) {}
+  }
+
+  function repairHeadChromeButtons(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    var tools = root.querySelector(".bs-head-chrome .bs-head-tools");
+    if (!tools) return;
+    var utilRow = tools.querySelector(".bs-head-tools-util");
+    var winRow = tools.querySelector(".bs-head-tools-win");
+    if (!utilRow || !winRow) return;
+    var utilIds = ["bs-find-tog", "bs-ui-scale-cycle", "bs-side-pct-reset", "bs-density-tog"];
+    var winIds = ["bs-side-dock", "bs-hard-refresh", "bs-minimize", "bs-close"];
+    utilIds.forEach(function (id) {
+      var el = root.querySelector("#" + id);
+      if (el && el.parentNode !== utilRow) {
+        try { el.parentNode.removeChild(el); utilRow.appendChild(el); } catch (eU) {}
+      }
+    });
+    winIds.forEach(function (id) {
+      var el = root.querySelector("#" + id);
+      if (el && el.parentNode !== winRow) {
+        try { el.parentNode.removeChild(el); winRow.appendChild(el); } catch (eW) {}
+      }
+    });
+    if (winRow && utilRow && winRow.nextElementSibling !== utilRow) {
+      try { tools.insertBefore(winRow, utilRow); } catch (eOrd) {}
+    }
+  }
+
+  function syncHeadChromeLayout(root) {
+    try { migrateHeadActionsLayout(root); } catch (eAct) {}
+    try { migrateHeadVerLayout(root); } catch (eVer) {}
+    try { repairHeadChromeButtons(root); } catch (eRep) {}
+    try { syncHeadVersionLabel(root); } catch (eLab) {}
+  }
+
   function syncUiScaleCycleChrome() {
+    try { syncHeadChromeLayout(); } catch (eHeadLay) {}
     var anchor = $("bs-side-pct-reset");
     if (!anchor || $("bs-ui-scale-cycle")) return;
     var btn = document.createElement("button");
@@ -19204,15 +23296,21 @@ Plugins.toolbox.init = function () {
       switchPeaksOnDone: false,
       notifyScanDone: false,
       soundNewPeak: true,
+      muteScanBeep: false,
       schedAction: "band",
       schedIdleOnly: false,
       quietStart: "",
       quietEnd: "",
       pauseOnManualTune: false,
       profileSettleMs: 0,
-      maxPeaks: 0,
+      maxPeaks: STORAGE_QUOTA_DEFAULT,
       keepPeaks: true,
-      maxAudioClips: 60,
+      maxAudioClips: STORAGE_QUOTA_DEFAULT,
+      maxTrafficLogRows: STORAGE_QUOTA_DEFAULT,
+      maxLoadedBookmarks: STORAGE_QUOTA_DEFAULT,
+      maxSkipFreqs: STORAGE_QUOTA_DEFAULT,
+      maxDecoderArchiveRows: STORAGE_QUOTA_DEFAULT,
+      maxQsoRows: STORAGE_QUOTA_DEFAULT,
       clipPreviewSec: 3,
       clipVolume: 80,
       clipMuted: false,
@@ -19237,17 +23335,20 @@ Plugins.toolbox.init = function () {
       digiForceOn: false,
       dayNightBeforeSched: false,
       peaksView: "list",
-      occDays: 7,
+      occDays: OCC_DAYS_DEFAULT,
       uiTextSize: "default",
       uiScale: UI_SCALE_PCT_DEFAULT,
       mainTabScale: 100,
       panelOpacity: 100,
       panelShade: "classic",
       hideToolbar: false,
-      findInToolbox: false,
-      showMinimalButton: false,
+      hideDetachHttpNote: false,
+      findInToolbox: true,
+      showMinimalButton: true,
       hideStockReceiver: false,
       muteOnTabHide: true,
+      stopClipOnTabLeave: true,
+      stopClipOnPanelHide: true,
       btnColoursOff: false,
       btnShadeHoverHint: true,
       hoverHelp: true,
@@ -19497,10 +23598,15 @@ Plugins.toolbox.init = function () {
     if ($("bs-net-budget")) $("bs-net-budget").value = S.networkBudget || "full";
     if ($("bs-pause-more-scan")) $("bs-pause-more-scan").checked = S.pauseMoreWhileScan !== false;
     if ($("bs-set-settle-ms")) $("bs-set-settle-ms").value = S.profileSettleMs || 0;
+    if ($("bs-set-max-logs")) $("bs-set-max-logs").value = S.maxTrafficLogRows || STORAGE_QUOTA_DEFAULT;
     if ($("bs-set-max-peaks")) $("bs-set-max-peaks").value = S.maxPeaks || 0;
-    if ($("bs-set-max-clips")) $("bs-set-max-clips").value = S.maxAudioClips || 40;
+    if ($("bs-set-max-bookmarks")) $("bs-set-max-bookmarks").value = S.maxLoadedBookmarks || STORAGE_QUOTA_DEFAULT;
+    if ($("bs-set-max-clips")) $("bs-set-max-clips").value = S.maxAudioClips || STORAGE_QUOTA_DEFAULT;
+    if ($("bs-set-max-skip")) $("bs-set-max-skip").value = S.maxSkipFreqs || STORAGE_QUOTA_DEFAULT;
+    if ($("bs-set-max-decoder")) $("bs-set-max-decoder").value = S.maxDecoderArchiveRows || STORAGE_QUOTA_DEFAULT;
+    if ($("bs-set-max-qso")) $("bs-set-max-qso").value = S.maxQsoRows || STORAGE_QUOTA_DEFAULT;
     if ($("bs-set-max-noise")) $("bs-set-max-noise").value = S.maxNoiseSamples || 40;
-    if ($("bs-set-occ-days")) $("bs-set-occ-days").value = S.occDays || 7;
+    if ($("bs-set-occ-days")) $("bs-set-occ-days").value = S.occDays || OCC_DAYS_DEFAULT;
     KEY_REMAP_IDS.forEach(function (id) {
       var el = $("bs-key-" + id);
       if (el) el.value = (S.keyRemap && S.keyRemap[id]) || id.charAt(0);
@@ -19547,7 +23653,7 @@ Plugins.toolbox.init = function () {
     kind = sdrNormalizeKind(kind || detectSdrKind());
     var cheat = sdrHardwareCheatForKind(kind);
     host.innerHTML =
-      '<div class="bs-solar-grid">' +
+      '<div class="bs-qth-grid bs-sdr-hw-grid">' +
       "<div><span>Kind</span><b>" + escapeHtml(kind) + "</b></div>" +
       "<div><span>Gain style</span><b>" + escapeHtml(cheat.gain) + "</b></div>" +
       "<div><span>PPM</span><b>" + escapeHtml(cheat.ppm) + "</b></div>" +
@@ -19589,17 +23695,10 @@ Plugins.toolbox.init = function () {
       S.profileSettleMs = Math.max(0, Number($("bs-set-settle-ms").value) || 0);
       try { syncPairNum("bs-settle-ms", "bs-range-settle-ms", S.profileSettleMs); } catch (eS) {}
     }
-    if ($("bs-set-max-peaks")) {
-      S.maxPeaks = Math.max(0, Number($("bs-set-max-peaks").value) || 0);
-      if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks;
-    }
-    if ($("bs-set-max-clips")) {
-      S.maxAudioClips = Math.max(5, Math.min(200, Number($("bs-set-max-clips").value) || 40));
-      if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips;
-    }
+    readStorageQuotasFromForm();
     if ($("bs-set-max-noise")) S.maxNoiseSamples = Math.max(5, Math.min(100, Number($("bs-set-max-noise").value) || 40));
     if ($("bs-set-occ-days")) {
-      S.occDays = Math.max(1, Math.min(30, Number($("bs-set-occ-days").value) || 7));
+      S.occDays = Math.max(1, Math.min(30, Number($("bs-set-occ-days").value) || OCC_DAYS_DEFAULT));
       if ($("bs-occ-days")) $("bs-occ-days").value = S.occDays;
     }
     KEY_REMAP_IDS.forEach(function (id) {
@@ -19806,7 +23905,8 @@ Plugins.toolbox.init = function () {
     }
     ["bs-sdr-profiles-on", "bs-sdr-prof-jump", "bs-sdr-prof-cluster", "bs-sdr-prof-settle",
       "bs-sdr-prof-dwell", "bs-sdr-prof-birdie", "bs-sdr-prof-wide", "bs-net-budget",
-      "bs-pause-more-scan", "bs-set-settle-ms", "bs-set-max-peaks", "bs-set-max-clips",
+      "bs-pause-more-scan", "bs-set-settle-ms", "bs-set-max-logs", "bs-set-max-peaks", "bs-set-max-bookmarks",
+      "bs-set-max-clips", "bs-set-max-skip", "bs-set-max-decoder", "bs-set-max-qso",
       "bs-set-max-noise", "bs-set-occ-days", "bs-settings-sync-url"].forEach(function (id) {
       var el = $(id);
       if (!el) return;
@@ -19829,7 +23929,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-remember-tab")) $("bs-remember-tab").checked = S.rememberTab !== false;
     if ($("bs-st-show-system")) $("bs-st-show-system").checked = S.settingsSubSystem !== false;
     if ($("bs-st-show-public")) $("bs-st-show-public").checked = S.settingsSubPublic !== false;
-    try { setSettingsSubTab(null, { skipSave: true, skipScroll: true }); } catch (eStVis) {}
+    try { setSettingsSubTab(null, { skipSave: true, skipScroll: true, skipAdminRefresh: true }); } catch (eStVis) {}
     if ($("bs-default-tab")) {
       var defTab = S.defaultTab || "explore";
       if (TAB_IDS.indexOf(defTab) < 0 && defTab !== "last") defTab = "explore";
@@ -19838,6 +23938,7 @@ Plugins.toolbox.init = function () {
     syncPairChk("bs-switch-peaks", "bs-range-switch-peaks", !!S.switchPeaksOnDone);
     syncPairChk("bs-notify-done", "bs-range-notify-done", !!S.notifyScanDone);
     syncPairChk("bs-sound-peak", "bs-range-sound-peak", S.soundNewPeak !== false);
+    syncPairChk("bs-mute-beep", "bs-range-mute-beep", !!S.muteScanBeep);
     syncPairChk("bs-copy-done", "bs-range-copy-done", !!S.copyPeaksOnDone);
     syncPairChk("bs-notify", "bs-range-notify", S.notifyNew !== false);
     syncPairChk("bs-pause-tune", "bs-range-pause-tune", !!S.pauseOnManualTune);
@@ -19852,7 +23953,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-quiet-end")) $("bs-quiet-end").value = S.quietEnd || "";
     if ($("bs-max-peaks")) $("bs-max-peaks").value = S.maxPeaks || 0;
     if ($("bs-keep-peaks")) $("bs-keep-peaks").checked = S.keepPeaks !== false;
-    if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || 40;
+    if ($("bs-max-clips")) $("bs-max-clips").value = S.maxAudioClips || STORAGE_QUOTA_DEFAULT;
     if ($("bs-webhook")) $("bs-webhook").value = S.webhookUrl || "";
     if ($("bs-audio-stt-url")) $("bs-audio-stt-url").value = S.audioSttUrl || "";
     if ($("bs-audio-stt-auto")) $("bs-audio-stt-auto").checked = !!S.audioSttAuto;
@@ -19864,7 +23965,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-digi-dwell")) $("bs-digi-dwell").value = S.digiDwellSec || 90;
     if ($("bs-digi-mode")) $("bs-digi-mode").value = S.digiForceMode || "ft8";
     if ($("bs-daynight-sched")) $("bs-daynight-sched").checked = !!S.dayNightBeforeSched;
-    if ($("bs-occ-days")) $("bs-occ-days").value = S.occDays || 7;
+    if ($("bs-occ-days")) $("bs-occ-days").value = S.occDays || OCC_DAYS_DEFAULT;
     migrateUiScaleFromLegacyTextSize();
     if ($("bs-ui-scale-preset")) {
       var p = snapUiScaleToPreset(S.uiScale);
@@ -19884,7 +23985,10 @@ Plugins.toolbox.init = function () {
     if ($("bs-find-in-toolbox")) $("bs-find-in-toolbox").checked = !!S.findInToolbox;
     if ($("bs-minimal-button")) $("bs-minimal-button").checked = !!S.showMinimalButton;
     if ($("bs-hide-stock-rx")) $("bs-hide-stock-rx").checked = !!S.hideStockReceiver;
+    if ($("bs-hide-detach-http-note")) $("bs-hide-detach-http-note").checked = !!S.hideDetachHttpNote;
     if ($("bs-mute-on-tab")) $("bs-mute-on-tab").checked = S.muteOnTabHide !== false;
+    if ($("bs-stop-clip-on-tab")) $("bs-stop-clip-on-tab").checked = S.stopClipOnTabLeave !== false;
+    if ($("bs-stop-clip-on-panel")) $("bs-stop-clip-on-panel").checked = S.stopClipOnPanelHide !== false;
     if ($("bs-btn-colours-on")) $("bs-btn-colours-on").checked = !S.btnColoursOff;
     else if ($("bs-btn-colours-off")) $("bs-btn-colours-off").checked = !!S.btnColoursOff;
     if ($("bs-btn-shade-hint")) $("bs-btn-shade-hint").checked = S.btnShadeHoverHint !== false;
@@ -19908,6 +24012,7 @@ Plugins.toolbox.init = function () {
     applyToolbarVisibility();
     applyStockReceiverVisibility();
     applyMuteOnTabHidePref();
+    applyHideDetachHttpNotePref();
     applyExtrasUi();
     syncAloneUi(!!S.aloneOnly);
     if ($("bs-sched")) $("bs-sched").value = S.scheduleHrs || 0;
@@ -19999,7 +24104,7 @@ Plugins.toolbox.init = function () {
   }
 
   function factoryReset() {
-    openFactoryResetPop();
+    openFactoryResetPop($("bs-factory-reset"));
   }
 
   function simplifyMyPanel() {
@@ -20067,16 +24172,47 @@ Plugins.toolbox.init = function () {
   }
 
   function closeFactoryResetPop() {
-    var pop = $("bs-factory-pop");
-    if (!pop) return;
-    pop.hidden = true;
-    pop.classList.remove("bs-bm-edit-pop-on");
+    eachPanelLikeDocument(function (d) {
+      var pop = d.getElementById("bs-factory-pop");
+      if (!pop) return;
+      pop.hidden = true;
+      pop.classList.remove("bs-bm-edit-pop-on");
+    });
   }
 
-  function ensureFactoryResetPop() {
-    var pop = $("bs-factory-pop");
-    if (pop) return pop;
-    pop = document.createElement("div");
+  function wireFactoryResetPopDoc(doc) {
+    if (!doc || doc._bsFactoryPopDoc) return;
+    doc._bsFactoryPopDoc = true;
+    doc.addEventListener("keydown", function (ev) {
+      if (!ev || ev.key !== "Escape") return;
+      var p = doc.getElementById("bs-factory-pop");
+      if (p && !p.hidden) closeFactoryResetPop();
+    });
+    doc.addEventListener("mousedown", function (ev) {
+      var p = doc.getElementById("bs-factory-pop");
+      if (!p || p.hidden) return;
+      var t = ev && ev.target;
+      if (t && p.contains(t)) return;
+      if (t && t.closest && t.closest("#bs-factory-reset, #bs-new-install-reset")) return;
+      closeFactoryResetPop();
+    }, true);
+  }
+
+  function ensureFactoryResetPop(anchor) {
+    var smTab = overlayTabFromAnchor(anchor, "settings");
+    var overlayBody = toolboxOverlayBody(smTab);
+    var overlayDoc = overlayBody.ownerDocument;
+    var pop = overlayDoc.getElementById("bs-factory-pop");
+    if (!pop) {
+      pop = $("bs-factory-pop");
+      if (pop) pop = mountToolboxOverlay(pop, smTab);
+    }
+    if (pop) {
+      mountToolboxOverlay(pop, smTab);
+      wireFactoryResetPopDoc(pop.ownerDocument);
+      return pop;
+    }
+    pop = overlayDoc.createElement("div");
     pop.id = "bs-factory-pop";
     pop.className = "bs-bm-edit-pop bs-factory-pop";
     pop.hidden = true;
@@ -20121,7 +24257,8 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-btn-util" id="bs-factory-pop-cancel" title="Close without changing anything.">Cancel</button>' +
       "</div>" +
       "</div>";
-    document.body.appendChild(pop);
+    overlayBody.appendChild(pop);
+    wireFactoryResetPopDoc(overlayDoc);
     pop.onclick = function (ev) { if (ev) ev.stopPropagation(); };
     if ($("bs-factory-pop-close")) $("bs-factory-pop-close").onclick = closeFactoryResetPop;
     if ($("bs-factory-pop-cancel")) $("bs-factory-pop-cancel").onclick = closeFactoryResetPop;
@@ -20150,36 +24287,24 @@ Plugins.toolbox.init = function () {
     if ($("bs-factory-pop-go")) {
       $("bs-factory-pop-go").onclick = function () { runFactoryResetFromPop(); };
     }
-    if (!ensureFactoryResetPop._esc) {
-      ensureFactoryResetPop._esc = true;
-      document.addEventListener("keydown", function (ev) {
-        if (!ev || ev.key !== "Escape") return;
-        var p = $("bs-factory-pop");
-        if (p && !p.hidden) closeFactoryResetPop();
-      });
-      document.addEventListener("mousedown", function (ev) {
-        var p = $("bs-factory-pop");
-        if (!p || p.hidden) return;
-        var t = ev && ev.target;
-        if (t && p.contains(t)) return;
-        if (t && t.closest && t.closest("#bs-factory-reset")) return;
-        closeFactoryResetPop();
-      }, true);
-    }
     return pop;
   }
 
-  function openFactoryResetPop() {
+  function openFactoryResetPop(anchor) {
     if (isPublicReceiver() && !publicAllowsFeature("factoryReset")) {
       setStatus("Factory reset is locked on this public receiver.");
       return;
     }
-    var fr = $("bs-factory-reset");
+    var fr = anchor || $("bs-factory-reset");
     if (fr && fr.disabled) {
       setStatus("Factory reset is disabled while Public / shared receiver mode is on.");
       return;
     }
-    var pop = ensureFactoryResetPop();
+    var smTab = overlayTabFromAnchor(anchor, "settings");
+    var pop = ensureFactoryResetPop(anchor);
+    try {
+      pop = mountToolboxOverlay(pop, smTab) || pop;
+    } catch (eFac) {}
     Array.prototype.forEach.call(pop.querySelectorAll("input.bs-factory-opt"), function (inp) {
       inp.checked = true;
     });
@@ -20189,7 +24314,12 @@ Plugins.toolbox.init = function () {
       pop.style.left = "50%";
       pop.style.top = "12%";
       pop.style.transform = "translateX(-50%)";
+      pop.style.zIndex = "100097";
     } catch (ePos) {}
+    try {
+      var dlgWin = toolboxDialogWin(smTab);
+      if (dlgWin && !dlgWin.closed) dlgWin.focus();
+    } catch (eFw) {}
   }
 
   /* —— S-meter calibrate (Settings popup; multi-freq offset — no TX) —— */
@@ -21073,16 +25203,18 @@ Plugins.toolbox.init = function () {
       clearInterval(smeterCalLiveTimer);
       smeterCalLiveTimer = 0;
     }
-    var pop = $("bs-smeter-cal-pop");
-    if (pop) {
-      pop.hidden = true;
-      pop.classList.remove("bs-bm-edit-pop-on");
-    }
-    var shade = $("bs-smeter-cal-shade");
-    if (shade) {
-      shade.hidden = true;
-      shade.setAttribute("aria-hidden", "true");
-    }
+    eachPanelLikeDocument(function (d) {
+      var pop = d.getElementById("bs-smeter-cal-pop");
+      if (pop) {
+        pop.hidden = true;
+        pop.classList.remove("bs-bm-edit-pop-on");
+      }
+      var shade = d.getElementById("bs-smeter-cal-shade");
+      if (shade) {
+        shade.hidden = true;
+        shade.setAttribute("aria-hidden", "true");
+      }
+    });
   }
 
   function smeterCalFreqInputMhz() {
@@ -21171,24 +25303,64 @@ Plugins.toolbox.init = function () {
     return -127 + n * 6 + over;
   }
 
-  function ensureSmeterCalPop() {
-    var pop = $("bs-smeter-cal-pop");
+  function smeterCalOverlayTabId(anchor) {
+    return overlayTabFromAnchor(anchor, "settings");
+  }
+
+  function smeterCalOverlayBody(anchor) {
+    return toolboxOverlayBody(smeterCalOverlayTabId(anchor));
+  }
+
+  function smeterCalDocElement(body, id) {
+    if (!body || !id) return null;
+    try { return body.ownerDocument.getElementById(id); } catch (e) { return null; }
+  }
+
+  function wireSmeterCalEscape(doc) {
+    if (!doc || doc._bsSmeterCalEsc) return;
+    doc._bsSmeterCalEsc = true;
+    doc.addEventListener("keydown", function (ev) {
+      if (!ev || ev.key !== "Escape") return;
+      var p = doc.getElementById("bs-smeter-cal-pop");
+      if (p && !p.hidden) closeSmeterCalPop();
+    });
+  }
+
+  function ensureSmeterCalPop(anchor) {
+    var overlayBody = smeterCalOverlayBody(anchor);
+    var overlayDoc = overlayBody.ownerDocument;
+    var smTab = smeterCalOverlayTabId(anchor);
+    var pop = smeterCalDocElement(overlayBody, "bs-smeter-cal-pop");
+    if (!pop) {
+      pop = $("bs-smeter-cal-pop");
+      if (pop) pop = mountToolboxOverlay(pop, smTab);
+    }
     if (pop && pop.getAttribute("data-bs-cal-ui") !== "B51") {
       try { pop.parentNode.removeChild(pop); } catch (eRm) {}
       pop = null;
     }
-    if (pop) return pop;
-    var shade = $("bs-smeter-cal-shade");
+    if (pop) {
+      mountToolboxOverlay(pop, smTab);
+      wireSmeterCalEscape(pop.ownerDocument);
+      return pop;
+    }
+    var shade = smeterCalDocElement(overlayBody, "bs-smeter-cal-shade");
     if (!shade) {
-      shade = document.createElement("div");
+      shade = $("bs-smeter-cal-shade");
+      if (shade) shade = mountToolboxOverlay(shade, smTab);
+    }
+    if (!shade) {
+      shade = overlayDoc.createElement("div");
       shade.id = "bs-smeter-cal-shade";
       shade.className = "bs-smeter-cal-shade";
       shade.hidden = true;
       shade.setAttribute("aria-hidden", "true");
-      document.body.appendChild(shade);
+      overlayBody.appendChild(shade);
       shade.addEventListener("click", closeSmeterCalPop);
+    } else {
+      mountToolboxOverlay(shade, smTab);
     }
-    pop = document.createElement("div");
+    pop = overlayDoc.createElement("div");
     pop.id = "bs-smeter-cal-pop";
     pop.className = "bs-bm-edit-pop bs-smeter-cal-pop";
     pop.setAttribute("data-bs-cal-ui", "B51");
@@ -21384,7 +25556,8 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-btn-util" id="bs-smeter-cal-pop-cancel" title="Close">Close</button>' +
       "</div>" +
       "</div>";
-    document.body.appendChild(pop);
+    overlayBody.appendChild(pop);
+    wireSmeterCalEscape(overlayDoc);
     if ($("bs-smeter-cal-pop-close")) $("bs-smeter-cal-pop-close").onclick = closeSmeterCalPop;
     if ($("bs-smeter-cal-pop-cancel")) $("bs-smeter-cal-pop-cancel").onclick = closeSmeterCalPop;
     if ($("bs-smeter-cal-pop-clear")) {
@@ -21490,13 +25663,21 @@ Plugins.toolbox.init = function () {
     return pop;
   }
 
-  function openSmeterCalPop() {
-    var pop = ensureSmeterCalPop();
+  function openSmeterCalPop(anchor) {
+    var smTab = smeterCalOverlayTabId(anchor);
+    var pop = ensureSmeterCalPop(anchor);
+    try {
+      pop = mountToolboxOverlay(pop, smTab) || pop;
+      var shade = smeterCalDocElement(pop.ownerDocument.body, "bs-smeter-cal-shade");
+      if (!shade) shade = $("bs-smeter-cal-shade");
+      if (shade) mountToolboxOverlay(shade, smTab);
+    } catch (eSm) {}
     var known = $("bs-smeter-cal-known");
     if (known && isFinite(Number(S.smeterCalKnownDb))) {
       known.value = String(S.smeterCalKnownDb);
     }
-    var shade = $("bs-smeter-cal-shade");
+    var shade = smeterCalDocElement(pop.ownerDocument.body, "bs-smeter-cal-shade");
+    if (!shade) shade = $("bs-smeter-cal-shade");
     if (shade) {
       shade.hidden = false;
       shade.setAttribute("aria-hidden", "false");
@@ -21507,7 +25688,12 @@ Plugins.toolbox.init = function () {
       pop.style.left = "50%";
       pop.style.top = "50%";
       pop.style.transform = "translate(-50%, -50%)";
+      pop.style.zIndex = "100097";
     } catch (ePos) {}
+    try {
+      var dlgWin = toolboxDialogWin(smTab);
+      if (dlgWin && !dlgWin.closed) dlgWin.focus();
+    } catch (eFw) {}
     try { refreshSmeterCalDeviceSelect(); } catch (eDev) {}
     refreshSmeterCalStatusUi();
     smeterCalSetFreqInputMhz(smeterTuneMhz() || smeterCalFreqInputMhz() || 145.5, true);
@@ -21691,7 +25877,7 @@ Plugins.toolbox.init = function () {
   function bindSmeterCalSettings() {
     if ($("bs-smeter-cal-open") && !$("bs-smeter-cal-open")._bsWired) {
       $("bs-smeter-cal-open")._bsWired = true;
-      $("bs-smeter-cal-open").onclick = openSmeterCalPop;
+      $("bs-smeter-cal-open").onclick = function () { openSmeterCalPop(this); };
     }
     if ($("bs-smeter-cal-clear") && !$("bs-smeter-cal-clear")._bsWired) {
       $("bs-smeter-cal-clear")._bsWired = true;
@@ -22481,10 +26667,26 @@ Plugins.toolbox.init = function () {
   }
 
   function syncRecordBusyUi(on) {
-    on = !!on;
+    on = on !== false;
     S.recordBusy = on;
-    if ($("bs-record")) $("bs-record").checked = on;
-    if ($("bs-record-list")) $("bs-record-list").checked = on;
+    if ($("bs-record")) {
+      $("bs-record").checked = on;
+      $("bs-record").setAttribute("data-bs-hydrated", "1");
+    }
+    if ($("bs-record-list")) {
+      $("bs-record-list").checked = on;
+      $("bs-record-list").setAttribute("data-bs-hydrated", "1");
+    }
+  }
+
+  /** Read Record busy from UI only after checkboxes were filled from settings (avoid cold unchecked → false). */
+  function recordBusyFromUi() {
+    var rec = $("bs-record");
+    var list = $("bs-record-list");
+    if (list && document.activeElement === list) return !!list.checked;
+    if (rec && rec.getAttribute("data-bs-hydrated") === "1") return !!rec.checked;
+    if (list && list.getAttribute("data-bs-hydrated") === "1") return !!list.checked;
+    return null;
   }
 
   function clearAllLockouts() {
@@ -22566,7 +26768,10 @@ Plugins.toolbox.init = function () {
       if (!raw) return [];
       var o = JSON.parse(raw);
       if (!Array.isArray(o)) return [];
-      return o.map(normalizeLoadedBookmark).filter(Boolean);
+      var list = o.map(normalizeLoadedBookmark).filter(Boolean);
+      var cap = maxLoadedBookmarksCap();
+      if (list.length > cap) list = list.slice(-cap);
+      return list;
     } catch (e) {
       return [];
     }
@@ -22574,6 +26779,7 @@ Plugins.toolbox.init = function () {
 
   function saveLoadedBookmarks() {
     try {
+      trimLoadedBookmarksIfNeeded();
       window.localStorage.setItem(LS_LOADED_BM, JSON.stringify(loadedBookmarks || []));
     } catch (e) {}
   }
@@ -22678,6 +26884,7 @@ Plugins.toolbox.init = function () {
         }
       });
     }
+    trimLoadedBookmarksIfNeeded();
     saveLoadedBookmarks();
     renderBookmarkPane();
     try { setBookmarkSubTab("list"); } catch (eSub) {}
@@ -22888,13 +27095,17 @@ Plugins.toolbox.init = function () {
         : "Tick All profiles or choose bands to pull from OpenWebRX user bookmarks.";
     }
     try {
-      if (pop.parentNode !== document.body) document.body.appendChild(pop);
+      pop = mountToolboxOverlay(pop, "bookmarks") || pop;
     } catch (eMove) {}
     try {
       prepareBmLuPickPopup(pop);
     } catch (eLay) {}
     pop.hidden = false;
     pop.classList.add("bs-bm-edit-pop-on");
+    try {
+      var dlgWin = toolboxDialogWin("bookmarks");
+      if (dlgWin && !dlgWin.closed) dlgWin.focus();
+    } catch (eBmLw) {}
   }
 
   function confirmLoadUserBmPickPop() {
@@ -22932,6 +27143,24 @@ Plugins.toolbox.init = function () {
       }
     } catch (e) {}
     return "static/plugins/receiver/toolbox/" + name;
+  }
+
+  function toolboxAbsoluteAssetUrl(name) {
+    var rel = toolboxAssetUrl(name);
+    try {
+      return new URL(rel, window.location.href).href;
+    } catch (eUrl) {
+      return rel;
+    }
+  }
+
+  function toolboxTabPopoutUrl(tabId, label, groupId) {
+    var base = toolboxAbsoluteAssetUrl("tab-popout.html");
+    var q = "tab=" + encodeURIComponent(tabId || "");
+    if (label) q += "&label=" + encodeURIComponent(String(label));
+    if (groupId) q += "&group=" + encodeURIComponent(String(groupId));
+    if (S.hideDetachHttpNote) q += "&httpnote=0";
+    return base + (base.indexOf("?") >= 0 ? "&" : "?") + q;
   }
 
   /*@@CALLSIGN_ALLOC_EMBED_BEGIN@@*/
@@ -24125,6 +28354,14 @@ Plugins.toolbox.init = function () {
       "<li><b>Updates</b> — Settings → <b>Update Toolbox</b>: CDN (<code>@main</code>) reloads the newest build from GitHub; local / pinned installs download a zip of <code>toolbox.js</code> + <code>toolbox.css</code> to copy onto the radio host (the browser cannot write host files). Or clone/pull from GitHub by hand. Check install compares your running build to GitHub.</li>" +
       "<li>On Mac: change files on the Pi/server, then Cmd+Shift+R on the receiver page — use <b>Copy diagnostic report</b> below if stuck.</li>" +
       "</ul>" +
+      "<h3>Docker — what persists</h3>" +
+      "<p>Toolbox survey data is <b>not</b> stored in the OpenWebRX container by default. <b>docker restart</b> does <b>not</b> wipe your peaks, settings, panel layout, skip list, or audio clips — they live in <b>this browser</b> (<code>localStorage</code> / <code>IndexedDB</code>) for the receiver URL you use. Same browser + same URL after a new container = your Toolbox data is still there.</p>" +
+      "<ul>" +
+      "<li><b>Lost in the browser</b> — Clear site data, private/incognito window, different browser, or a <b>new</b> host/port (different origin).</li>" +
+      "<li><b>On the server</b> — Yellow bookmarks and OpenWebRX <code>settings.json</code> follow your <b>data volume</b> (often <code>/var/lib/openwebrx</code>). <code>init.js</code> and a local <code>toolbox/</code> folder only survive container recreate if that path is <b>bind-mounted</b> or you edit again after deploy.</li>" +
+      "<li><b>CDN install</b> — browser fetches JS each load; you still need <code>Plugins.load(…)</code> in <code>init.js</code> on storage that outlives a throwaway container filesystem.</li>" +
+      "</ul>" +
+      "<p>README: <a href=\"https://github.com/G4EA5/openwebrx-toolbox#docker\" target=\"_blank\" rel=\"noopener\">Install → Docker</a>.</p>" +
       "<h3>Mouse conventions</h3>" +
       "<ul>" +
       "<li><b>Hover</b> — one tip at a time for each control.</li>" +
@@ -24142,7 +28379,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Fresh scan</b> — clear the peak list, then scan ticked bands from scratch.</li>" +
       "<li><b>Stop</b> — halt band survey, range survey, or bookmark scan. Qualified peaks found so far are auto-bookmarked when <b>Auto-bookmark actives</b> is on (same as normal scan end).</li>" +
       "<li><b>Scan bookmarks</b> / <b>Scanning bookmarks · 1/5</b> — loop local and loaded bookmarks until Stop (or until <b>Passes</b> if set; button and status show current pass). With Extra <b>Ask passes when starting</b> on, tick that option under Bookmarks to be prompted each time. With <b>Continuous bookmark scan</b> off and a busy channel, becomes <b>Continue scan · pass N</b>.</li>" +
-      "<li><b>Jump loudest</b> — on Explore and Identify: loudest <em>other</em> peak on this waterfall tile (skips DC, Skip list, birdies). Auto-sets <b>Jump dB</b> / <b>Cluster kHz</b> from the current band. Off on FM broadcast unless you enable Settings → <b>Jump tuning · experimental</b>. <b>Center screen</b> (off by default) recentres the waterfall on the jumped station; leave unticked for dial-only. Unlock <b>Lock tune</b> (Explore → VFO) if it does nothing.</li>" +
+      "<li><b>Jump loudest</b> — on Explore and Identify: loudest <em>other</em> peak on this waterfall tile (skips DC, Skip list, birdies). Auto-sets <b>Jump dB</b> / <b>Cluster kHz</b> from the current band. Off on FM broadcast unless you enable Settings → Extras → <b>Jump · FM broadcast</b>. <b>Center screen</b> (off by default) recentres the waterfall on the jumped station; leave unticked for dial-only. Unlock <b>Lock tune</b> (Explore → VFO) if it does nothing.</li>" +
       "<li><b>Hold</b> · <b>Skip</b> · <b>Always skip</b> · <b>Lockout</b> — during bookmark scan: stay, move on, skip forever, or skip for Lockout minutes (Skip tab).</li>" +
       "</ul>" +
       "<h3>Bands tab</h3>" +
@@ -24317,7 +28554,7 @@ Plugins.toolbox.init = function () {
       "<li><b>Public mode (admin)</b> — most stock OpenWebRX+ installs <b>do not</b> show an OpenWebRX General → Toolbox public checkbox. For every visitor on the host, set <code>TOOLBOX_ALLOW_OWNER_OVERRIDE = false</code> in <code>toolbox.js</code> (and optionally <code>TOOLBOX_PUBLIC_POLICY</code> / <code>toolbox_public_mode</code> in <code>settings.json</code>). While logged into Settings as admin, tick <b>Public / shared receiver mode</b> on the <b>Public</b> sub-tab when that server row is missing. If your host <em>does</em> show OpenWebRX <b>Settings → General → Toolbox: public / shared receiver mode</b>, that server switch wins for everyone.</li>" +
       "<li><b>Public visitor allowlist</b> — when public mode is on, admins choose which <b>tabs</b>, <b>features</b> (scans, record, clear, import…), <b>extras</b>, and Explore MHz/band limits visitors may use. At the <b>bottom</b> of the allowlist, <b>More · Spots / Space / Tune / …</b> boxes pick which More panes guests may open (when the More tab is allowed). Edit under Toolbox <b>Settings → Public</b> while logged into OpenWebRX admin. Guests see Settings but cannot edit. <b>Copy policy for install</b> exports <code>moreSubs</code> in <code>TOOLBOX_PUBLIC_POLICY</code>.</li>" +
       "<li><b>Low-power layout</b> — use <b>Settings → General → Choose layout profile…</b> (<b>Light</b>) instead of the old Pi preset. SDR devices and related options are at the bottom of <b>General</b>.</li>" +
-      "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 35, range 20–60 of the browser width). A small minimum width keeps the column readable on tiny windows; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> (between Help and Minimal) resets width to 35%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
+      "<li><b>Side dock</b> — Toolbox column always on the <b>left</b>; <b>Side size %</b> (default 33, range 20–60 of the browser width). A small minimum width keeps the column readable on tiny windows; OpenWebRX shrinks by the same effective width. Default: on. Stays open on first load (unless you hit ×). Remembered across refresh / OpenWebRX restart (Ctrl+Shift+R). Title-bar <b>S</b> toggles; <b>%</b> resets width to 33%; <b>R</b> hard-refreshes the page (same idea as Ctrl+Shift+R).</li>" +
       "<li><b>Panel layout</b> — Save / Restore / Waterfall default for the whole panel. <b>Reset Explore layout</b> clears Explore box order and Wide/Half sizes (does not move the panel).</li>" +
       "<li><b>Reset panel layout</b> — default / waterfall / restore saved position.</li>" +
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
@@ -24343,6 +28580,7 @@ Plugins.toolbox.init = function () {
       "<li><b>localStorage</b> — settings, personal defaults (optional), peak list (Seen), bookmark backups, skip list, panel position/size.</li>" +
       "<li><b>IndexedDB</b> — audio clips (survives refresh and browser restart).</li>" +
       "<li><b>Blue bookmarks</b> — OpenWebRX local bookmark store in this browser.</li>" +
+      "<li><b>Docker</b> — restarting the container does not clear the above; it is per browser origin, not inside the container. Server yellow bookmarks need a persistent OpenWebRX data volume. See <b>Docker — what persists</b> above.</li>" +
       "<li>Nothing is uploaded except optional webhook POSTs you configure. Clearing site data removes everything.</li>" +
       "</ul>" +
       "<h3>Bookmark backups</h3>" +
@@ -24396,7 +28634,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-copy-diag")) {
       $("bs-copy-diag").onclick = function () { copyDiagnosticReport(); };
     }
-    var helpPane = document.querySelector("#bs-tab-help .bs-help-pane");
+    var helpPane = tabPaneQuery("help", "#bs-tab-help .bs-help-pane");
     if (helpPane && !helpPane._bsHelpQsWired) {
       helpPane._bsHelpQsWired = true;
       helpPane.addEventListener("click", function (ev) {
@@ -24948,10 +29186,12 @@ Plugins.toolbox.init = function () {
 
   function closeToolboxFind() {
     ["bs-find-prompt", "bs-find-results"].forEach(function (id) {
-      var pop = $(id);
-      if (!pop) return;
-      pop.hidden = true;
-      pop.classList.remove("bs-bm-edit-pop-on");
+      eachPanelLikeDocument(function (d) {
+        var pop = d.getElementById(id);
+        if (!pop) return;
+        pop.hidden = true;
+        pop.classList.remove("bs-bm-edit-pop-on");
+      });
     });
     var tog = $("bs-find-tog");
     if (tog) {
@@ -24963,11 +29203,16 @@ Plugins.toolbox.init = function () {
   function showToolboxFindPop(id) {
     var pop = $(id);
     if (!pop) return;
+    var findTab = toolboxFindOverlayTabId();
     try {
-      if (pop.parentNode !== document.body) document.body.appendChild(pop);
+      pop = mountToolboxOverlay(pop, findTab) || pop;
     } catch (eMove) {}
     pop.hidden = false;
     pop.classList.add("bs-bm-edit-pop-on");
+    try {
+      var dlgWin = toolboxDialogWin(findTab);
+      if (dlgWin && !dlgWin.closed) dlgWin.focus();
+    } catch (eFf) {}
     try {
       if (typeof closeBoxHelpPopup === "function") closeBoxHelpPopup();
     } catch (eH) {}
@@ -25162,8 +29407,9 @@ Plugins.toolbox.init = function () {
   }
 
   function syncToolboxFindChrome() {
-    var help = $("bs-help-tog");
-    if (!help || $("bs-find-tog")) return;
+    if ($("bs-find-tog")) return;
+    var btns = document.querySelector("#bs-panel .bs-head-actions-btns");
+    if (!btns) return;
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "bs-x bs-find";
@@ -25173,7 +29419,9 @@ Plugins.toolbox.init = function () {
     btn.setAttribute("aria-haspopup", "dialog");
     btn.setAttribute("aria-label", "Find in Toolbox");
     btn.innerHTML = '<span class="bs-find-ico" aria-hidden="true"></span>';
-    help.parentNode.insertBefore(btn, help);
+    var anchor = $("bs-ui-scale-cycle") || btns.firstElementChild;
+    if (anchor) btns.insertBefore(btn, anchor);
+    else btns.appendChild(btn);
     try { wireToolboxFind(); } catch (eW) {}
   }
 
@@ -25232,6 +29480,60 @@ Plugins.toolbox.init = function () {
     });
   }
 
+  function navigablePanelTabs() {
+    return TAB_IDS.filter(function (id) {
+      return !isTabHidden(id);
+    });
+  }
+
+  function switchPanelTabRelative(delta) {
+    var order = navigablePanelTabs();
+    if (!order.length) return;
+    var cur = "";
+    try { cur = currentPanelTab(); } catch (eCur) {}
+    var idx = order.indexOf(cur);
+    if (idx < 0) {
+      idx = delta > 0 ? 0 : order.length - 1;
+    } else {
+      idx = (idx + delta + order.length) % order.length;
+    }
+    var next = order[idx];
+    if (!saMaybeStopBeforeLeaveTab(next, { force: false })) return;
+    switchTab(next, true);
+  }
+
+  function wirePanelTabNavButtons() {
+    ["bs-tab-prev", "bs-tab-next"].forEach(function (id) {
+      var btn = $(id);
+      if (!btn || btn._bsTabNavClick) return;
+      btn._bsTabNavClick = true;
+      btn.onclick = function (ev) {
+        ev.stopPropagation();
+        switchPanelTabRelative(id === "bs-tab-prev" ? -1 : 1);
+      };
+    });
+  }
+
+  function removeLegacyTabNavButtons(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    ["bs-tab-prev", "bs-tab-next"].forEach(function (id) {
+      try {
+        var el = root.querySelector("#" + id);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      } catch (eRm) {}
+    });
+  }
+
+  function syncHeadWindowChrome() {
+    try { syncHeadChromeLayout(); } catch (eLay) {}
+    try { removeLegacyTabNavButtons(); } catch (eRm) {}
+  }
+
+  function syncPanelTabNavChrome() {
+    try { syncHeadWindowChrome(); } catch (eWinChr) {}
+  }
+
   function openHelp() {
     if (!saMaybeStopBeforeLeaveTab("help", { force: false })) return;
     var panel = $("bs-panel");
@@ -25241,14 +29543,6 @@ Plugins.toolbox.init = function () {
       return;
     }
     openToolboxProgressive();
-  }
-
-  function $(id) {
-    var pd = panelDocument();
-    var el = pd.getElementById(id);
-    if (el) return el;
-    if (pd !== document) return document.getElementById(id);
-    return null;
   }
 
   var detachWin = null;
@@ -25272,19 +29566,290 @@ Plugins.toolbox.init = function () {
     }
   }
 
-  function panelQs(sel) {
-    var pd = panelDocument();
-    var el = pd.querySelector(sel);
-    if (el) return el;
-    if (pd !== document) return document.querySelector(sel);
+  var TAB_PANE_SHELL_IDS = {
+    "bs-panel": 1,
+    "bs-body": 1,
+    "bs-tabs": 1,
+    "bs-toolbar": 1,
+    "bs-status": 1
+  };
+
+  function tabPaneDocument(tabId) {
+    if (!tabId) return null;
+    var gid = detachedTabToGroup[tabId];
+    if (gid && detachedTabGroups[gid]) {
+      try {
+        var w = detachedTabGroups[gid].win;
+        if (w && !w.closed && w.document && w.document.getElementById("bs-tab-" + tabId)) {
+          return w.document;
+        }
+      } catch (eW) {}
+    }
+    var mainPane = document.getElementById("bs-tab-" + tabId);
+    if (mainPane && mainPane.ownerDocument) return mainPane.ownerDocument;
+    try { return panelDocument(); } catch (eP) { return document; }
+  }
+
+  /** document.body for modal overlays (edit popups) — follows detached tab panes. */
+  function toolboxOverlayBody(tabId) {
+    try {
+      var doc = tabPaneDocument(tabId);
+      if (doc && doc.body) return doc.body;
+    } catch (e) {}
+    return document.body;
+  }
+
+  function tabIdFromPaneEl(el) {
+    if (!el || !el.closest) return "";
+    try {
+      var pane = el.closest(".bs-tab-pane[data-tab]");
+      if (pane) return pane.getAttribute("data-tab") || "";
+    } catch (e) {}
+    return "";
+  }
+
+  function overlayTabContext(preferredTabId) {
+    if (preferredTabId && isTabDetached(preferredTabId)) return preferredTabId;
+    var fromMain = currentMainPanelTab();
+    if (fromMain && isTabDetached(fromMain)) return fromMain;
+    return preferredTabId || fromMain || "";
+  }
+
+  function overlayTabFromAnchor(anchor, fallbackTabId) {
+    var fromPane = tabIdFromPaneEl(anchor);
+    return overlayTabContext(fromPane || fallbackTabId || "");
+  }
+
+  function toolboxFindOverlayTabId() {
+    return overlayTabContext(currentPanelTab() || "settings");
+  }
+
+  function uiEventView(ev) {
+    try {
+      if (ev && ev.view && !ev.view.closed) return ev.view;
+    } catch (e) {}
+    return window;
+  }
+
+  function placeFixedAtClient(el, ev) {
+    if (!el || !ev) return el;
+    var v = el.ownerDocument.defaultView || uiEventView(ev);
+    var x = ev.clientX;
+    var y = ev.clientY;
+    if (!isFinite(x)) x = 0;
+    if (!isFinite(y)) y = 0;
+    el.style.position = "fixed";
+    el.style.left = "0px";
+    el.style.top = "0px";
+    var w = el.offsetWidth || 220;
+    var h = el.offsetHeight || 160;
+    var left = Math.min(x, v.innerWidth - w - 8);
+    var top = Math.min(y, v.innerHeight - h - 8);
+    el.style.left = Math.max(4, left) + "px";
+    el.style.top = Math.max(4, top) + "px";
+    return el;
+  }
+
+  function removeFloatingUiById(id) {
+    if (!id) return;
+    eachPanelLikeDocument(function (d) {
+      try {
+        var el = d.getElementById(id);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      } catch (eRm) {}
+    });
+  }
+
+  function overlayView(el) {
+    try {
+      var doc = (el && el.ownerDocument) || document;
+      return doc.defaultView || window;
+    } catch (e) {
+      return window;
+    }
+  }
+
+  /** Move a body-level dialog into the same window as a (possibly detached) tab pane. */
+  function mountToolboxOverlay(el, tabId) {
+    if (!el) return el;
+    var tid = overlayTabContext(tabId || "");
+    var body = tid ? toolboxOverlayBody(tid) : document.body;
+    try {
+      if (el.ownerDocument !== body.ownerDocument) {
+        try {
+          el = body.ownerDocument.adoptNode(el);
+        } catch (eAd) {}
+      }
+      if (el.parentNode !== body) body.appendChild(el);
+      else if (body.lastElementChild !== el) body.appendChild(el);
+    } catch (eMv) {
+      if (tid) {
+        try {
+          var fallbackBody = toolboxOverlayBody(tid);
+          if (fallbackBody && fallbackBody !== body) {
+            body = fallbackBody;
+            if (el.ownerDocument !== body.ownerDocument) {
+              try { el = body.ownerDocument.adoptNode(el); } catch (eAd2) {}
+            }
+            body.appendChild(el);
+          }
+        } catch (eFb) {}
+      }
+      if (el.parentNode !== body) {
+        try { document.body.appendChild(el); } catch (e2) {}
+      }
+    }
+    if (tid) {
+      try {
+        var w = toolboxDialogWin(tid);
+        if (w && !w.closed) w.focus();
+      } catch (eF) {}
+    }
+    return el;
+  }
+
+  /** Browser window for confirm/prompt when a tab lives in a detach pop-out. */
+  function toolboxDialogWin(tabId) {
+    if (!tabId) return window;
+    try {
+      var gid = detachedTabToGroup[tabId];
+      if (gid && detachedTabGroups[gid]) {
+        var w = detachedTabGroups[gid].win;
+        if (w && !w.closed) return w;
+      }
+    } catch (e) {}
+    return window;
+  }
+
+  /** confirm() on the pop-out window when the action started there (not hidden behind it). */
+  function toolboxUserConfirm(msg, winOrTabId) {
+    var win = winOrTabId;
+    if (typeof winOrTabId === "string") win = toolboxDialogWin(winOrTabId);
+    try {
+      if (win && !win.closed && typeof win.confirm === "function") return win.confirm(msg);
+    } catch (e) {}
+    return window.confirm(msg);
+  }
+
+  function toolboxUserPrompt(msg, def, tabId) {
+    var win = toolboxDialogWin(tabId || "range");
+    try {
+      if (win && !win.closed && typeof win.prompt === "function") return win.prompt(msg, def);
+    } catch (e) {}
+    return window.prompt(msg, def);
+  }
+
+  function tabPaneGet(tabId, elId) {
+    var doc = tabPaneDocument(tabId);
+    if (doc) {
+      var el = doc.getElementById(elId);
+      if (el) return el;
+    }
+    return $(elId);
+  }
+
+  function tabPaneQuery(tabId, selector) {
+    var doc = tabPaneDocument(tabId);
+    if (!doc) {
+      try { return document.querySelector(selector); } catch (e) { return null; }
+    }
+    try { return doc.querySelector(selector); } catch (e2) { return null; }
+  }
+
+  function tabPaneEl(tabId) {
+    if (!tabId) return null;
+    return tabPaneGet(tabId, "bs-tab-" + tabId);
+  }
+
+  function isTabPaneActive(tabId) {
+    try {
+      var doc = tabPaneDocument(tabId);
+      if (!doc) return false;
+      var pane = doc.getElementById("bs-tab-" + tabId);
+      return !!(pane && pane.classList.contains("bs-tab-on"));
+    } catch (e) { return false; }
+  }
+
+  function idFromDetachedTabPanes(id) {
+    if (!id || TAB_PANE_SHELL_IDS[id]) return null;
+    var tid;
+    for (tid in detachedTabToGroup) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabToGroup, tid)) continue;
+      var gid = detachedTabToGroup[tid];
+      var g = detachedTabGroups[gid];
+      if (!g || !g.win) continue;
+      try {
+        if (g.win.closed) continue;
+        var doc = g.win.document;
+        var pane = doc.getElementById("bs-tab-" + tid);
+        if (!pane) continue;
+        var el = doc.getElementById(id);
+        if (el && pane.contains(el)) return el;
+      } catch (eW) {}
+    }
     return null;
   }
 
+  /** Scan strip (#bs-toolbar) moves with detached Bands / Bookmarks — not inside tab panes. */
+  function idFromDetachedPopoutToolbar(id) {
+    if (!id || TAB_PANE_SHELL_IDS[id]) return null;
+    var tid;
+    for (tid in detachedTabToGroup) {
+      if (!Object.prototype.hasOwnProperty.call(detachedTabToGroup, tid)) continue;
+      if (!DETACH_TOOLBAR_TAB_IDS[tid]) continue;
+      var gid = detachedTabToGroup[tid];
+      var g = detachedTabGroups[gid];
+      if (!g || !g.win) continue;
+      try {
+        if (g.win.closed) continue;
+        var doc = g.win.document;
+        var tb = doc.getElementById("bs-toolbar");
+        if (!tb) continue;
+        var el = doc.getElementById(id);
+        if (el && tb.contains(el)) return el;
+      } catch (eW2) {}
+    }
+    return null;
+  }
+
+  function $(id) {
+    if (!id) return null;
+    var detTb = idFromDetachedPopoutToolbar(id);
+    if (detTb) return detTb;
+    var det = idFromDetachedTabPanes(id);
+    if (det) return det;
+    var found = null;
+    eachPanelLikeDocument(function (d) {
+      if (found) return;
+      var el = d.getElementById(id);
+      if (el) found = el;
+    });
+    return found;
+  }
+
+  function panelQs(sel) {
+    if (!sel) return null;
+    var found = null;
+    eachPanelLikeDocument(function (d) {
+      if (found) return;
+      var el = d.querySelector(sel);
+      if (el) found = el;
+    });
+    return found;
+  }
+
   function panelQsa(sel) {
-    var pd = panelDocument();
-    var list = pd.querySelectorAll(sel);
-    if (list.length || pd === document) return list;
-    return document.querySelectorAll(sel);
+    var out = [];
+    var seen = [];
+    eachPanelLikeDocument(function (d) {
+      Array.prototype.forEach.call(d.querySelectorAll(sel), function (el) {
+        if (seen.indexOf(el) < 0) {
+          seen.push(el);
+          out.push(el);
+        }
+      });
+    });
+    return out;
   }
 
   function updateDetachUi() {
@@ -25798,6 +30363,7 @@ Plugins.toolbox.init = function () {
 
   function detachPanel() {
     makePanel();
+    try { reattachAllDetachedTabs({ silent: true }); } catch (eRt) {}
     var p = $("bs-panel");
     if (!p) return;
     if (isPanelDetached()) {
@@ -28643,7 +33209,7 @@ Plugins.toolbox.init = function () {
       " sample points uncovered" +
       (r.firstGap != null ? (", first gap near " + fmtMhz(r.firstGap)) : "") +
       "). Scan anyway?";
-    return window.confirm(msg);
+    return toolboxUserConfirm(msg, "range");
   }
 
   function previousSpectrumHistPeaks() {
@@ -28674,12 +33240,49 @@ Plugins.toolbox.init = function () {
     return n;
   }
 
+  /** Sync Range MHz + scan fields from S into the pane (main or detached pop-out). */
+  function fillRangeTabUi() {
+    var doc = tabPaneDocument("range");
+    if (!doc) return;
+    try { syncRangeSubTabLabels(); } catch (eRgLab) {}
+    fillRangeFreqFields({ force: true, doc: doc });
+    function el(id) { return doc.getElementById(id); }
+    if (el("bs-range-step")) el("bs-range-step").value = S.rangeStepKhz || 0;
+    if (el("bs-range-offset")) el("bs-range-offset").value = S.rangeOffsetKhz || 0;
+    if (el("bs-range-grid")) el("bs-range-grid").checked = !!S.rangeChannelGrid;
+    try { syncRangeGridPresetSelect(); } catch (eGp) {}
+    if (el("bs-range-grid-preset")) el("bs-range-grid-preset").value = S.rangeGridPreset || "auto";
+    if (el("bs-range-passes")) el("bs-range-passes").value = S.passes;
+    if (el("bs-range-ask-passes")) el("bs-range-ask-passes").checked = S.rangeAskPasses !== false;
+    if (el("bs-range-dwell")) el("bs-range-dwell").value = S.dwell;
+    if (el("bs-range-minhits")) el("bs-range-minhits").value = S.minHits;
+    if (el("bs-range-thresh")) el("bs-range-thresh").value = S.threshDb;
+    if (el("bs-range-hidespurs")) el("bs-range-hidespurs").checked = S.hideSpurs !== false;
+    if (el("bs-range-hide-bookmarked")) el("bs-range-hide-bookmarked").checked = S.hideBookmarked !== false;
+    if (el("bs-range-mute")) el("bs-range-mute").checked = !!S.mute;
+    if (el("bs-range-wideband")) el("bs-range-wideband").checked = !!S.widebandPeaks;
+    if (el("bs-range-ownradio")) el("bs-range-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
+    S.rangeMode = normalizeRangeMode(S.rangeMode);
+    if (el("bs-range-mode-full")) el("bs-range-mode-full").checked = S.rangeMode === "full";
+    if (el("bs-range-mode-bands")) el("bs-range-mode-bands").checked = S.rangeMode === "bands";
+    if (el("bs-range-mode-profile")) el("bs-range-mode-profile").checked = S.rangeMode === "profile";
+    if (el("bs-range-mode-loudest")) el("bs-range-mode-loudest").checked = S.rangeMode === "loudest";
+    try { fillRangeExtraForm(); } catch (eEx) {}
+    try { fillRangeModeProfileSelect(); } catch (eProf) {}
+    if (S.rangeMode === "profile") maybeAutoRangeHopForProfile(true);
+    try { updateRangeModeUi(); } catch (eUi) {}
+    try { updateRangeEstimate(); } catch (eEst) {}
+    try { bindRangeSpectrum(); } catch (eSpec) {}
+    try { restoreRangeSpectrumView(); } catch (eView) {}
+  }
+
   function fillRangeFreqFields(opts) {
     opts = opts || {};
     var force = !!opts.force;
-    var startEl = $("bs-range-start");
-    var endEl = $("bs-range-end");
-    var active = document.activeElement;
+    var doc = opts.doc || tabPaneDocument("range") || document;
+    var startEl = doc.getElementById("bs-range-start");
+    var endEl = doc.getElementById("bs-range-end");
+    var active = doc.activeElement || document.activeElement;
     if (startEl && (force || active !== startEl)) {
       startEl.value = rangeFmtMhzDisplay(S.rangeStartMhz);
       startEl.placeholder = rangeFmtMhzDisplay(S.rangeStartMhz) || "———.———";
@@ -28697,35 +33300,42 @@ Plugins.toolbox.init = function () {
   function readRangeForm() {
     var pageScroll = capturePageScroll();
     var tabScrollY = captureActiveTabScroll();
-    if ($("bs-range-start")) {
-      S.rangeStartMhz = parseRangeMhzInput($("bs-range-start").value, S.rangeStartMhz);
+    if (tabPaneGet("range", "bs-range-start")) {
+      S.rangeStartMhz = parseRangeMhzInput(tabPaneGet("range", "bs-range-start").value, S.rangeStartMhz);
     }
-    if ($("bs-range-end")) {
-      S.rangeEndMhz = parseRangeMhzInput($("bs-range-end").value, S.rangeEndMhz);
+    if (tabPaneGet("range", "bs-range-end")) {
+      S.rangeEndMhz = parseRangeMhzInput(tabPaneGet("range", "bs-range-end").value, S.rangeEndMhz);
     }
-    if ($("bs-range-step")) S.rangeStepKhz = Number($("bs-range-step").value);
+    if (tabPaneGet("range", "bs-range-step")) S.rangeStepKhz = Number(tabPaneGet("range", "bs-range-step").value);
     if (!isFinite(S.rangeStepKhz) || S.rangeStepKhz < 0) S.rangeStepKhz = 0;
-    if ($("bs-range-offset")) S.rangeOffsetKhz = Number($("bs-range-offset").value);
+    if (tabPaneGet("range", "bs-range-offset")) S.rangeOffsetKhz = Number(tabPaneGet("range", "bs-range-offset").value);
     if (!isFinite(S.rangeOffsetKhz) || S.rangeOffsetKhz < 0) S.rangeOffsetKhz = 0;
-    if ($("bs-range-grid")) S.rangeChannelGrid = !!$("bs-range-grid").checked;
-    if ($("bs-range-passes")) S.passes = syncPassesUi($("bs-range-passes").value);
-    if ($("bs-range-ask-passes")) S.rangeAskPasses = !!$("bs-range-ask-passes").checked;
-    if ($("bs-range-dwell")) S.dwell = syncDwellUi($("bs-range-dwell").value);
-    if ($("bs-range-thresh")) S.threshDb = syncThreshUi($("bs-range-thresh").value);
-    if ($("bs-range-mute")) S.mute = syncMuteUi($("bs-range-mute").checked);
-    if ($("bs-range-ownradio")) S.ownRadio = syncOwnRadioUi($("bs-range-ownradio").checked);
-    if ($("bs-range-alone")) S.aloneOnly = syncAloneUi($("bs-range-alone").checked);
-    if ($("bs-range-wideband")) S.widebandPeaks = syncWidebandUi($("bs-range-wideband").checked);
-    if ($("bs-range-minhits")) S.minHits = syncMinHitsUi($("bs-range-minhits").value);
-    if ($("bs-range-hidespurs")) S.hideSpurs = syncHideSpursUi($("bs-range-hidespurs").checked);
-    if ($("bs-range-hide-bookmarked")) S.hideBookmarked = syncHideBookmarkedUi($("bs-range-hide-bookmarked").checked);
+    if (tabPaneGet("range", "bs-range-grid")) S.rangeChannelGrid = !!tabPaneGet("range", "bs-range-grid").checked;
+    if (tabPaneGet("range", "bs-range-passes")) S.passes = syncPassesUi(tabPaneGet("range", "bs-range-passes").value);
+    if (tabPaneGet("range", "bs-range-ask-passes")) S.rangeAskPasses = !!tabPaneGet("range", "bs-range-ask-passes").checked;
+    if (tabPaneGet("range", "bs-range-dwell")) S.dwell = syncDwellUi(tabPaneGet("range", "bs-range-dwell").value);
+    if (tabPaneGet("range", "bs-range-thresh")) S.threshDb = syncThreshUi(tabPaneGet("range", "bs-range-thresh").value);
+    if (tabPaneGet("range", "bs-range-mute")) S.mute = syncMuteUi(tabPaneGet("range", "bs-range-mute").checked);
+    if (tabPaneGet("range", "bs-range-mute-beep")) {
+      S.muteScanBeep = syncMuteScanBeepUi(tabPaneGet("range", "bs-range-mute-beep").checked);
+    }
+    if (tabPaneGet("range", "bs-range-ownradio")) S.ownRadio = syncOwnRadioUi(tabPaneGet("range", "bs-range-ownradio").checked);
+    if (tabPaneGet("range", "bs-range-alone")) S.aloneOnly = syncAloneUi(tabPaneGet("range", "bs-range-alone").checked);
+    if (tabPaneGet("range", "bs-range-wideband")) S.widebandPeaks = syncWidebandUi(tabPaneGet("range", "bs-range-wideband").checked);
+    if (tabPaneGet("range", "bs-range-minhits")) S.minHits = syncMinHitsUi(tabPaneGet("range", "bs-range-minhits").value);
+    if (tabPaneGet("range", "bs-range-hidespurs")) S.hideSpurs = syncHideSpursUi(tabPaneGet("range", "bs-range-hidespurs").checked);
+    if (tabPaneGet("range", "bs-range-hide-bookmarked")) S.hideBookmarked = syncHideBookmarkedUi(tabPaneGet("range", "bs-range-hide-bookmarked").checked);
     var prevRangeMode = normalizeRangeMode(S.rangeMode);
     var prevRangeProf = String(S.rangeModeProfile || "");
-    if ($("bs-range-mode-bands") && $("bs-range-mode-bands").checked) S.rangeMode = "bands";
-    else if ($("bs-range-mode-profile") && $("bs-range-mode-profile").checked) S.rangeMode = "profile";
-    else if ($("bs-range-mode-loudest") && $("bs-range-mode-loudest").checked) S.rangeMode = "loudest";
+    var modeBands = tabPaneGet("range", "bs-range-mode-bands");
+    var modeProf = tabPaneGet("range", "bs-range-mode-profile");
+    var modeLoudest = tabPaneGet("range", "bs-range-mode-loudest");
+    if (modeBands && modeBands.checked) S.rangeMode = "bands";
+    else if (modeProf && modeProf.checked) S.rangeMode = "profile";
+    else if (modeLoudest && modeLoudest.checked) S.rangeMode = "loudest";
     else S.rangeMode = "full";
-    if ($("bs-range-mode-profile-sel")) S.rangeModeProfile = String($("bs-range-mode-profile-sel").value || "");
+    var modeSel = tabPaneGet("range", "bs-range-mode-profile-sel");
+    if (modeSel) S.rangeModeProfile = String(modeSel.value || "");
     if (S.rangeMode === "profile" &&
         (prevRangeMode !== "profile" || prevRangeProf !== S.rangeModeProfile)) {
       try { fillRangeModeProfileSelect(); } catch (eRf) {}
@@ -30896,7 +35506,20 @@ Plugins.toolbox.init = function () {
       try { finishAnalyzerBoxes($("bs-tab-analyzer")); } catch (eLay) {}
       saScheduleDraw();
       try { saSyncFreqUi(); } catch (eF) {}
-      if (S.saLiveOnOpen && !sa.running) saStart();
+      if (S.saLiveOnOpen && !sa.running) {
+        var scanJob = detectRadioJob();
+        if (scanJob && scanJob !== "analyzer") {
+          var liveMsg = radioJobLabel(scanJob) + " is running.\n\nStop it and start Analyzer Live?";
+          if (!toolboxUserConfirm(liveMsg, "analyzer")) {
+            saSetStatus("Live on open skipped — " + radioJobLabel(scanJob) + " still running.");
+          } else {
+            forceStopRadioJob(scanJob);
+            saStart();
+          }
+        } else {
+          saStart();
+        }
+      }
     }
   }
 
@@ -32815,20 +37438,31 @@ Plugins.toolbox.init = function () {
       idState.liveTimer = null;
     }
     if (opts.clearWanted) idState.liveOn = false;
+    try { releaseRadioJob("identify", idState._jobGen); } catch (eRel) {
+      if (radioJob === "identify") radioJob = null;
+    }
+    idState._jobGen = null;
+    if (!detectRadioJob()) radioJobLeaseTouch(null);
     idSyncLiveBtn();
   }
 
   function idStartLive() {
+    var gen = claimRadioJob("identify");
+    if (gen == null) {
+      try { setStatus("Identify Live cancelled — stop the other scan or analysis first."); } catch (eC) {}
+      return;
+    }
     if (idState.liveTimer) {
       clearInterval(idState.liveTimer);
       idState.liveTimer = null;
     }
+    idState._jobGen = gen;
     idState.liveOn = true;
     idRunOnce({ fromLive: true });
     idState.liveTimer = setInterval(function () {
       try {
-        if (currentPanelTab() !== "identify" || !toolboxPanelActive()) {
-          /* Leave preference on; pause timer until the tab is open again. */
+        if (!identifyLiveShouldTick()) {
+          /* Leave preference on; pause timer until Identify is open again (main or pop-out). */
           if (idState.liveTimer) {
             clearInterval(idState.liveTimer);
             idState.liveTimer = null;
@@ -33490,6 +38124,27 @@ Plugins.toolbox.init = function () {
     }
   }
 
+  function identifyPopoutOpen() {
+    if (!isTabDetached("identify")) return false;
+    try {
+      var gid = detachedTabToGroup["identify"];
+      var g = gid && detachedTabGroups[gid];
+      return !!(g && g.win && !g.win.closed);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Live Identify ticks while the tab is open on the main panel or in a detach pop-out. */
+  function identifyLiveShouldTick() {
+    if (identifyPopoutOpen()) return true;
+    try {
+      return currentPanelTab() === "identify" && toolboxPanelActive();
+    } catch (e) {
+      return false;
+    }
+  }
+
   function idOnTab(name) {
     if (name === "identify") {
       try { ensureIdentifySdrShowUi(); } catch (eIdSdrTab) {}
@@ -33498,7 +38153,7 @@ Plugins.toolbox.init = function () {
       try { idStartLive(); } catch (eLive) {}
       return;
     }
-    idStopLive({ clearWanted: true });
+    if (!identifyPopoutOpen()) idStopLive({ clearWanted: true });
     try { idHideMetaRawPopup(); } catch (ePop) {}
   }
 
@@ -34117,12 +38772,13 @@ Plugins.toolbox.init = function () {
     }
   }
 
-  function idShowMetaRawPopup() {
+  function idShowMetaRawPopup(anchor) {
     var pop = $("bs-id-meta-raw-pop");
     var pre = $("bs-id-meta-raw-pre");
     if (!pop || !pre) return;
+    var idTab = overlayTabFromAnchor(anchor, "identify");
     try {
-      if (pop.parentNode !== document.body) document.body.appendChild(pop);
+      pop = mountToolboxOverlay(pop, idTab) || pop;
     } catch (eMove) {}
     pre.textContent = idMetaRawText();
     var title = $("bs-id-meta-raw-title");
@@ -34133,6 +38789,10 @@ Plugins.toolbox.init = function () {
     }
     pop.hidden = false;
     try { pre.scrollTop = pre.scrollHeight; } catch (e) {}
+    try {
+      var dlgWin = toolboxDialogWin(idTab);
+      if (dlgWin && !dlgWin.closed) dlgWin.focus();
+    } catch (eFw) {}
   }
 
   function idHideMetaRawPopup() {
@@ -34575,7 +39235,7 @@ Plugins.toolbox.init = function () {
       $("bs-id-prev-mode").onclick = function () { idRestorePreviousMode(); };
     }
     if ($("bs-id-meta-raw")) {
-      $("bs-id-meta-raw").onclick = function () { idShowMetaRawPopup(); };
+      $("bs-id-meta-raw").onclick = function () { idShowMetaRawPopup(this); };
     }
     if ($("bs-id-meta-save")) {
       $("bs-id-meta-save").onclick = function () { idMetaSaveFile(); };
@@ -35997,12 +40657,16 @@ Plugins.toolbox.init = function () {
     if (!pop) return;
     try { closeBandEditPopup(); } catch (eBd) {}
     try {
-      if (pop.parentNode !== document.body) document.body.appendChild(pop);
+      pop = mountToolboxOverlay(pop, "bookmarks") || pop;
     } catch (eMove) {}
     var t = $("bs-bm-edit-pop-title");
     if (t) t.textContent = title || "Edit bookmark";
     pop.hidden = false;
     pop.classList.add("bs-bm-edit-pop-on");
+    try {
+      var dlgWinBm = toolboxDialogWin("bookmarks");
+      if (dlgWinBm && !dlgWinBm.closed) dlgWinBm.focus();
+    } catch (eBmF) {}
     try { prepareEditPopup(pop, "owrx_toolbox_bm_edit_pop_layout_v1"); } catch (eLay) {}
     try {
       stripNativeTitles(pop);
@@ -36285,6 +40949,70 @@ Plugins.toolbox.init = function () {
     if (meta) meta.textContent = allBms().length + " bookmarks ready to copy.";
   }
 
+  function bindBandsTabPaneControls(root) {
+    root = root || tabPaneGet("bands", "bs-tab-bands");
+    if (!root) return;
+    var subs = root.querySelector("#bs-bd-subs");
+    if (subs && !subs._bsBdSubsBound) {
+      subs._bsBdSubsBound = true;
+      subs.onclick = function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest(".bs-bd-sub");
+        if (!btn) return;
+        var name = btn.getAttribute("data-bd-sub");
+        if (name) setBandsSubTab(name);
+      };
+    }
+    var editHost = root.querySelector("#bs-bd-edit");
+    if (editHost && !editHost._bsBdEditListBound) {
+      editHost._bsBdEditListBound = true;
+      editHost.onclick = function (ev) {
+        var t = ev.target;
+        if (!t) return;
+        var editVal = t.getAttribute && t.getAttribute("data-band-edit");
+        if (editVal == null && t.closest) {
+          var eb = t.closest("[data-band-edit]");
+          if (eb) { editVal = eb.getAttribute("data-band-edit"); t = eb; }
+        }
+        if (editVal != null) {
+          fillBandEditor(editVal);
+          return;
+        }
+        var delVal = t.getAttribute && t.getAttribute("data-band-del");
+        if (delVal == null && t.closest) {
+          var db = t.closest("[data-band-del]");
+          if (db) { delVal = db.getAttribute("data-band-del"); t = db; }
+        }
+        if (delVal != null) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          deleteBandProfile(delVal);
+          return;
+        }
+        var move = t.getAttribute && t.getAttribute("data-band-move");
+        if (move == null && t.closest) {
+          var mb = t.closest("[data-band-move]");
+          if (mb) { move = mb.getAttribute("data-band-move"); t = mb; }
+        }
+        if (move != null) {
+          moveBandOrder(move, Number(t.getAttribute("data-dir")) || 1);
+          var pop = $("bs-bd-edit-pop");
+          if (pop && !pop.hidden && $("bs-bd-edit-value") &&
+              $("bs-bd-edit-value").value === move) {
+            fillBandEditor(move);
+          }
+        }
+      };
+    }
+    var covBtn = root.querySelector("#bs-bd-coverage-refresh");
+    if (covBtn && !covBtn._bsBdCovBound) {
+      covBtn._bsBdCovBound = true;
+      covBtn.onclick = function () {
+        profileFreqCacheAt = 0;
+        try { bandsCoverageOnTab(); } catch (eCov) {}
+      };
+    }
+  }
+
   function setBandsSubTab(name, opts) {
     opts = opts || {};
     var allowed = { list: 1, edit: 1, coverage: 1, schedule: 1, packs: 1 };
@@ -36293,7 +41021,7 @@ Plugins.toolbox.init = function () {
     if (name === "edit" && !extraOn("bandEdit")) name = "list";
     if (name === "schedule" && !extraOn("bandSchedule")) name = "list";
     if (name === "packs" && !extraOn("bandPacks")) name = "list";
-    var root = $("bs-tab-bands");
+    var root = tabPaneGet("bands", "bs-tab-bands") || $("bs-tab-bands");
     if (!root) return;
     Array.prototype.forEach.call(root.querySelectorAll(".bs-bd-sub"), function (btn) {
       var on = btn.getAttribute("data-bd-sub") === name;
@@ -36419,9 +41147,8 @@ Plugins.toolbox.init = function () {
     if (meta) meta.textContent = analyser ? "Sampling…" : "No analyser hook — bar shows activity proxy when open.";
     audioMeterStop();
     audioMeterTimer = setInterval(function () {
-      var pane = $("bs-tab-audio");
-      var sub = document.querySelector('#bs-tab-audio .bs-au-subpane[data-au-sub="meter"]');
-      if (!pane || !pane.classList.contains("bs-tab-on") || !sub || !sub.classList.contains("bs-au-sub-on")) return;
+      var sub = tabPaneQuery("audio", '#bs-tab-audio .bs-au-subpane[data-au-sub="meter"]');
+      if (!isTabPaneActive("audio") || !sub || !sub.classList.contains("bs-au-sub-on")) return;
       var lvl = 0.08;
       try {
         /* Proxy: use last waterfall max if present */
@@ -37000,6 +41727,19 @@ Plugins.toolbox.init = function () {
     });
   }
 
+  function syncRangeSubTabLabels() {
+    var bar = $("bs-rg-subs");
+    if (!bar) return;
+    var scanBtn = bar.querySelector('.bs-rg-sub[data-rg-sub="scan"]');
+    if (scanBtn) {
+      var lab = String(scanBtn.textContent || "").trim();
+      if (lab === "Scan" || lab === "Scan range") scanBtn.textContent = "Scanner";
+    }
+    if (scanBtn) {
+      setHoverTip(scanBtn, "Range scanner — MHz span, mode, and scan controls.");
+    }
+  }
+
   function setRangeSubTab(name, opts) {
     opts = opts || {};
     if (name === "spectrum") name = "scan";
@@ -37030,6 +41770,7 @@ Plugins.toolbox.init = function () {
       try { if (extraOn("rememberSubs")) window.localStorage.setItem("owrx_toolbox_rg_sub_v1", name); } catch (e) {}
     }
     try { injectBoxHelpButtons(root); } catch (eH) {}
+    try { syncRangeSubTabLabels(); } catch (eRgLab) {}
   }
 
   function restoreRangeSubTab() {
@@ -37214,6 +41955,7 @@ Plugins.toolbox.init = function () {
     try { if (typeof renderSkipLists === "function") renderSkipLists(); } catch (e2) {}
     try { if (typeof updateSkiplist === "function") updateSkiplist(); } catch (e3) {}
     try { skipMapOnTab(); } catch (e4) {}
+    try { trimSkipFreqsIfNeeded(); } catch (eTrimSk) {}
     return n;
   }
   function skipMapOnTab() {
@@ -38256,8 +42998,8 @@ Plugins.toolbox.init = function () {
     if ($("bs-listen-ask-passes")) S.listenAskPasses = !!$("bs-listen-ask-passes").checked;
     if ($("bs-holdbusy")) S.holdBusy = $("bs-holdbusy").checked;
     if ($("bs-continuousbm")) S.continuousBmScan = $("bs-continuousbm").checked;
-    if ($("bs-record")) S.recordBusy = $("bs-record").checked;
-    else if ($("bs-record-list")) S.recordBusy = $("bs-record-list").checked;
+    var rbListen = recordBusyFromUi();
+    if (rbListen !== null) S.recordBusy = rbListen;
     readRecSettings();
   }
 
@@ -38468,7 +43210,11 @@ Plugins.toolbox.init = function () {
       }
       if (recOn) {
         var recLeft = MIN_RECORD_MS - (Date.now() - recStartedAt);
-        if (recLeft > 0) await sleep(recLeft);
+        while (recLeft > 0 && !stopFlag) {
+          var recSlice = Math.min(200, recLeft);
+          await sleep(recSlice);
+          recLeft -= recSlice;
+        }
         if (recCap.meta) {
           recCap.meta.activeMs = recActiveMs;
           recCap.meta.durationMs = Date.now() - recStartedAt;
@@ -38486,7 +43232,7 @@ Plugins.toolbox.init = function () {
       setRecording(false);
     if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
     if (loopMode) return heard;
-    if (stopFlag) setStatus(passLab + "Listen stopped after " + heard + " busy bookmarks.");
+    if (stopFlag) bookmarkScanStopStatus("Bookmark listen stopped after " + heard + " busy bookmark(s).");
     else setStatus(passLab + "Listen done. " + heard + " busy / " + items.length + " bookmarks.");
     return heard;
     } catch (err) {
@@ -38544,7 +43290,7 @@ Plugins.toolbox.init = function () {
       setRecording(false);
       if ($("bs-hold")) $("bs-hold").classList.remove("bs-on");
       if (stopFlag) {
-        setStatus("Bookmark scan stopped · " +
+        bookmarkScanStopStatus("Bookmark scan stopped · " +
           (maxPasses > 0 ? ("pass " + pass + "/" + maxPasses) : (pass + " pass(es)")) +
           " · " + totalHeard + " busy total.");
       } else if (maxPasses > 0 && pass >= maxPasses) {
@@ -38583,6 +43329,9 @@ Plugins.toolbox.init = function () {
       setStatus(friendlyError(err, "Listen"));
       toast(friendlyError(err, "Listen"));
       renderHealth();
+    } finally {
+      try { cancelBookmarkScanStopAck(); } catch (eAck) {}
+      try { clearStoppingStatusIfIdle("Bookmark scan stopped."); } catch (eClr) {}
     }
   }
 
@@ -38666,47 +43415,8 @@ Plugins.toolbox.init = function () {
     return true;
   }
 
-  function switchTab(name, force) {
-    if (TAB_IDS.indexOf(name) < 0) name = "explore";
-    if (!force && isTabHidden(name)) name = firstVisibleTab();
-
-    if (!saMaybeStopBeforeLeaveTab(name, { force: force })) return;
-
-    /* v491: Ident open is a dedicated light path — never runs full switchTab work. */
-    if (name === "identify") {
-      if (isTabHidden("identify")) {
-        name = firstVisibleTab();
-      } else {
-        var fromIdent = currentPanelTab();
-        if (fromIdent && fromIdent !== "identify") {
-          try { idOnTab(fromIdent); } catch (eIdLeave) {}
-        }
-        openIdentifyTabSafe();
-        return;
-      }
-    }
-
-    /* Analyzer / cold tabs still use deferred build + normal finalize. */
-    if (name !== "identify" && tabPaneIsPending(name)) {
-      try {
-        var bar0 = $("bs-tabs");
-        if (bar0) {
-          Array.prototype.forEach.call(bar0.querySelectorAll(".bs-tab"), function (btn) {
-            btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
-          });
-        }
-      } catch (eBar0) {}
-      ensureTabContentBuilt(name, function () {
-        switchTab(name, true);
-      });
-      return;
-    }
-    var bar = $("bs-tabs");
-    if (bar) {
-      Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
-        btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
-      });
-    }
+  function runTabSwitchSideEffects(name, fromTab) {
+    try { maybeStopClipPlaybackOnTabLeave(fromTab, name); } catch (eClipTab) {}
     if (name === "watch") {
       try { sigWatchMarkSeen(); } catch (eWatchSeen) {}
     }
@@ -38718,23 +43428,6 @@ Plugins.toolbox.init = function () {
     if (name === "more") {
       try { moreOnTab(); } catch (eMore) {}
     }
-    var helpTog = $("bs-help-tog");
-    if (helpTog) {
-      helpTog.classList.toggle("bs-on", name === "help");
-      helpTog.setAttribute("aria-pressed", name === "help" ? "true" : "false");
-    }
-    var body = $("bs-body");
-    if (body) {
-      Array.prototype.forEach.call(body.querySelectorAll(".bs-tab-pane"), function (pane) {
-        pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === name);
-      });
-    }
-    try {
-      if (S.rememberTab !== false) {
-        sessionStorage.setItem(SS_TAB, name);
-        window.localStorage.setItem(SS_TAB, name);
-      }
-    } catch (e) {}
     if (name === "peaks") {
       ensureHitsLoaded(function () {
         ensureHitsClassified();
@@ -38750,7 +43443,7 @@ Plugins.toolbox.init = function () {
       try { exploreStripLegacySdrHideSwitch(); } catch (eExSdrRmTab) {}
       try { exploreSearchBookmarks(); } catch (eExTab) {}
       try { applyHiddenExploreBoxes(); } catch (eExHid) {}
-    try { applyLightFeatsVisibility(); } catch (eLfHid) {}
+      try { applyLightFeatsVisibility(); } catch (eLfHid) {}
       try { exploreListenOnTab(); } catch (eLis) {}
       try { exploreLightBoxesOnTab(); } catch (eLight) {}
       try {
@@ -38764,7 +43457,12 @@ Plugins.toolbox.init = function () {
       try { exploreLightBoxesStop(); } catch (eLightOff) {}
     }
     if (name === "range") {
-      try { fillRangeModeProfileSelect(); } catch (eRngProf) {}
+      try { fillRangeTabUi(); } catch (eRngProf) {}
+    }
+    if (name === "bands") {
+      try { fillBands(); } catch (eBdFill) {}
+      try { fillBandsEdit(); } catch (eBdEd) {}
+      try { ensureBandsSdrShowUi(); } catch (eBdSdr) {}
     }
     if (name === "audio") {
       try { renderAudioClips(); } catch (eAud) {}
@@ -38787,7 +43485,8 @@ Plugins.toolbox.init = function () {
       } catch (eGateSw) {}
       try { applyPublicPolicyUi(); } catch (ePubSw) {}
       try { fillVisibleTabsForm(); } catch (eVis) {}
-      try { applyHiddenTabs(); } catch (eHidSw) {}
+      try { syncMainHeaderTabVisibility(); } catch (eHidSw) {}
+      try { pinMainToolboxTab("settings"); } catch (ePinStSw) {}
       requestAnimationFrame(function () {
         try { packExtrasMasonry(); } catch (eEx) {}
         try { packSettingsMasonry(); } catch (eSet) {}
@@ -38824,6 +43523,84 @@ Plugins.toolbox.init = function () {
     } catch (eBtt) {}
   }
 
+  function switchTab(name, force, opts) {
+    opts = opts || {};
+    if (opts.userMainTab && name !== "settings") {
+      settingsUiLockUntil = 0;
+    }
+    if (name !== "settings" && !opts.userMainTab && blockAutoLeaveSettingsForPublic()) {
+      try { pinMainToolboxTab("settings"); } catch (ePinBlk) {}
+      return;
+    }
+    if (TAB_IDS.indexOf(name) < 0) name = "explore";
+    if (!force && isTabHidden(name)) name = firstVisibleTab();
+    if (!force && isTabDetached(name)) {
+      focusDetachedTab(name);
+      var barDet = $("bs-tabs");
+      if (barDet) {
+        Array.prototype.forEach.call(barDet.querySelectorAll(".bs-tab"), function (btn) {
+          btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
+        });
+      }
+      return;
+    }
+
+    if (!saMaybeStopBeforeLeaveTab(name, { force: force })) return;
+
+    var fromTab = "";
+    try { fromTab = currentPanelTab(); } catch (eFromTab) {}
+
+    /* v491: Ident open is a dedicated light path — never runs full switchTab work. */
+    if (name === "identify") {
+      if (isTabHidden("identify")) {
+        name = firstVisibleTab();
+      } else {
+        var fromIdent = fromTab || currentPanelTab();
+        try { maybeStopClipPlaybackOnTabLeave(fromIdent, "identify"); } catch (eClipId) {}
+        if (fromIdent && fromIdent !== "identify") {
+          try { idOnTab(fromIdent); } catch (eIdLeave) {}
+        }
+        openIdentifyTabSafe();
+        return;
+      }
+    }
+
+    /* Analyzer / cold tabs still use deferred build + normal finalize. */
+    if (name !== "identify" && tabPaneIsPending(name)) {
+      try {
+        var bar0 = $("bs-tabs");
+        if (bar0) {
+          Array.prototype.forEach.call(bar0.querySelectorAll(".bs-tab"), function (btn) {
+            btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
+          });
+        }
+      } catch (eBar0) {}
+      ensureTabContentBuilt(name, function () {
+        switchTab(name, true, opts);
+      });
+      return;
+    }
+    var bar = $("bs-tabs");
+    if (bar) {
+      Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
+        btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === name);
+      });
+    }
+    var body = $("bs-body");
+    if (body) {
+      Array.prototype.forEach.call(body.querySelectorAll(".bs-tab-pane"), function (pane) {
+        pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === name);
+      });
+    }
+    try {
+      if (S.rememberTab !== false) {
+        sessionStorage.setItem(SS_TAB, name);
+        window.localStorage.setItem(SS_TAB, name);
+      }
+    } catch (e) {}
+    runTabSwitchSideEffects(name, fromTab);
+  }
+
   /** Ident: full UI except Signal metadata (opt-in — was freezing the tab). */
   function openIdentifyTabSafe() {
     if (!saMaybeStopBeforeLeaveTab("identify", { force: false })) return;
@@ -38831,19 +43608,20 @@ Plugins.toolbox.init = function () {
       switchTab(firstVisibleTab(), true);
       return;
     }
+    var idDoc = tabPaneDocument("identify") || document;
     try {
-      var bar = $("bs-tabs");
+      var bar = idDoc.getElementById("bs-tabs");
+      if (!bar) bar = $("bs-tabs");
       if (bar) {
         Array.prototype.forEach.call(bar.querySelectorAll(".bs-tab"), function (btn) {
           btn.classList.toggle("bs-tab-on", btn.getAttribute("data-tab") === "identify");
         });
       }
-      var helpTog = $("bs-help-tog");
-      if (helpTog) {
-        helpTog.classList.remove("bs-on");
-        helpTog.setAttribute("aria-pressed", "false");
-      }
-      Array.prototype.forEach.call(document.querySelectorAll("#bs-panel .bs-tab-pane"), function (pane) {
+      var panelRoot = idDoc.getElementById("bs-panel");
+      var panes = panelRoot
+        ? panelRoot.querySelectorAll(".bs-tab-pane")
+        : idDoc.querySelectorAll("#bs-panel .bs-tab-pane");
+      Array.prototype.forEach.call(panes, function (pane) {
         pane.classList.toggle("bs-tab-on", pane.getAttribute("data-tab") === "identify");
       });
     } catch (eSel) {}
@@ -38854,7 +43632,8 @@ Plugins.toolbox.init = function () {
       }
     } catch (eSs) {}
 
-    var pane = document.getElementById("bs-tab-identify");
+    var pane = idDoc.getElementById("bs-tab-identify");
+    if (!pane) pane = $("bs-tab-identify");
     if (!pane) return;
 
     try {
@@ -39030,7 +43809,7 @@ Plugins.toolbox.init = function () {
   }
 
   function idWireMetadataOnly() {
-    if ($("bs-id-meta-raw")) $("bs-id-meta-raw").onclick = function () { idShowMetaRawPopup(); };
+    if ($("bs-id-meta-raw")) $("bs-id-meta-raw").onclick = function () { idShowMetaRawPopup(this); };
     if ($("bs-id-meta-save")) $("bs-id-meta-save").onclick = function () { idMetaSaveFile(); };
     if ($("bs-id-meta-raw-close")) $("bs-id-meta-raw-close").onclick = function () { idHideMetaRawPopup(); };
     if ($("bs-id-meta-raw-backdrop")) $("bs-id-meta-raw-backdrop").onclick = function () { idHideMetaRawPopup(); };
@@ -39263,6 +44042,10 @@ Plugins.toolbox.init = function () {
     if (deck) {
       w = deck.clientWidth || 0;
       if (w < 40) w = deck.getBoundingClientRect().width || 0;
+      if (w < 40 && deck.closest) {
+        var hostPanel = deck.closest("#bs-panel");
+        if (hostPanel) w = hostPanel.clientWidth || hostPanel.getBoundingClientRect().width || 0;
+      }
     }
     if (w < 40 && panel) w = panel.clientWidth || panel.getBoundingClientRect().width || 0;
     if (w > 24) w = Math.max(80, w - 16);
@@ -39337,6 +44120,9 @@ Plugins.toolbox.init = function () {
         syncExploreResponsive({ noSchedule: true });
         if (typeof ensureExploreBoxesPacked === "function") ensureExploreBoxesPacked();
         else scheduleExploreMasonryRepack();
+        if (isTabPaneActive("explore")) {
+          try { exploreSyncTuneAndAudioScopeAfterTabMove("explore"); } catch (eExRf) {}
+        }
       } catch (e) {}
     }
     try {
@@ -39640,6 +44426,10 @@ Plugins.toolbox.init = function () {
       hideFloatTip();
       return;
     }
+    if (document.getElementById("bs-tab-menu") || document.getElementById("bs-tab-detach-pick")) {
+      hideFloatTip();
+      return;
+    }
     var root = tipControlRoot(host);
     clearTitlesUnder(root);
     if (hideFloatTip._host === root) {
@@ -39672,6 +44462,10 @@ Plugins.toolbox.init = function () {
     document.addEventListener("mousemove", function (ev) {
       var t = ev.target;
       if (!t || !t.closest) {
+        hideFloatTip();
+        return;
+      }
+      if (t.closest("#bs-tab-menu, #bs-tab-detach-pick")) {
         hideFloatTip();
         return;
       }
@@ -40339,8 +45133,8 @@ Plugins.toolbox.init = function () {
 
   function audioClipScrollPanes() {
     return [
-      document.querySelector('#bs-tab-audio .bs-au-subpane[data-au-sub="list"]'),
-      document.querySelector('#bs-tab-audio .bs-au-subpane[data-au-sub="record"]')
+      tabPaneQuery("audio", '#bs-tab-audio .bs-au-subpane[data-au-sub="list"]'),
+      tabPaneQuery("audio", '#bs-tab-audio .bs-au-subpane[data-au-sub="record"]')
     ];
   }
 
@@ -40589,6 +45383,22 @@ Plugins.toolbox.init = function () {
     updateClipPreviewUi();
     if (!opts.silent) renderAudioClips();
     return was;
+  }
+
+  function stopSavedClipPlaybackQuiet() {
+    if (!clipPlaying && !clipPreview.running) return;
+    try {
+      if (clipPreview.running) stopClipPreview({ silent: true });
+      else stopClipPlayback();
+      renderAudioClips();
+    } catch (e) {}
+  }
+
+  function maybeStopClipPlaybackOnTabLeave(fromTab, toTab) {
+    if (S.stopClipOnTabLeave === false) return;
+    if (!fromTab || fromTab === toTab) return;
+    if (fromTab !== "audio" && fromTab !== "decode") return;
+    stopSavedClipPlaybackQuiet();
   }
 
   function playPreviewAt(idx, gen) {
@@ -40973,6 +45783,63 @@ Plugins.toolbox.init = function () {
   function formatToolboxVersion(raw) {
     var v = normalizeToolboxVersion(raw);
     return v ? ("v" + v) : "v?";
+  }
+
+  var TOOLBOX_GITHUB_REPO = "https://github.com/G4EA5/openwebrx-toolbox";
+  var TOOLBOX_GITHUB_PROFILE = "https://github.com/G4EA5";
+
+  function headVersionRepoLabel() {
+    return "OWRX Toolbox " + formatToolboxVersion(Plugins.toolbox._version);
+  }
+
+  function headVersionAuthorLabel() {
+    return "G4EA5 GitHub";
+  }
+
+  function headVersionBandHtml() {
+    return (
+      '<span class="bs-head-ver" id="bs-head-ver">' +
+      '<a class="bs-head-ver-link bs-head-ver-repo" id="bs-head-ver-repo" href="' +
+      escapeHtml(TOOLBOX_GITHUB_REPO) +
+      '" target="_blank" rel="noopener" title="OpenWebRX Toolbox on GitHub">' +
+      escapeHtml(headVersionRepoLabel()) +
+      "</a>" +
+      '<span class="bs-head-ver-sep" aria-hidden="true">|</span>' +
+      '<a class="bs-head-ver-link bs-head-ver-author" id="bs-head-ver-author" href="' +
+      escapeHtml(TOOLBOX_GITHUB_PROFILE) +
+      '" target="_blank" rel="noopener" title="G4EA5 on GitHub">' +
+      escapeHtml(headVersionAuthorLabel()) +
+      "</a></span>"
+    );
+  }
+
+  function syncHeadVersionLabel(root) {
+    root = root || $("bs-panel");
+    if (!root) return;
+    var el = root.querySelector("#bs-head-ver");
+    if (!el) return;
+    if (el.tagName === "A") {
+      var span = document.createElement("span");
+      span.className = "bs-head-ver";
+      span.id = "bs-head-ver";
+      if (el.parentNode) el.parentNode.replaceChild(span, el);
+      el = span;
+    }
+    var repo = root.querySelector("#bs-head-ver-repo");
+    var author = root.querySelector("#bs-head-ver-author");
+    if (!repo || !author || !el.contains(repo)) {
+      var tmp = document.createElement("div");
+      tmp.innerHTML = headVersionBandHtml();
+      var fresh = tmp.firstChild;
+      if (el.parentNode) el.parentNode.replaceChild(fresh, el);
+      return;
+    }
+    var repoLab = headVersionRepoLabel();
+    var authorLab = headVersionAuthorLabel();
+    if (repo.getAttribute("href") !== TOOLBOX_GITHUB_REPO) repo.setAttribute("href", TOOLBOX_GITHUB_REPO);
+    if (repo.textContent !== repoLab) repo.textContent = repoLab;
+    if (author.getAttribute("href") !== TOOLBOX_GITHUB_PROFILE) author.setAttribute("href", TOOLBOX_GITHUB_PROFILE);
+    if (author.textContent !== authorLab) author.textContent = authorLab;
   }
 
   /** Next build id after this one (965 → B1, B999 → C1). */
@@ -41872,28 +46739,19 @@ Plugins.toolbox.init = function () {
 
   function rangeSdrPickUiIsActive() {
     try {
-      var rg = $("bs-tab-range");
-      if (!rg || !rg.classList.contains("bs-tab-on")) return false;
-      var scan = document.querySelector('#bs-tab-range .bs-rg-subpane[data-rg-sub="scan"]');
+      if (!isTabPaneActive("range")) return false;
+      var scan = tabPaneQuery("range", '#bs-tab-range .bs-rg-subpane[data-rg-sub="scan"]');
       return !!(scan && scan.classList.contains("bs-rg-sub-on"));
     } catch (eRg) {}
     return false;
   }
 
   function saSdrPickUiIsActive() {
-    try {
-      var sa = $("bs-tab-analyzer");
-      return !!(sa && sa.classList.contains("bs-tab-on"));
-    } catch (eSa) {}
-    return false;
+    return isTabPaneActive("analyzer");
   }
 
   function idSdrPickUiIsActive() {
-    try {
-      var id = $("bs-tab-identify");
-      return !!(id && id.classList.contains("bs-tab-on"));
-    } catch (eId) {}
-    return false;
+    return isTabPaneActive("identify");
   }
 
   function surveySdrPickUiIsActive() {
@@ -42133,8 +46991,8 @@ Plugins.toolbox.init = function () {
 
   /** Inject SDR-only row on Range → Scan (works if panel DOM predates B123). */
   function ensureRangeSdrShowUi() {
-    if (!$("bs-tab-range")) return;
-    var scanPane = document.querySelector('#bs-tab-range .bs-rg-subpane[data-rg-sub="scan"]');
+    if (!tabPaneGet("range", "bs-tab-range")) return;
+    var scanPane = tabPaneQuery("range", '#bs-tab-range .bs-rg-subpane[data-rg-sub="scan"]');
     if (!scanPane) return;
     if (!$("bs-rg-sdr-show")) {
       var bar = document.createElement("div");
@@ -42158,8 +47016,8 @@ Plugins.toolbox.init = function () {
 
   /** Inject or refresh SDR-only row on Bands list + edit (works even if panel DOM predates B80). */
   function ensureBandsSdrShowUi() {
-    if (!$("bs-tab-bands")) return;
-    var listPane = document.querySelector('#bs-tab-bands .bs-bd-subpane[data-bd-sub="list"]');
+    if (!tabPaneGet("bands", "bs-tab-bands")) return;
+    var listPane = tabPaneQuery("bands", '#bs-tab-bands .bs-bd-subpane[data-bd-sub="list"]');
     if (listPane && !$("bs-bd-sdr-show")) {
       var oldInFilters = $("bs-band-filters") && $("bs-band-filters").querySelector("#bs-bd-sdr-show");
       if (oldInFilters && oldInFilters.parentNode) {
@@ -42177,7 +47035,7 @@ Plugins.toolbox.init = function () {
       }
       wireToolboxSdrShowSelect($("bs-bd-sdr-show"));
     }
-    var editPane = document.querySelector('#bs-tab-bands .bs-bd-subpane[data-bd-sub="edit"]');
+    var editPane = tabPaneQuery("bands", '#bs-tab-bands .bs-bd-subpane[data-bd-sub="edit"]');
     if (editPane && !$("bs-bd-edit-sdr-show")) {
       var oldEdit = $("bs-bd-edit-toolbar") && $("bs-bd-edit-toolbar").querySelector("#bs-bd-edit-sdr-show");
       if (oldEdit && oldEdit.parentNode) {
@@ -42402,14 +47260,46 @@ Plugins.toolbox.init = function () {
     highlightBandEditorRow();
   }
 
+  function ensureBandEditPopupDocListeners(doc) {
+    if (!doc || doc._bsBdEditPopDocBound) return;
+    doc._bsBdEditPopDocBound = true;
+    doc.addEventListener("click", function (ev) {
+      var pop = doc.getElementById("bs-bd-edit-pop");
+      if (!pop || pop.hidden) return;
+      if (ev.target && ev.target.closest &&
+          (ev.target.closest("#bs-bd-edit-pop") ||
+           ev.target.closest("[data-band-edit]"))) return;
+      closeBandEditPopup();
+    });
+    doc.addEventListener("keydown", function (ev) {
+      var pop = doc.getElementById("bs-bd-edit-pop");
+      if (!pop || pop.hidden) return;
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeBandEditPopup();
+        return;
+      }
+      if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+      if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      editAdjacentBand(ev.key === "ArrowUp" ? -1 : 1);
+    }, true);
+  }
+
   function openBandEditPopup(title) {
     var pop = $("bs-bd-edit-pop");
     if (!pop) return;
     try { closeBookmarkEditPopup(); } catch (eBm) {}
-    /* Keep popup on document.body so overflow:auto panes cannot clip it. */
+    /* Keep popup on the tab pane's document.body so detached pop-outs see it. */
     try {
-      if (pop.parentNode !== document.body) document.body.appendChild(pop);
+      pop = mountToolboxOverlay(pop, "bands") || pop;
     } catch (eMove) {}
+    try {
+      var bdDoc = tabPaneDocument("bands") || document;
+      ensureBandEditPopupDocListeners(bdDoc);
+      if (bdDoc !== document) ensureBandEditPopupDocListeners(document);
+    } catch (eDoc) {}
     var t = $("bs-bd-edit-pop-title");
     if (t) t.textContent = title || "Edit band";
     pop.hidden = false;
@@ -42431,6 +47321,10 @@ Plugins.toolbox.init = function () {
       stampBtnShadeAttrs();
       applyBtnShades();
     } catch (eSh) {}
+    try {
+      var dlgWinBd = toolboxDialogWin("bands");
+      if (dlgWinBd && !dlgWinBd.closed) dlgWinBd.focus();
+    } catch (eBdF) {}
   }
 
   function highlightBandEditorRow(value) {
@@ -44377,17 +49271,19 @@ Plugins.toolbox.init = function () {
     msg = msg == null ? "" : String(msg);
     if (msg && typeof extraOn === "function" && extraOn("quietStatus")) {
       var quiet = /^(Tuning|Hop|Dwell|Listening|Pass |Range |Scan |Walk |Settling|Waiting|Profile |Centre |Center |Mute |Unmute |Hold released|Holding this)/i;
-      if (quiet.test(msg) && !/fail|error|warn|done|finish|complete|import|export/i.test(msg)) {
+      if (quiet.test(msg) && !/fail|error|warn|done|finish|complete|import|export|stopp/i.test(msg)) {
         return;
       }
     }
     var el = $("bs-status");
     if (el) el.textContent = msg || "";
+    try { syncTabScanChrome(); } catch (eTscSt) {}
   }
 
   function setProgress(frac) {
     var el = $("bs-bar");
     if (el) el.style.width = Math.max(0, Math.min(100, frac * 100)) + "%";
+    try { syncTabScanChrome(); } catch (eTscPr) {}
   }
 
   /** Bookmark-scan progress: within-pass index, or overall when Passes > 0. */
@@ -44605,7 +49501,10 @@ Plugins.toolbox.init = function () {
     freq = Number(freq);
     if (!freq) return;
     S.ignoredFreqs = S.ignoredFreqs || [];
-    if (!isIgnoredFreq(freq)) S.ignoredFreqs.push(Math.round(freq));
+    if (!isIgnoredFreq(freq)) {
+      S.ignoredFreqs.push(Math.round(freq));
+      try { trimSkipFreqsIfNeeded(); } catch (eSkPush) {}
+    }
     hits.forEach(function (h) {
       if (Math.abs(h.freq - freq) < 4000) {
         h.ignored = true;
@@ -44781,14 +49680,18 @@ Plugins.toolbox.init = function () {
       return;
     }
     hookWaterfall();
-    readForm();
-    readRangeForm();
+    if (isTabPaneActive("range") || currentPanelTab() === "range") readRangeForm();
+    else {
+      readForm();
+      readRangeForm();
+    }
     S.passes = passesFromUi();
     if (extraOn("askPasses") && S.rangeAskPasses !== false) {
       var defPass = String(Math.max(1, Math.min(MAX_PASSES, Number(S.passes) || 2)));
-      var ansPass = window.prompt(
+      var ansPass = toolboxUserPrompt(
         "How many times to walk this range?\n(1–" + MAX_PASSES + ")",
-        defPass
+        defPass,
+        "range"
       );
       if (ansPass === null) {
         abortRangeJob();
@@ -44912,6 +49815,7 @@ Plugins.toolbox.init = function () {
     try { await ensurePreferredSdrForJob("range"); } catch (ePrefR) {}
     running = true;
     stopFlag = false;
+    try { syncRangeScanRunningUi(true); } catch (eRgRunUi) {}
     hideRangeSpectrum();
     var rangeScanLo = Number(S.rangeStartMhz);
     var rangeScanHi = Number(S.rangeEndMhz);
@@ -44936,6 +49840,7 @@ Plugins.toolbox.init = function () {
       setStatus("No profile covers " + fmtMhz(prepHz) + ". Add a band that includes this MHz.");
       running = false;
       setSurveyRunning(false);
+      try { syncRangeScanRunningUi(false); } catch (eRg0) {}
       if (btn) btn.classList.remove("bs-running");
       muteOff();
       restoreRangeSpectrumView();
@@ -44952,6 +49857,7 @@ Plugins.toolbox.init = function () {
         }
         running = false;
         setSurveyRunning(false);
+        try { syncRangeScanRunningUi(false); } catch (eRg1) {}
         if (btn) btn.classList.remove("bs-running");
         if (!stopFlag) muteOff();
         renderHits();
@@ -44975,6 +49881,7 @@ Plugins.toolbox.init = function () {
           toast(msg);
           running = false;
           setSurveyRunning(false);
+          try { syncRangeScanRunningUi(false); } catch (eRg2) {}
           if (btn) btn.classList.remove("bs-running");
           muteOff();
           switchTab("range");
@@ -45108,6 +50015,7 @@ Plugins.toolbox.init = function () {
     if (jobGen === radioJobGen) {
       running = false;
       setSurveyRunning(false);
+      try { syncRangeScanRunningUi(false); } catch (eRg3) {}
       if (btn) btn.classList.remove("bs-running");
       if (!S.scanAfter) muteOff();
       releaseRadioJob("range", jobGen);
@@ -45312,13 +50220,71 @@ Plugins.toolbox.init = function () {
     renderHits();
   }
 
+  var bookmarkScanStopAckTimer = null;
+
+  function bookmarkScanStopStatus(msg) {
+    try { cancelBookmarkScanStopAck(); } catch (eC) {}
+    setStatus(msg || "Bookmark scan stopped.");
+  }
+
+  function clearStoppingStatusIfIdle(fallback) {
+    var el = $("bs-status");
+    if (!el) return;
+    var t = String(el.textContent || "").trim();
+    if (!/^Stopping/i.test(t)) return;
+    if (listenScanRunning || (running && radioJob === "bookmarks")) return;
+    setStatus(fallback || "Scan stopped.");
+  }
+
+  function forceBookmarkScanTeardown() {
+    stopFlag = true;
+    running = false;
+    listenPaused = false;
+    listenCmd = "";
+    setListenScanRunning(false);
+    setRecording(false);
+    try { muteOff(); } catch (eM) {}
+    var btn = $("bs-toggle-btn");
+    if (btn) btn.classList.remove("bs-running");
+    setProgress(0);
+    try { releaseRadioJob("bookmarks", null); } catch (eR) {}
+    try { applyToolbarVisibility(); } catch (eV) {}
+    bookmarkScanStopStatus("Bookmark scan stopped.");
+  }
+
+  function scheduleBookmarkScanStopAck() {
+    if (bookmarkScanStopAckTimer) clearTimeout(bookmarkScanStopAckTimer);
+    bookmarkScanStopAckTimer = setTimeout(function () {
+      bookmarkScanStopAckTimer = null;
+      var el = $("bs-status");
+      if (!el) return;
+      if (!/^Stopping/i.test(String(el.textContent || "").trim())) return;
+      if (!listenScanRunning && !(running && radioJob === "bookmarks")) {
+        clearStoppingStatusIfIdle("Scan stopped.");
+        return;
+      }
+      forceBookmarkScanTeardown();
+    }, 4000);
+  }
+
+  function cancelBookmarkScanStopAck() {
+    if (bookmarkScanStopAckTimer) {
+      clearTimeout(bookmarkScanStopAckTimer);
+      bookmarkScanStopAckTimer = null;
+    }
+  }
+
   function stopSurvey() {
     stopFlag = true;
+    listenCmd = "";
+    listenPaused = false;
     try { clearHoldResetTimer(); } catch (eHold) {}
     try { cancelRangeRepeat(); } catch (eStopRep) {}
+    try { setRecording(false); } catch (eRec) {}
     try { applyToolbarVisibility(); } catch (eVis) {}
     setStatus("Stopping…");
     try { toast("Stopping scan…"); } catch (eT) {}
+    if (listenScanRunning || radioJob === "bookmarks") scheduleBookmarkScanStopAck();
   }
 
   function tuneTo(freq, pid) {
@@ -46701,6 +51667,9 @@ Plugins.toolbox.init = function () {
     S.hideAuto = $("bs-hideauto") ? $("bs-hideauto").checked : S.hideAuto;
     S.autoBm = $("bs-autobm") ? $("bs-autobm").checked : S.autoBm;
     if ($("bs-mute") || $("bs-range-mute")) S.mute = muteFromUi();
+    if ($("bs-mute-beep") || $("bs-range-mute-beep")) {
+      S.muteScanBeep = muteScanBeepFromUi();
+    }
     if ($("bs-hidespurs") || $("bs-range-hidespurs")) S.hideSpurs = hideSpursFromUi();
     if ($("bs-hold-reset-sec")) S.holdResetSec = Math.max(5, Math.min(600, Number($("bs-hold-reset-sec").value) || 45));
     if ($("bs-auto-skip-seen")) S.autoSkipBirdieSeen = Math.max(3, Math.min(99, Number($("bs-auto-skip-seen").value) || 12));
@@ -46710,13 +51679,8 @@ Plugins.toolbox.init = function () {
     S.scanAfter = $("bs-scanafter") ? $("bs-scanafter").checked : S.scanAfter;
     S.holdBusy = $("bs-holdbusy") ? $("bs-holdbusy").checked : S.holdBusy;
     S.continuousBmScan = $("bs-continuousbm") ? $("bs-continuousbm").checked : S.continuousBmScan;
-    if ($("bs-record-list") && document.activeElement === $("bs-record-list")) {
-      syncRecordBusyUi($("bs-record-list").checked);
-    } else if ($("bs-record")) {
-      syncRecordBusyUi($("bs-record").checked);
-    } else if ($("bs-record-list")) {
-      syncRecordBusyUi($("bs-record-list").checked);
-    }
+    var rbForm = recordBusyFromUi();
+    if (rbForm !== null) syncRecordBusyUi(rbForm);
     readRecSettings();
     S.notifyNew = pairChkFromUi("bs-notify", "bs-range-notify", S.notifyNew !== false);
     if (isPublicReceiver()) {
@@ -46774,7 +51738,7 @@ Plugins.toolbox.init = function () {
       S.profileSettleMs = syncPairNum("bs-settle-ms", "bs-range-settle-ms", Math.max(0, Number(settleRaw) || 0));
     }
     if ($("bs-max-peaks")) {
-      S.maxPeaks = Math.max(0, Number($("bs-max-peaks").value) || 0);
+      readStorageQuotasFromForm();
       if (_hitsLoaded) {
         trimPeaksIfNeeded();
         saveHits();
@@ -46798,7 +51762,7 @@ Plugins.toolbox.init = function () {
       }
       S.keepPeaks = keepPeaks;
     }
-    if ($("bs-max-clips")) S.maxAudioClips = Math.max(5, Math.min(200, Number($("bs-max-clips").value) || 40));
+    if ($("bs-max-clips")) readStorageQuotasFromForm();
     if ($("bs-aud-preview-sec") || $("bs-dec-preview-sec")) S.clipPreviewSec = clipPreviewSec();
     if ($("bs-aud-vol")) S.clipVolume = clipVolumeLevel();
     /* Clip mute is toggled by the Mute button — do not read a checkbox. */
@@ -46814,7 +51778,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-digi-dwell")) S.digiDwellSec = Math.max(15, Math.min(180, Number($("bs-digi-dwell").value) || 90));
     if ($("bs-digi-mode")) S.digiForceMode = String($("bs-digi-mode").value || "ft8").trim() || "ft8";
     if ($("bs-daynight-sched")) S.dayNightBeforeSched = !!$("bs-daynight-sched").checked;
-    if ($("bs-occ-days")) S.occDays = Math.max(1, Math.min(30, Number($("bs-occ-days").value) || 7));
+    if ($("bs-occ-days")) S.occDays = Math.max(1, Math.min(30, Number($("bs-occ-days").value) || OCC_DAYS_DEFAULT));
     if ($("bs-ui-scale-preset")) S.uiScale = snapUiScaleToPreset($("bs-ui-scale-preset").value);
     if ($("bs-main-tab-scale")) S.mainTabScale = snapMainTabScalePct($("bs-main-tab-scale").value);
     if ($("bs-ui-density")) S.uiDensity = $("bs-ui-density").value === "minimal" ? "minimal" : "full";
@@ -46823,7 +51787,10 @@ Plugins.toolbox.init = function () {
     if ($("bs-find-in-toolbox")) S.findInToolbox = !!$("bs-find-in-toolbox").checked;
     if ($("bs-minimal-button")) S.showMinimalButton = !!$("bs-minimal-button").checked;
     if ($("bs-hide-stock-rx")) S.hideStockReceiver = !!$("bs-hide-stock-rx").checked;
+    if ($("bs-hide-detach-http-note")) S.hideDetachHttpNote = !!$("bs-hide-detach-http-note").checked;
     if ($("bs-mute-on-tab")) S.muteOnTabHide = !!$("bs-mute-on-tab").checked;
+    if ($("bs-stop-clip-on-tab")) S.stopClipOnTabLeave = !!$("bs-stop-clip-on-tab").checked;
+    if ($("bs-stop-clip-on-panel")) S.stopClipOnPanelHide = !!$("bs-stop-clip-on-panel").checked;
     if ($("bs-btn-colours-on")) S.btnColoursOff = !$("bs-btn-colours-on").checked;
     else if ($("bs-btn-colours-off")) S.btnColoursOff = !!$("bs-btn-colours-off").checked;
     if ($("bs-btn-shade-hint")) S.btnShadeHoverHint = !!$("bs-btn-shade-hint").checked;
@@ -46874,6 +51841,7 @@ Plugins.toolbox.init = function () {
       applyToolbarVisibility();
       applyStockReceiverVisibility();
       applyMuteOnTabHidePref();
+      applyHideDetachHttpNotePref();
       applySchedule();
       refreshBookmarks();
       renderHits();
@@ -46917,9 +51885,10 @@ Plugins.toolbox.init = function () {
     }
     if (extraOn("askPasses") && S.listenAskPasses) {
       var def = String(Math.max(0, Number(S.listenPasses) || 0));
-      var ans = window.prompt(
+      var ans = toolboxUserPrompt(
         "How many times to scan bookmarks?\n0 = keep going until you press Stop.",
-        def
+        def,
+        "bookmarks"
       );
       if (ans === null) {
         abortBmJob();
@@ -46950,6 +51919,8 @@ Plugins.toolbox.init = function () {
         if (btn) btn.classList.remove("bs-running");
         releaseRadioJob("bookmarks", jobGen);
       }
+      try { cancelBookmarkScanStopAck(); } catch (eAck) {}
+      try { clearStoppingStatusIfIdle("Bookmark scan stopped."); } catch (eClr) {}
       renderHits();
     }).catch(function (err) {
       if (jobGen === radioJobGen) {
@@ -46958,6 +51929,7 @@ Plugins.toolbox.init = function () {
         if (btn) btn.classList.remove("bs-running");
         releaseRadioJob("bookmarks", jobGen);
       }
+      try { cancelBookmarkScanStopAck(); } catch (eAck2) {}
       setStatus(friendlyError(err, "Listen"));
     });
   }
@@ -46983,7 +51955,7 @@ Plugins.toolbox.init = function () {
       if (ev.defaultPrevented) return;
       var t = ev.target;
       if (!t || !t.closest) return;
-      if (t.closest(".bs-box-help, .bs-ex-box-size, .bs-id-box-size, .bs-sa-box-size, .bs-ex-tune-vol, .bs-sa-tune-vol, input, select, textarea, a")) return;
+      if (t.closest(".bs-box-help, .bs-ex-box-close, .bs-ex-box-size, .bs-id-box-size, .bs-sa-box-size, .bs-ex-tune-vol, .bs-sa-tune-vol, input, select, textarea, a")) return;
       var btn = t.closest(".bs-set-box-toggle, .bs-ex-box-toggle");
       /* Fallback: click on Explore header chrome (title area) still toggles when
          the event target is the head itself after a pointer quirk. */
@@ -47262,7 +52234,7 @@ Plugins.toolbox.init = function () {
       if (exploreIsFreePack()) return;
       var t = ev.target;
       if (!t || !t.closest) return;
-      if (t.closest("input, select, textarea, a, .bs-box-help, .bs-ex-box-size, .bs-ex-box-resize, .bs-ex-free-resize")) return;
+      if (t.closest("input, select, textarea, a, .bs-box-help, .bs-ex-box-close, .bs-ex-box-size, .bs-ex-box-resize, .bs-ex-free-resize")) return;
 
       var head = t.closest(".bs-ex-box-h");
       if (!head || !root.contains(head)) return;
@@ -47688,7 +52660,7 @@ Plugins.toolbox.init = function () {
     if (!t || !t.closest) return null;
     var box = t.closest("#bs-id-free-canvas .bs-set-box, #bs-id-free-canvas #bs-id-meta-gate");
     if (!box || !box.id) return null;
-    if (t.closest("input, select, textarea, a, label, .bs-box-help, .bs-ex-free-resize")) return null;
+    if (t.closest("input, select, textarea, a, label, .bs-box-help, .bs-ex-box-close, .bs-ex-free-resize")) return null;
     if (t.closest("button") && !t.closest(".bs-set-box-toggle, #bs-id-meta-enable")) return null;
     return box;
   }
@@ -48254,7 +53226,7 @@ Plugins.toolbox.init = function () {
   }
 
   function saLayoutStack() {
-    return $("bs-sa-root") || document.querySelector("#bs-tab-analyzer .bs-sa-stack");
+    return $("bs-sa-root") || tabPaneQuery("analyzer", "#bs-tab-analyzer .bs-sa-stack");
   }
 
   function saLayoutItems(stack) {
@@ -48540,23 +53512,28 @@ Plugins.toolbox.init = function () {
   function panelChromeHtml() {
     return (
       '<div class="bs-head" id="bs-drag" title="Drag to move the panel.">' +
+      '<div class="bs-head-ver-band">' +
+      headVersionBandHtml() +
+      "</div>" +
+      '<div class="bs-head-bar">' +
       '<div class="bs-tabs" id="bs-tabs" role="tablist">' +
       panelMainTabButtonsHtml() +
-      "</div>" +
+      "</div></div>" +
+      '<div class="bs-head-chrome">' +
       '<div class="bs-head-actions">' +
-      '<span class="bs-head-ver" id="bs-head-ver" title="This Toolbox build (toolbox.js).">v' +
-      (Plugins.toolbox._version || "?") +
-      "</span>" +
-      '<button type="button" class="bs-x bs-find" id="bs-find-tog" title="Find in Toolbox — search controls by keyword (gain, record, digi, mute, …)." aria-pressed="false" aria-haspopup="dialog" aria-label="Find in Toolbox"><span class="bs-find-ico" aria-hidden="true"></span></button>' +
-      '<button type="button" class="bs-x bs-help" id="bs-help-tog" title="Help and install guide." aria-pressed="false">?</button>' +
-      '<button type="button" class="bs-x bs-ui-scale-cycle" id="bs-ui-scale-cycle" title="Panel scale — click to cycle size on every tab.">100</button>' +
-      '<button type="button" class="bs-x bs-side-pct" id="bs-side-pct-reset" title="Side dock width — click to reset to 35%.">%</button>' +
-      '<button type="button" class="bs-x bs-density" id="bs-density-tog" hidden title="Minimal — only the most useful controls on this tab. Click again for Full view.">M</button>' +
+      '<div class="bs-head-tools">' +
+      '<div class="bs-head-tools-row bs-head-tools-win">' +
       '<button type="button" class="bs-x bs-side" id="bs-side-dock" title="Side dock — shrink OpenWebRX so Toolbox does not cover the waterfall.">S</button>' +
       '<button type="button" class="bs-x bs-refresh" id="bs-hard-refresh" title="Hard refresh — reload and bypass HTTP cache for this page, scripts, and CSS (same idea as Ctrl+Shift+R / Cmd+Shift+R).">R</button>' +
       '<button type="button" class="bs-x bs-min" id="bs-minimize" title="Minimize — collapse Toolbox and give OpenWebRX the full page back. Scans keep running.">−</button>' +
       '<button type="button" class="bs-x bs-close" id="bs-close" title="Close the Toolbox panel. Settings and bookmarks stay in this browser.">×</button>' +
-      "</div></div>" +
+      "</div>" +
+      '<div class="bs-head-tools-row bs-head-tools-util">' +
+      '<button type="button" class="bs-x bs-find" id="bs-find-tog" title="Find in Toolbox — search controls by keyword (gain, record, digi, mute, …)." aria-pressed="false" aria-haspopup="dialog" aria-label="Find in Toolbox"><span class="bs-find-ico" aria-hidden="true"></span></button>' +
+      '<button type="button" class="bs-x bs-ui-scale-cycle" id="bs-ui-scale-cycle" title="Panel scale — click to cycle size on every tab.">100</button>' +
+      '<button type="button" class="bs-x bs-side-pct" id="bs-side-pct-reset" title="Side dock width — click to reset to 33%.">%</button>' +
+      '<button type="button" class="bs-x bs-density" id="bs-density-tog" hidden title="Minimal — only the most useful controls on this tab. Click again for Full view.">M</button>' +
+      "</div></div></div></div></div>" +
       '<div class="bs-ux-strip bs-ux-tasks" id="bs-ux-tasks" hidden>' +
       '<span class="bs-ux-strip-lab">Task</span>' +
       '<button type="button" class="bs-tiny bs-primary" data-ux-task="tune" title="Jump to Explore to tune.">Tune around</button>' +
@@ -48605,6 +53582,7 @@ Plugins.toolbox.init = function () {
       '<span class="bs-opt-lab">Courtesy</span>' +
       '<div class="bs-row bs-chk-grid bs-chk-stack">' +
       '<label class="bs-chk" title="Mute receiver audio while the survey is walking bands."><input type="checkbox" id="bs-mute"> Mute</label>' +
+      '<label class="bs-chk" title="No short beep when a new peak is counted during a scan (Bands, Range, bookmarks)."><input type="checkbox" id="bs-mute-beep"> Mute beep</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between bands. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-ownradio"> Own radio</label>' +
       '<label class="bs-chk" title="Don\'t retune/scan if other listeners are connected. Untick to scan while others are online."><input type="checkbox" id="bs-band-alone"> Alone</label>' +
       "</div></div>" +
@@ -48939,22 +53917,64 @@ Plugins.toolbox.init = function () {
     return list;
   }
 
+  /** MHz span for coverage map — status.json first (avoids UUID/name false parses). */
+  function profileCoverageRange(p) {
+    if (!p) return null;
+    var r = lookupCachedProfileFreq(p);
+    if (!r) {
+      r = profileFreqFromPackId(p.id) || profileFreqFromPackId(p.label) ||
+        profileFreqFromWellKnownId(p.id) || profileFreqFromWellKnownId(p.label) ||
+        profileFreqFromWellKnownId(p.value) ||
+        parseMhzRange(p.label) || parseMhzRange(p.id);
+    }
+    if (!r) return null;
+    var lo = Math.min(r.lo, r.hi);
+    var hi = Math.max(r.lo, r.hi);
+    if (!isFinite(lo) || !isFinite(hi)) return null;
+    if (hi <= 0 || lo > 6000) return null;
+    var span = hi - lo;
+    if (span <= 0 && hi < 0.00001) return null;
+    if (!lookupCachedProfileFreq(p) && span > 400) return null;
+    return { lo: lo, hi: hi };
+  }
+
+  var bandsCovZoom = "all";
+  var COV_ZOOM_PRESETS = {
+    all: { lab: "All", lo: null, hi: null },
+    hf: { lab: "HF", lo: 0.1, hi: 30 },
+    vhf: { lab: "VHF", lo: 30, hi: 300 },
+    uhf: { lab: "UHF", lo: 300, hi: 1300 },
+    ghz: { lab: "≥1 GHz", lo: 1000, hi: 6000 }
+  };
+
+  function bandsCoverageProfileCoversHz(p, freqHz) {
+    var r = profileCoverageRange(p);
+    if (!r) return false;
+    var loHz = r.lo * 1e6;
+    var hiHz = r.hi * 1e6;
+    if (r.lo === r.hi) {
+      var half = 12500;
+      return freqHz >= loHz - half && freqHz <= hiHz + half;
+    }
+    return freqHz >= loHz && freqHz <= hiHz;
+  }
+
   function bandsCoverageRender() {
     var host = $("bs-bd-coverage-host");
     var meta = $("bs-bd-coverage-meta");
     if (!host) return;
     var list = bandsCoverageProfiles();
     var segs = [];
-    var spanLo = Infinity;
-    var spanHi = -Infinity;
+    var dataLo = Infinity;
+    var dataHi = -Infinity;
     list.forEach(function (p) {
-      var r = profileFreqRange(p);
+      var r = profileCoverageRange(p);
       if (!r) return;
       var rLo = Math.min(r.lo, r.hi);
       var rHi = Math.max(r.lo, r.hi);
-      if (!(rHi > rLo)) return;
-      spanLo = Math.min(spanLo, rLo);
-      spanHi = Math.max(spanHi, rHi);
+      if (!(rHi >= rLo)) return;
+      dataLo = Math.min(dataLo, rLo);
+      dataHi = Math.max(dataHi, rHi);
       segs.push({ p: p, lo: rLo, hi: rHi });
     });
     if (!segs.length) {
@@ -48962,13 +53982,32 @@ Plugins.toolbox.init = function () {
       if (meta) meta.textContent = "";
       return;
     }
-    var pad = Math.max(50e3, (spanHi - spanLo) * 0.02);
-    spanLo -= pad;
-    spanHi += pad;
-    var span = spanHi - spanLo;
-    var barHtml = segs.map(function (s) {
-      var left = ((s.lo - spanLo) / span) * 100;
-      var w = ((s.hi - s.lo) / span) * 100;
+    segs.sort(function (a, b) { return a.lo - b.lo || a.hi - b.hi; });
+    var zoomKey = bandsCovZoom && COV_ZOOM_PRESETS[bandsCovZoom] ? bandsCovZoom : "all";
+    var zoom = COV_ZOOM_PRESETS[zoomKey];
+    var viewLo = zoom.lo != null ? zoom.lo : dataLo;
+    var viewHi = zoom.hi != null ? zoom.hi : dataHi;
+    if (viewHi <= viewLo) {
+      viewLo = dataLo;
+      viewHi = dataHi;
+      zoomKey = "all";
+      zoom = COV_ZOOM_PRESETS.all;
+    }
+    var padMhz = Math.max(0.05, (viewHi - viewLo) * 0.02);
+    var spanLo = viewLo - padMhz;
+    var spanHi = viewHi + padMhz;
+    var spanMhz = spanHi - spanLo;
+    var visibleSegs = segs.filter(function (s) {
+      return s.hi >= viewLo && s.lo <= viewHi;
+    });
+    if (!visibleSegs.length) visibleSegs = segs.slice();
+    var barHtml = visibleSegs.map(function (s) {
+      var drawLo = Math.max(s.lo, spanLo);
+      var drawHi = Math.min(s.hi, spanHi);
+      if (drawHi <= drawLo) drawHi = drawLo + Math.max(0.00005, (s.hi - s.lo) || 0.00005);
+      var left = ((drawLo - spanLo) / spanMhz) * 100;
+      var w = Math.max(((drawHi - drawLo) / spanMhz) * 100, 0.35);
+      if (left + w > 100) w = Math.max(0.35, 100 - left);
       var cls = bandPackSdrKindClass(profileSdrKind(s.p.value));
       var title = bandDisplayName(s.p) + " · " + profileFreqLabel(s.p);
       var narrow = w < 1.2;
@@ -48977,21 +54016,30 @@ Plugins.toolbox.init = function () {
         '%;" title="' + escapeHtml(title) + '" data-cov-prof="' + escapeHtml(s.p.value) + '">' +
         (narrow ? "" : escapeHtml(bandDisplayName(s.p).slice(0, 28))) + "</button>";
     }).join("");
-    var legendHtml = segs.map(function (s) {
+    var legendHtml = visibleSegs.map(function (s) {
       var cls = bandPackSdrKindClass(profileSdrKind(s.p.value));
       var title = bandDisplayName(s.p) + " · " + profileFreqLabel(s.p);
       return '<button type="button" class="bs-cov-chip ' + cls + '" title="' + escapeHtml(title) +
         '" data-cov-prof="' + escapeHtml(s.p.value) + '">' + escapeHtml(bandDisplayName(s.p)) + "</button>";
     }).join("");
     var gaps = [];
-    var step = Math.max(25e3, Math.min(100e3, span / 200));
-    var f;
-    for (f = spanLo; f <= spanHi; f += step) {
-      if (!profileForFreq(f)) {
-        if (!gaps.length || f - gaps[gaps.length - 1].hi > step * 1.5) {
-          gaps.push({ lo: f, hi: f + step });
+    var spanHz = spanMhz * 1e6;
+    var stepHz = Math.max(25e3, Math.min(250e3, spanHz / 120));
+    var fHz;
+    for (fHz = spanLo * 1e6; fHz <= spanHi * 1e6; fHz += stepHz) {
+      var covered = false;
+      var gi;
+      for (gi = 0; gi < segs.length; gi++) {
+        if (bandsCoverageProfileCoversHz(segs[gi].p, fHz)) {
+          covered = true;
+          break;
+        }
+      }
+      if (!covered) {
+        if (!gaps.length || fHz - gaps[gaps.length - 1].hi > stepHz * 1.5) {
+          gaps.push({ lo: fHz, hi: fHz + stepHz });
         } else {
-          gaps[gaps.length - 1].hi = f + step;
+          gaps[gaps.length - 1].hi = fHz + stepHz;
         }
       }
     }
@@ -48999,22 +54047,44 @@ Plugins.toolbox.init = function () {
       ? ("<p class=\"bs-hint\"><b>Gaps</b> (no profile tile): " + gaps.slice(0, 6).map(function (g) {
           return fmtMhz(g.lo) + "–" + fmtMhz(g.hi);
         }).join("; ") + (gaps.length > 6 ? " …" : "") + "</p>")
-      : '<p class="bs-hint">No gaps in this span — every sampled point has a profile.</p>';
+      : '<p class="bs-hint">No gaps in this view — every sampled point has a profile.</p>';
+    var zoomHtml = Object.keys(COV_ZOOM_PRESETS).map(function (k) {
+      var z = COV_ZOOM_PRESETS[k];
+      var on = k === zoomKey ? " bs-cov-zoom-on" : "";
+      return '<button type="button" class="bs-tiny bs-btn-preset bs-cov-zoom' + on + '" data-cov-zoom="' + k +
+        '" title="Show ' + escapeHtml(z.lab) + ' portion of the map.">' + escapeHtml(z.lab) + "</button>";
+    }).join("");
+    var midMhz = (viewLo + viewHi) / 2;
     host.innerHTML =
+      '<div class="bs-row bs-cov-zoom-row">' + zoomHtml + "</div>" +
       '<div class="bs-cov-map">' +
-      '<div class="bs-cov-axis"><span>' + escapeHtml(fmtMhz(spanLo)) + "</span><span>" + escapeHtml(fmtMhz(spanHi)) + "</span></div>" +
+      '<div class="bs-cov-axis">' +
+      "<span>" + escapeHtml(fmtProfileMhz(spanLo)) + "</span>" +
+      '<span class="bs-cov-axis-mid">' + escapeHtml(fmtProfileMhz(midMhz)) + "</span>" +
+      "<span>" + escapeHtml(fmtProfileMhz(spanHi)) + "</span></div>" +
       '<div class="bs-cov-bar">' + barHtml + "</div>" +
       "</div>" +
-      '<p class="bs-cov-legend-lab">Profiles — click to tune</p>' +
+      '<p class="bs-cov-legend-lab">Profiles in view — click to tune</p>' +
       '<div class="bs-cov-legend">' + legendHtml + "</div>" +
       gapHtml;
     if (meta) {
       meta.textContent = segs.length + " profile span" + (segs.length === 1 ? "" : "s") +
-        (String(S.exploreSdrShowOnly || "").trim() ? (" · SDR only = " + S.exploreSdrShowOnly) : " · all SDR kinds");
+        " · " + fmtProfileMhz(dataLo) + "–" + fmtProfileMhz(dataHi) +
+        (zoomKey !== "all" ? (" · view " + zoom.lab) : "") +
+        (String(S.exploreSdrShowOnly || "").trim() ? (" · SDR " + S.exploreSdrShowOnly) : "");
     }
     if (!host._bsCovWired) {
       host._bsCovWired = true;
       host.addEventListener("click", function (ev) {
+        var zbtn = ev.target && ev.target.closest && ev.target.closest("[data-cov-zoom]");
+        if (zbtn) {
+          var zk = zbtn.getAttribute("data-cov-zoom");
+          if (zk && COV_ZOOM_PRESETS[zk]) {
+            bandsCovZoom = zk;
+            bandsCoverageRender();
+          }
+          return;
+        }
         var btn = ev.target && ev.target.closest && ev.target.closest("[data-cov-prof]");
         if (!btn) return;
         var v = btn.getAttribute("data-cov-prof");
@@ -49038,6 +54108,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-bd-sub" data-bd-sub="schedule" data-extra="bandSchedule" role="tab" aria-selected="false" title="After-scan actions, schedule, and courtesy.">Bands schedule</button>' +
       '<button type="button" class="bs-bd-sub" data-bd-sub="packs" data-extra="bandPacks" role="tab" aria-selected="false" title="Create missing SDR band profiles.">Bands packs</button>' +
       "</div>" +
+      tabScanTrackHtml("bands") +
       '<div class="bs-bd-subpane bs-bd-sub-on" data-bd-sub="list" role="tabpanel">' +
       '<div class="bs-band-sdr-bar" id="bs-bd-sdr-bar">' + bandsSdrBarInnerHtml("bs-bd-sdr-show") + "</div>" +
       tabBoxHtml("Presets &amp; filter",
@@ -49319,7 +54390,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-tab-pane" id="bs-tab-range" data-tab="range" role="tabpanel">' +
       '<div class="bs-tab-stack">' +
       '<div class="bs-rg-subs" id="bs-rg-subs" role="tablist" aria-label="Range sections">' +
-      '<button type="button" class="bs-rg-sub bs-rg-sub-on" data-rg-sub="scan" role="tab" aria-selected="true" title="Range scanner.">Scan</button>' +
+      '<button type="button" class="bs-rg-sub bs-rg-sub-on" data-rg-sub="scan" role="tab" aria-selected="true" title="Range scanner — MHz span, mode, and scan controls.">Scanner</button>' +
       '<button type="button" class="bs-rg-sub" data-rg-sub="presets" role="tab" aria-selected="false" title="Named start–end MHz recipes.">Presets</button>' +
       '<button type="button" class="bs-rg-sub" data-rg-sub="last" role="tab" aria-selected="false" title="Last ranges you scanned.">Last</button>' +
       "</div>" +
@@ -49351,7 +54422,8 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-btn-fresh" id="bs-range-fresh" title="Clear the peak list, then scan this range from scratch.">Fresh range scan</button>' +
       '<button type="button" class="bs-stop" id="bs-range-stop" title="Stop the range or band survey right now.">Stop</button>' +
       "</div>" +
-      '<p class="bs-hint" id="bs-range-est"></p>',
+      '<p class="bs-hint" id="bs-range-est"></p>' +
+      tabScanTrackHtml("range"),
       { cls: "bs-range-scan-box" }) +
       tabBoxHtml("Scan mode",
       '<div class="bs-range-mode-box" id="bs-range-mode-box">' +
@@ -49474,6 +54546,7 @@ Plugins.toolbox.init = function () {
       '<span class="bs-opt-lab">Courtesy</span>' +
       '<div class="bs-row bs-chk-grid bs-chk-stack">' +
       '<label class="bs-chk" title="Mute receiver audio while the range survey is running."><input type="checkbox" id="bs-range-mute"> Mute</label>' +
+      '<label class="bs-chk" title="No short beep when a new peak is counted during a scan (synced with Bands)."><input type="checkbox" id="bs-range-mute-beep"> Mute beep</label>' +
       '<label class="bs-chk" title="Skip the 11s wait between profiles. Only on a receiver you run. Public sites can lock this off."><input type="checkbox" id="bs-range-ownradio"> Own radio</label>' +
       '<label class="bs-chk" title="Don\'t retune/scan if other listeners are connected. Untick to scan while others are online."><input type="checkbox" id="bs-range-alone"> Alone</label>' +
       "</div></div>" +
@@ -49543,7 +54616,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-tab-pane bs-tab-on" id="bs-tab-explore" data-tab="explore" role="tabpanel">' +
       '<div class="bs-ex-console">' +
       /* —— Tune LCD stays pinned above the scrolling boxes —— */
-      '<section class="bs-box bs-ex-box bs-ex-box-collapse bs-ex-box-tune" id="bs-ex-box-tune" aria-label="Tune and frequency jump" data-box-help="Main listening strip: type MHz and Go, nudge with −/+, watch the audio scope and S-meter. Mute and Vol are in this header.">' +
+      '<section class="bs-box bs-ex-box bs-ex-box-tune" id="bs-ex-box-tune" aria-label="Tune and frequency jump" data-box-help="Main listening strip: type MHz and Go, nudge with −/+, watch the audio scope and S-meter. Mute and Vol are in this header.">' +
       exTuneHeadHtml() +
       '<div class="bs-ex-tune-grid">' +
       '<div class="bs-ex-lcd">' +
@@ -50614,6 +55687,10 @@ Plugins.toolbox.init = function () {
     if (id === "hfday") return panelTabHtml_hfdayInner();
     if (id === "units") return panelTabHtml_unitsInner();
     if (id === "filday") return panelTabHtml_fildayInner();
+    if (id === "wspr") return panelTabHtml_wsprInner();
+    if (id === "rtty") return panelTabHtml_rttyInner();
+    if (id === "pager") return panelTabHtml_pagerInner();
+    if (id === "dms") return panelTabHtml_dmsInner();
     if (LISTENER_PANE_CFG[id]) return panelTabHtml_listenerInner(id);
     return "";
   }
@@ -50946,7 +56023,7 @@ Plugins.toolbox.init = function () {
   }
 
   function panelTabHtml_myfeedsInner() {
-    return tabBoxHtml("Your feeds",
+    return tabBoxHtml("My feeds",
       '<div class="bs-net-tools">' +
       '<label title="Short label for this feed.">Name <input type="text" id="bs-cfeed-name" maxlength="40" style="width:8em" placeholder="My club"></label>' +
       '<label title="RSS or Atom URL (https).">URL <input type="url" id="bs-cfeed-url" maxlength="512" style="width:min(22em,100%)" placeholder="https://…/feed"></label>' +
@@ -50971,24 +56048,15 @@ Plugins.toolbox.init = function () {
   function panelTabHtml_newsInner() {
     return tabBoxHtml("News",
       '<div class="bs-dx-tools">' +
-      '<div class="bs-log-chips" id="bs-news-feeds">' +
-      '<button type="button" class="bs-tiny bs-log-chip bs-on" data-news-feed="arrl" title="ARRL news RSS.">ARRL</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="rsgb" title="RSGB main news RSS (GB2RS and HQ).">RSGB</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="amsat" title="AMSAT (US) news RSS.">AMSAT</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="amsatuk" title="AMSAT-UK news RSS.">AMSAT-UK</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="newsline" title="Amateur Radio Newsline weekly report.">Newsline</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="dxworld" title="DX World — DXpeditions and rare DX.">DX World</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="rtlsdr" title="RTL-SDR Blog — SDR news and projects.">RTL-SDR</button>' +
-      '<button type="button" class="bs-tiny bs-log-chip" data-news-feed="arcom" title="AmateurRadio.com weekly roundup.">AR.com</button>' +
-      "</div>" +
-      '<button type="button" class="bs-tiny bs-btn-util" id="bs-news-refresh" title="Reload headlines.">Refresh</button>' +
+      '<div class="bs-log-chips bs-news-feed-chips" id="bs-news-feeds">' + newsFeedChipsHtml() + "</div>" +
+      '<button type="button" class="bs-tiny bs-btn-refresh" id="bs-news-refresh" title="Reload headlines for the selected source.">Refresh</button>' +
       '<span class="bs-hint" id="bs-news-meta"></span>' +
       "</div>" +
-      '<p class="bs-hint" id="bs-news-feed-url-line">RSS for this source: <a id="bs-news-feed-url" href="#" target="_blank" rel="noopener noreferrer"></a> <span class="bs-hint">(copy into <b>Feeds → Yours</b> to add your own)</span></p>' +
+      '<p class="bs-hint" id="bs-news-feed-url-line">RSS for this source: <a id="bs-news-feed-url" href="#" target="_blank" rel="noopener noreferrer"></a> <span class="bs-hint">(copy into <b>Read → My feeds</b> to add your own)</span></p>' +
       '<div class="bs-more-list bs-link-list" id="bs-news-list"></div>' +
       '<p class="bs-hint">Headlines open in a new tab. Fetches only while this pane is open (receiver <code>/owrx-toolbox-rss</code> proxy when installed).</p>',
       { wide: true, id: "bs-news-box", cls: "bs-news-box",
-        help: "ARRL, RSGB, AMSAT, AMSAT-UK, Newsline, DX World, RTL-SDR, and AmateurRadio.com headlines. RSS URL for the selected chip only. Opens in a new tab. Fetches only while open." });
+        help: "Ham headline RSS sources (societies, DX, satellites, SDR, activators, and more). Pick a chip, then Refresh. Opens in a new tab. Fetches only while open." });
   }
 
   function panelTabHtml_contestInner() {
@@ -51027,7 +56095,7 @@ Plugins.toolbox.init = function () {
       '<div class="bs-more-list bs-link-list" id="bs-link-list"></div>' +
       '<p class="bs-hint">Opens in a new tab. Static list — no network from Toolbox.</p>',
       { wide: true, id: "bs-link-box", cls: "bs-link-box",
-        help: "Curated ham links. Opens in a new tab." });
+        help: "Ten categories, ten links each — open any row in a new browser tab. Static list." });
   }
 
   function panelTabHtml_wwffInner() {
@@ -51271,6 +56339,44 @@ Plugins.toolbox.init = function () {
       '<p class="bs-hint">Mark your calendar — dates shift; confirm with ARRL / IARU / RSGB each year.</p>',
       { wide: true, id: "bs-filday-box", cls: "bs-filday-box",
         help: "Field Day, JOTA, and other annual ham events. Static pointers." });
+  }
+
+  function panelTabHtml_wsprInner() {
+    return tabBoxHtml("WSPR dials",
+      '<div class="bs-more-list" id="bs-wspr-list"></div>' +
+      '<p class="bs-hint">WSJT dial centres — USB. Click to tune. No network.</p>',
+      { wide: true, id: "bs-wspr-box", cls: "bs-wspr-box",
+        help: "WSPR dial frequencies from the built-in dial table." });
+  }
+
+  function panelTabHtml_rttyInner() {
+    return tabBoxHtml("RTTY segments",
+      '<div class="bs-more-list" id="bs-rtty-list"></div>' +
+      '<p class="bs-hint">Common RTTY calling segments — USB, 170 Hz shift typical. Click to tune.</p>',
+      { wide: true, id: "bs-rtty-box", cls: "bs-rtty-box",
+        help: "Static RTTY segment centres for listeners." });
+  }
+
+  function panelTabHtml_pagerInner() {
+    return tabBoxHtml("Pager (POCSAG)",
+      '<div class="bs-more-list" id="bs-pager-list"></div>' +
+      '<p class="bs-hint"><b>RX only</b> — decoding may be restricted. Click to tune the carrier.</p>',
+      { wide: true, id: "bs-pager-box", cls: "bs-pager-box",
+        help: "Sample POCSAG pager frequencies. Static." });
+  }
+
+  function panelTabHtml_dmsInner() {
+    return tabBoxHtml("DMS converter",
+      '<div class="bs-net-tools">' +
+      '<label title="Latitude decimal degrees.">Lat ° <input type="number" id="bs-dms-lat" step="any" style="width:7em"></label>' +
+      '<label title="Longitude decimal degrees.">Lon ° <input type="number" id="bs-dms-lon" step="any" style="width:7em"></label>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-dms-dec2dms" title="Decimal → DMS.">Dec → DMS</button>' +
+      '<button type="button" class="bs-tiny bs-btn-util" id="bs-dms-from-qth" title="Fill from QTH / Sats storage.">From QTH</button>' +
+      "</div>" +
+      '<div id="bs-dms-host" class="bs-qth-host"></div>' +
+      '<p class="bs-hint">Local math only — no network. Pair with Here → Locator for Maidenhead grid.</p>',
+      { wide: true, id: "bs-dms-box", cls: "bs-dms-box",
+        help: "Convert decimal lat/lon to degrees, minutes, seconds." });
   }
 
   function panelTabHtml_locatorInner() {
@@ -52044,7 +57150,7 @@ Plugins.toolbox.init = function () {
   function satSyncFollowUi() {
     var followBtn = $("bs-sat-follow");
     var stopBtn = $("bs-sat-stop");
-    var satsSub = document.querySelector('#bs-tab-more .bs-more-sub[data-more-sub="sats"]');
+    var satsSub = tabPaneQuery("more", '#bs-tab-more .bs-more-sub[data-more-sub="sats"]');
     if (followBtn) {
       followBtn.classList.toggle("bs-on", !!satFollowing);
       followBtn.textContent = satFollowing ? "Following…" : "Follow";
@@ -53687,6 +58793,13 @@ Plugins.toolbox.init = function () {
     try {
       var u = new URL("/owrx-toolbox-rss", window.location.origin);
       u.searchParams.set("url", String(feedUrl || "").trim());
+      try {
+        var page = new URL(window.location.href);
+        ["dash_auth", "hub_auth"].forEach(function (key) {
+          var v = page.searchParams.get(key);
+          if (v) u.searchParams.set(key, v);
+        });
+      } catch (eQ) {}
       return u.href;
     } catch (eU) {
       return "";
@@ -53730,27 +58843,68 @@ Plugins.toolbox.init = function () {
 
   function toolboxFetchRssJson(feedUrl) {
     feedUrl = String(feedUrl || "").trim();
+    var rssFetchMs = 22000;
+    function fetchRss(url, opts) {
+      opts = opts || {};
+      opts.cache = "no-store";
+      if (opts.credentials == null) opts.credentials = "include";
+      var useAbort = false;
+      if (typeof AbortSignal !== "undefined" && AbortSignal.timeout && !opts.signal) {
+        try {
+          opts.signal = AbortSignal.timeout(rssFetchMs);
+          useAbort = true;
+        } catch (eT) {}
+      }
+      var p = fetch(url, opts);
+      if (!useAbort) {
+        p = new Promise(function (resolve, reject) {
+          var t = setTimeout(function () { reject(new Error("timeout")); }, rssFetchMs);
+          p.then(function (r) {
+            clearTimeout(t);
+            resolve(r);
+          }, function (e) {
+            clearTimeout(t);
+            reject(e);
+          });
+        });
+      }
+      return p;
+    }
     function fromSameOrigin() {
       var api = toolboxRssSameOriginUrl(feedUrl);
       if (!api) return Promise.reject(new Error("no-origin"));
-      return fetch(api, { cache: "no-store", credentials: "same-origin" })
+      return fetchRss(api)
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            txt = String(txt || "");
+            if (r.status === 401 || r.status === 403 || /authentication required/i.test(txt)) {
+              throw new Error("auth");
+            }
+            if (!r.ok) throw new Error("http-" + r.status);
+            var body = txt.trim();
+            if (!body) throw new Error("empty");
+            if (body.charAt(0) === "{") {
+              var data = JSON.parse(body);
+              if (data && data.status === "error") throw new Error(data.message || "proxy");
+              if (!data || data.status !== "ok" || !Array.isArray(data.items)) throw new Error("bad");
+              return data.items;
+            }
+            var items = toolboxParseRssXml(body);
+            if (!items.length) throw new Error("empty");
+            return items;
+          });
+        });
+    }
+    function fromAllOrigins() {
+      var ao = "https://api.allorigins.win/get?url=" + encodeURIComponent(feedUrl);
+      return fetchRss(ao, { credentials: "omit" })
         .then(function (r) {
           if (!r.ok) throw new Error("http");
           return r.json();
         })
         .then(function (data) {
-          if (!data || data.status !== "ok" || !Array.isArray(data.items)) throw new Error("bad");
-          return data.items;
-        });
-    }
-    function fromAllOrigins() {
-      var ao = "https://api.allorigins.win/raw?url=" + encodeURIComponent(feedUrl);
-      return fetch(ao, { cache: "no-store" })
-        .then(function (r) {
-          if (!r.ok) throw new Error("http");
-          return r.text();
-        })
-        .then(function (txt) {
+          var txt = data && (data.contents || data.data);
+          if (typeof txt !== "string" || !txt.trim()) throw new Error("empty");
           var items = toolboxParseRssXml(txt);
           if (!items.length) throw new Error("empty");
           return items;
@@ -53758,7 +58912,7 @@ Plugins.toolbox.init = function () {
     }
     function fromRss2Json() {
       var api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feedUrl);
-      return fetch(api, { cache: "no-store" })
+      return fetchRss(api, { credentials: "omit" })
         .then(function (r) {
           if (!r.ok) throw new Error("http");
           return r.json();
@@ -53768,26 +58922,64 @@ Plugins.toolbox.init = function () {
           return data.items || [];
         });
     }
+    function rssFallbackUnlessAuth(err, next) {
+      if (err && String(err.message || err) === "auth") throw err;
+      return next();
+    }
     return fromSameOrigin()
-      .catch(function () { return fromAllOrigins(); })
-      .catch(function () { return fromRss2Json(); });
+      .catch(function (e) { return rssFallbackUnlessAuth(e, fromAllOrigins); })
+      .catch(function (e) { return rssFallbackUnlessAuth(e, fromRss2Json); });
   }
 
   var NEWS_FEEDS = {
-    arrl: { name: "ARRL", url: "https://www.arrl.org/news/rss" },
-    rsgb: { name: "RSGB", url: "https://rsgb.org/main/feed/" },
-    amsat: { name: "AMSAT", url: "https://www.amsat.org/feed/" },
-    amsatuk: { name: "AMSAT-UK", url: "https://amsat-uk.org/feed/" },
-    newsline: { name: "Newsline", url: "https://www.arnewsline.org/news?format=rss" },
-    dxworld: { name: "DX World", url: "https://www.dx-world.net/feed/" },
-    rtlsdr: { name: "RTL-SDR", url: "https://www.rtl-sdr.com/feed/" },
-    arcom: { name: "AR.com", url: "https://www.amateurradio.com/feed/" }
+    arrl: { name: "ARRL", chipLab: "ARRL", url: "https://www.arrl.org/news/rss", chipTitle: "ARRL news RSS." },
+    rsgb: { name: "RSGB", chipLab: "RSGB", url: "https://rsgb.org/main/feed/", chipTitle: "RSGB main news RSS (GB2RS and HQ)." },
+    amsat: { name: "AMSAT", chipLab: "AMSAT", url: "https://www.amsat.org/feed/", chipTitle: "AMSAT (US) news RSS." },
+    amsatuk: { name: "AMSAT-UK", chipLab: "AMSAT-UK", url: "https://amsat-uk.org/feed/", chipTitle: "AMSAT-UK news RSS." },
+    newsline: { name: "Newsline", chipLab: "Newsline", url: "https://www.arnewsline.org/news?format=rss", chipTitle: "Amateur Radio Newsline weekly report." },
+    dxworld: { name: "DX World", chipLab: "DX World", url: "https://www.dx-world.net/feed/", chipTitle: "DX World — DXpeditions and rare DX." },
+    southgate: { name: "Southgate ARC", chipLab: "Southgate", url: "https://feeds.feedburner.com/southgatearc", chipTitle: "Southgate Amateur Radio Club news digest." },
+    sota: { name: "SOTA", chipLab: "SOTA", url: "https://www.sota.org.uk/sota.xml", chipTitle: "Summits on the Air news and updates." },
+    rac: { name: "RAC Canada", chipLab: "RAC", url: "https://www.rac.ca/feed/", chipTitle: "Radio Amateurs of Canada news." },
+    rtlsdr: { name: "RTL-SDR", chipLab: "RTL-SDR", url: "https://www.rtl-sdr.com/feed/", chipTitle: "RTL-SDR Blog — SDR news and projects." },
+    hackaday: { name: "Hackaday Ham", chipLab: "Hackaday", url: "https://hackaday.com/tag/amateur-radio/feed/", chipTitle: "Hackaday posts tagged amateur radio." },
+    darc: { name: "DARC", chipLab: "DARC", url: "https://www.darc.de/en/feed/", chipTitle: "DARC English news and events." },
+    essexham: { name: "Essex Ham", chipLab: "Essex Ham", url: "https://www.essexham.co.uk/feed/", chipTitle: "Essex Ham guides and UK ham news." },
+    arrlaudio: { name: "ARRL Audio News", chipLab: "ARRL Audio", url: "https://www.arrl.org/arrl-audio-news/rss", chipTitle: "ARRL Audio News episodes (RSS)." },
+    arcom: { name: "AR.com", chipLab: "AR.com", url: "https://www.amateurradio.com/feed/", chipTitle: "AmateurRadio.com weekly roundup." },
+    qrzforums: { name: "QRZ Forums", chipLab: "QRZ", url: "https://forums.qrz.com/index.php?forums/-/index.rss", chipTitle: "QRZ.com forums — events, gear, and discussion." },
+    offgrid: { name: "Off Grid Ham", chipLab: "Off Grid", url: "https://www.offgridham.com/feed/", chipTitle: "Off-grid and EMCOMM-focused ham articles." },
+    soldersmoke: { name: "SolderSmoke", chipLab: "SolderSmoke", url: "https://soldersmoke.blogspot.com/feeds/posts/default?alt=rss", chipTitle: "Homebrew, vintage rigs, and the SolderSmoke podcast." },
+    iaru_r1: { name: "IARU Region 1", chipLab: "IARU-R1", url: "https://www.iaru-r1.org/feed/", chipTitle: "IARU Region 1 news — spectrum and policy (Europe/Africa)." },
+    makeham: { name: "Make: Ham", chipLab: "Make", url: "https://makezine.com/tag/amateur-radio/feed/", chipTitle: "Make: Magazine projects tagged amateur radio." },
+    oh8x: { name: "Ohio-Penn DX", chipLab: "OH8X", url: "https://oh8x.blogspot.com/feeds/posts/default?alt=rss", chipTitle: "Ohio-Penn DX bulletin — classic DX news." },
+    n1mm: { name: "N1MM+", chipLab: "N1MM+", url: "https://n1mmwp.hamdocs.com/feed/", chipTitle: "N1MM+ contest logger release notes and news." }
   };
+
+  function newsFeedChipsHtml() {
+    return Object.keys(NEWS_FEEDS).map(function (id) {
+      var f = NEWS_FEEDS[id];
+      var on = id === newsFeedId ? " bs-on" : "";
+      var lab = f.chipLab || f.name;
+      var title = f.chipTitle || (f.name + " RSS.");
+      return '<button type="button" class="bs-tiny bs-log-chip' + on + '" data-news-feed="' + escapeHtml(id) +
+        '" title="' + escapeHtml(title) + '">' + escapeHtml(lab) + "</button>";
+    }).join("");
+  }
   var newsFeedId = "arrl";
   var newsCache = {};
   var newsBusy = false;
+  var newsBusyId = "";
   var newsError = "";
   var newsGen = 0;
+
+  function newsPickFeed(id) {
+    if (!id || !NEWS_FEEDS[id]) return;
+    newsFeedId = id;
+    newsError = "";
+    if (newsBusy) newsGen++;
+    newsEnsure(true);
+  }
 
   function newsPaintFeedUrls() {
     var feed = NEWS_FEEDS[newsFeedId] || NEWS_FEEDS.arrl;
@@ -53808,8 +59000,9 @@ Plugins.toolbox.init = function () {
     var chips = $("bs-news-feeds");
     newsPaintFeedUrls();
     if (btn) {
-      btn.disabled = !!newsBusy;
-      btn.textContent = newsBusy ? "Refreshing…" : "Refresh";
+      var busyHereBtn = newsBusy && newsBusyId === newsFeedId;
+      btn.disabled = !!busyHereBtn;
+      btn.textContent = busyHereBtn ? "Refreshing…" : "Refresh";
     }
     if (chips) {
       Array.prototype.forEach.call(chips.querySelectorAll("[data-news-feed]"), function (c) {
@@ -53821,15 +59014,18 @@ Plugins.toolbox.init = function () {
     }
     var pack = newsCache[newsFeedId];
     if (meta) {
-      meta.textContent = newsBusy
-        ? "refreshing…"
+      var busyHere = newsBusy && newsBusyId === newsFeedId;
+      var feedLab = (NEWS_FEEDS[newsFeedId] || {}).name || newsFeedId;
+      meta.textContent = busyHere
+        ? ("loading " + feedLab + "…")
         : (pack && pack.at ? ("updated " + trafficLogAgo(pack.at)) : "");
     }
     if (!host) return;
     var items = (pack && pack.items) || [];
+    var busyHere = newsBusy && newsBusyId === newsFeedId;
     if (!items.length) {
       host.innerHTML = '<p class="bs-empty">' +
-        escapeHtml(newsError || (newsBusy ? "Loading headlines…" : "No headlines yet — try Refresh.")) +
+        escapeHtml(newsError || (busyHere ? "Loading headlines…" : "No headlines yet — try Refresh.")) +
         "</p>";
       return;
     }
@@ -53855,29 +59051,53 @@ Plugins.toolbox.init = function () {
       newsPaint();
       return;
     }
-    if (newsBusy && !force) return;
+    if (newsBusy && !force && newsBusyId === newsFeedId) return;
+    if (newsBusy) newsGen++;
+    var fetchId = newsFeedId;
     var gen = ++newsGen;
     newsBusy = true;
+    newsBusyId = fetchId;
     newsError = "";
     newsPaint();
     toolboxFetchRssJson(feed.url)
       .then(function (raw) {
         if (gen !== newsGen) return;
         var items = toolboxNormalizeRssItems(raw, feed.url).slice(0, 12);
-        newsCache[newsFeedId] = { at: Date.now(), items: items };
-        newsBusy = false;
-        newsError = items.length ? "" : "Feed was empty.";
+        newsCache[fetchId] = { at: Date.now(), items: items };
+        if (gen === newsGen) {
+          newsBusy = false;
+          newsBusyId = "";
+        }
+        if (fetchId === newsFeedId) {
+          newsError = items.length ? "" : "Feed was empty.";
+        }
         newsPaint();
       })
-      .catch(function () {
+      .catch(function (err) {
         if (gen !== newsGen) return;
-        newsBusy = false;
-        newsError = "News feed did not answer — try Refresh (rss2json is often blocked; use this receiver’s /owrx-toolbox-rss proxy when installed).";
+        if (gen === newsGen) {
+          newsBusy = false;
+          newsBusyId = "";
+        }
+        if (fetchId !== newsFeedId) {
+          newsPaint();
+          return;
+        }
+        var msg = err && String(err.message || err);
+        if (msg === "auth") {
+          newsError = "Receiver login required — reload this page (stay signed in), then Refresh News.";
+        } else {
+          newsError = "News feed did not answer — try Refresh. This receiver uses /owrx-toolbox-rss (needs you logged in).";
+        }
         newsPaint();
       });
   }
 
-  function newsOnTab() { newsEnsure(false); }
+  function newsOnTab() {
+    bindNewsTab();
+    try { newsPaintFeedUrls(); } catch (eNp) {}
+    newsEnsure(false);
+  }
 
   /* Custom feeds — localStorage + rss2json (like News). */
   function customFeedHeadlinesEmptyMsg(busy) {
@@ -54200,63 +59420,216 @@ Plugins.toolbox.init = function () {
 
   function bindNewsTab() {
     var root = $("bs-more-news");
-    if (!root || root._bsNewsWired) return;
-    root._bsNewsWired = true;
-    if ($("bs-news-refresh")) {
-      $("bs-news-refresh").onclick = function () { newsEnsure(true); };
+    if (!root) return;
+    if (!root._bsNewsWired) {
+      root._bsNewsWired = true;
+      if ($("bs-news-refresh")) {
+        $("bs-news-refresh").onclick = function () { newsEnsure(true); };
+      }
+      if ($("bs-news-feeds")) {
+        $("bs-news-feeds").onclick = function (ev) {
+          var btn = ev.target && ev.target.closest && ev.target.closest("[data-news-feed]");
+          if (!btn) return;
+          newsPickFeed(btn.getAttribute("data-news-feed") || "arrl");
+        };
+      }
     }
-    if ($("bs-news-feeds")) {
-      $("bs-news-feeds").onclick = function (ev) {
-        var btn = ev.target && ev.target.closest && ev.target.closest("[data-news-feed]");
-        if (!btn) return;
-        newsFeedId = btn.getAttribute("data-news-feed") || "arrl";
-        newsEnsure(false);
-      };
+    var more = $("bs-tab-more");
+    if (more && !more._bsNewsClickDeleg) {
+      more._bsNewsClickDeleg = true;
+      more.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest || !more.contains(t)) return;
+        var chip = t.closest("#bs-news-feeds [data-news-feed]");
+        if (chip) {
+          newsPickFeed(chip.getAttribute("data-news-feed") || "arrl");
+          return;
+        }
+        if (t.id === "bs-news-refresh" || t.closest("#bs-news-refresh")) {
+          newsEnsure(true);
+        }
+      });
     }
   }
 
-  /* Links — static. */
-  var MORE_LINKS = [
-    /* OpenWebRX+ / Toolbox (no vanilla OpenWebRX) */
-    { name: "Toolbox (GitHub)", url: "https://github.com/G4EA5/openwebrx-toolbox", note: "This plugin — source & updates" },
-    { name: "OpenWebRX+ group", url: "https://groups.io/g/openwebrx", note: "Community forum (groups.io)" },
-    { name: "OpenWebRX+ Telegram", url: "https://t.me/openwebrx", note: "Chat / support" },
-    { name: "OpenWebRX+", url: "https://github.com/luarvique/openwebrx", note: "Source (plugins / this Toolbox)" },
-    { name: "OpenWebRX+ site", url: "https://fms.komkon.org/OWRX/", note: "Home, packages, news" },
-    { name: "OpenWebRX+ docs", url: "https://github.com/luarvique/owrx_docs", note: "Documentation" },
-    { name: "ReceiverBook", url: "https://www.receiverbook.de/", note: "Public OpenWebRX+ directory" },
-    { name: "HackRF sweep visualizer", url: "https://github.com/G4EA5/hackrf_sweep_visualizer_v1", note: "Related G4EA5 project" },
-    /* Web SDR directories */
-    { name: "KiwiSDR map", url: "https://map.kiwisdr.com/", note: "Public KiwiSDR receivers" },
-    { name: "WebSDR", url: "http://websdr.org/", note: "Classic WebSDR directory" },
-    /* Digi / maps / DX */
-    { name: "QRZ", url: "https://www.qrz.com/", note: "Callsign lookup" },
-    { name: "Club Log", url: "https://clublog.org/", note: "DXCC / logs" },
-    { name: "LoTW", url: "https://lotw.arrl.org/", note: "ARRL Logbook of the World" },
-    { name: "eQSL", url: "https://www.eqsl.cc/", note: "Electronic QSL cards" },
-    { name: "PSK Reporter", url: "https://pskreporter.info/pskmap.html", note: "Digi reception map" },
-    { name: "Reverse Beacon", url: "https://www.reversebeacon.net/", note: "CW / RTTY skimmers" },
-    { name: "DXHeat", url: "https://dxheat.com/", note: "Cluster / band activity" },
-    { name: "DXMaps", url: "https://www.dxmaps.com/", note: "Propagation maps" },
-    { name: "APRS.fi", url: "https://aprs.fi/", note: "APRS map" },
-    /* Prop / space / sats */
-    { name: "N0NBH Solar", url: "https://www.hamqsl.com/solar.html", note: "Solar / band conditions" },
-    { name: "Space Weather Live", url: "https://www.spaceweatherlive.com/", note: "Solar / aurora" },
-    { name: "Contest Calendar", url: "https://www.contestcalendar.com/contestcal.html", note: "WA7BNM calendar" },
-    { name: "Heavens-Above", url: "https://www.heavens-above.com/", note: "Satellite passes" },
-    { name: "AMSAT", url: "https://www.amsat.org/", note: "Amateur satellites" },
-    { name: "SatNOGS", url: "https://network.satnogs.org/", note: "Satellite observation network" },
-    { name: "RepeaterBook", url: "https://www.repeaterbook.com/", note: "Repeater directory" }
+  /* Links — 10×10 English sites; note text ≤20 words. */
+  var MORE_LINK_CATEGORIES = [
+    {
+      title: "OpenWebRX & SDR software",
+      links: [
+        { name: "Toolbox (GitHub)", url: "https://github.com/G4EA5/openwebrx-toolbox", note: "OpenWebRX Toolbox plugin source releases and install help on GitHub Save for daily ham radio SWL listening research at home." },
+        { name: "OpenWebRX+ forum", url: "https://groups.io/g/openwebrx", note: "Community forum for OpenWebRX+ admins plugins and troubleshooting tips Save for daily ham radio SWL listening research at home or." },
+        { name: "OpenWebRX+ Telegram", url: "https://t.me/openwebrx", note: "Fast chat for OpenWebRX+ users development news and shared receivers Save for daily ham radio SWL listening research at home." },
+        { name: "OpenWebRX+ source", url: "https://github.com/luarvique/openwebrx", note: "Main OpenWebRX+ server and core plugin repository on GitHub Save for daily ham radio SWL listening research at home or." },
+        { name: "OpenWebRX+ home", url: "https://fms.komkon.org/OWRX/", note: "Official site for downloads news and links to documentation Save for daily ham radio SWL listening research at home or." },
+        { name: "OpenWebRX+ docs", url: "https://github.com/luarvique/owrx_docs", note: "Operator guides profiles decoders and advanced OpenWebRX+ configuration reference Save for daily ham radio SWL listening research at home or." },
+        { name: "RTL-SDR blog", url: "https://www.rtl-sdr.com/", note: "Articles projects and tutorials for SDR scanning decoding and antenna ideas Save for daily ham radio SWL listening research at." },
+        { name: "GQRX", url: "https://gqrx.dk/", note: "Popular SDR receiver application for Linux macOS and Windows with waterfall display Save for daily ham radio SWL listening research." },
+        { name: "GNU Radio", url: "https://www.gnuradio.org/", note: "Free DSP blocks and flowgraphs for building custom SDR receivers and tools Save for daily ham radio SWL listening research." },
+        { name: "HackRF sweep tool", url: "https://github.com/G4EA5/hackrf_sweep_visualizer_v1", note: "Wideband HackRF sweep visualizer for quick spectrum overviews and surveys Save for daily ham radio SWL listening research at home." }
+      ]
+    },
+    {
+      title: "Remote receivers online",
+      links: [
+        { name: "ReceiverBook", url: "https://www.receiverbook.de/", note: "Searchable map of public OpenWebRX KiwiSDR and WebSDR receivers worldwide Save for daily ham radio SWL listening research at home." },
+        { name: "KiwiSDR map", url: "https://map.kiwisdr.com/", note: "Tune remote KiwiSDR receivers on a world map from your browser Save for daily ham radio SWL listening research at." },
+        { name: "WebSDR.org", url: "http://websdr.org/", note: "Directory of classic WebSDR sites for HF and VHF listening online Save for daily ham radio SWL listening research at." },
+        { name: "KiwiSDR forum", url: "https://forum.kiwisdr.com/", note: "English forum for KiwiSDR owners listeners and extension developers Save for daily ham radio SWL listening research at home or." },
+        { name: "SDRplay", url: "https://www.sdrplay.com/", note: "SDRplay RSP hardware drivers applications and documentation in English Save for daily ham radio SWL listening research at home or." },
+        { name: "Airspy", url: "https://www.airspy.com/", note: "Airspy SDR receivers firmware and companion software download pages Save for daily ham radio SWL listening research at home or." },
+        { name: "SDR++", url: "https://www.sdrpp.org/", note: "Cross-platform open source SDR receiver with plugins and remote streaming Save for daily ham radio SWL listening research at home." },
+        { name: "SatDump", url: "https://satdump.org/", note: "Weather and amateur satellite decoding software guides and satellite frequency lists Save for daily ham radio SWL listening research at." },
+        { name: "Gridtracker", url: "https://gridtracker.org/", note: "Companion map for WSJT-X FT4 FT8 spots grids and station statistics Save for daily ham radio SWL listening research at." },
+        { name: "WebSDR guide", url: "http://websdr.org/background.html", note: "How WebSDR works band stacks tuning tips and directory usage notes Save for daily ham radio SWL listening research at." }
+      ]
+    },
+    {
+      title: "DX clusters & ham news",
+      links: [
+        { name: "DXHeat", url: "https://dxheat.com/", note: "Combined DX cluster activity view with band spots and filtering tools Save for daily ham radio SWL listening research at." },
+        { name: "DX Summit", url: "https://www.dxsummit.fi/", note: "Web DX cluster with searchable recent HF and VHF spotted stations Save for daily ham radio SWL listening research at." },
+        { name: "Reverse Beacon", url: "https://www.reversebeacon.net/", note: "Skimmer network listing CW RTTY and WSPR spots for operators Save for daily ham radio SWL listening research at home." },
+        { name: "DX-World", url: "https://www.dx-world.net/", note: "DXpedition news expedition calendars and major pileup announcements in English Save for daily ham radio SWL listening research at home." },
+        { name: "DX Watch", url: "https://dxwatch.com/", note: "Live DX cluster aggregation with filters for bands modes and continents Save for daily ham radio SWL listening research at." },
+        { name: "DX News", url: "http://www.dxnews.com/", note: "Daily DX bulletins expedition schedules and operating news for HF hunters Save for daily ham radio SWL listening research at." },
+        { name: "Southgate ARC", url: "https://www.southgatearc.org/", note: "Amateur radio news summaries bands satellites and technology headlines English Save for daily ham radio SWL listening research at home." },
+        { name: "3830 scores", url: "https://www.3830scores.com/", note: "Contest score database searchable results for major HF VHF contests worldwide Save for daily ham radio SWL listening research at." },
+        { name: "AC6V DX links", url: "https://www.ac6v.com/", note: "Classic curated DX propagation and operating links index maintained for amateurs Save for daily ham radio SWL listening research at." },
+        { name: "HF Underground", url: "https://www.hfunderground.com/wiki/", note: "Shortwave utility numbers groups wiki and forum for serious HF listeners Save for daily ham radio SWL listening research at." }
+      ]
+    },
+    {
+      title: "Logbooks & callsign tools",
+      links: [
+        { name: "QRZ.com", url: "https://www.qrz.com/", note: "Callsign database photos biographies and logging tools for radio amateurs Save for daily ham radio SWL listening research at home." },
+        { name: "Club Log", url: "https://clublog.org/", note: "Online log with DXCC statistics comparisons and major expedition tracking Save for daily ham radio SWL listening research at home." },
+        { name: "LoTW", url: "https://lotw.arrl.org/", note: "ARRL Logbook of the World uploads for confirmed QSO credit and awards Save for daily ham radio SWL listening research." },
+        { name: "eQSL.cc", url: "https://www.eqsl.cc/", note: "Send and receive electronic QSL confirmations without mailing paper cards Save for daily ham radio SWL listening research at home." },
+        { name: "HamQTH", url: "https://www.hamqth.com/", note: "Free callsign lookup log storage and awards tracking for licensed amateurs Save for daily ham radio SWL listening research at." },
+        { name: "PSK Reporter", url: "https://pskreporter.info/pskmap.html", note: "Live decoded PSK and FT8 reports plotted on a world reception map Save for daily ham radio SWL listening research." },
+        { name: "APRS.fi", url: "https://aprs.fi/", note: "Map of live APRS stations vehicles balloons and mesh nodes globally Save for daily ham radio SWL listening research at." },
+        { name: "LCWO.net", url: "https://lcwo.net/", note: "Learn and practice Morse code online with adjustable speed and character drills Save for daily ham radio SWL listening research." },
+        { name: "ON4KST chat", url: "https://www.on4kst.com/", note: "Popular browser chat for HF operators contesters and DXers during openings Save for daily ham radio SWL listening research at." },
+        { name: "N1MM+ docs", url: "https://n1mmwp.hamdocs.com/", note: "Documentation for N1MM+ contest logging software setup macros and score export Save for daily ham radio SWL listening research at." }
+      ]
+    },
+    {
+      title: "Propagation & space weather",
+      links: [
+        { name: "Solar indices", url: "https://www.hamqsl.com/solar.html", note: "N0NBH solar panel with SFI K-index and quick HF band hints Save for daily ham radio SWL listening research at." },
+        { name: "SpaceWeatherLive", url: "https://www.spaceweatherlive.com/", note: "English dashboards for aurora solar wind flares and geomagnetic storms Save for daily ham radio SWL listening research at home." },
+        { name: "Band conditions", url: "https://bandconditions.vk3yy.com/", note: "Simple live chart showing which HF bands seem open right now Save for daily ham radio SWL listening research at." },
+        { name: "VOACAP online", url: "https://www.voacap.com/", note: "Predict HF signal strength between two locations dates and sunspot levels Save for daily ham radio SWL listening research at." },
+        { name: "NOAA SWPC", url: "https://www.swpc.noaa.gov/", note: "Official US space weather prediction center alerts graphs and forecast discussions Save for daily ham radio SWL listening research at." },
+        { name: "Solarham", url: "https://www.solarham.net/", note: "Daily solar geomagnetic summaries imagery and amateur band condition commentary Save for daily ham radio SWL listening research at home." },
+        { name: "Aurora Service", url: "https://www.aurora-service.eu/", note: "Auroral oval forecasts and alerts aimed at European VHF and HF listeners Save for daily ham radio SWL listening research." },
+        { name: "DXMaps.com", url: "https://www.dxmaps.com/", note: "VHF propagation maps for sporadic E tropo and related opening indicators Save for daily ham radio SWL listening research at." },
+        { name: "Solen solar", url: "https://www.solen.info/solar/", note: "Solar wind sunspot and geomagnetic charts with English labels and archives Save for daily ham radio SWL listening research at." },
+        { name: "ARRL propagation", url: "https://www.arrl.org/aweek", note: "Weekly propagation bulletin and forecast from ARRL headquarters English Save for daily ham radio SWL listening research at home or." }
+      ]
+    },
+    {
+      title: "Weak signal & digital",
+      links: [
+        { name: "WSPRnet", url: "https://wsprnet.org/", note: "Database and maps of weak-signal WSPR transmits heard around the world Save for daily ham radio SWL listening research at." },
+        { name: "WSJT-X", url: "https://physics.princeton.edu/pulsar/k1jt/wsjtx.html", note: "Home page for FT8 WSPR JT65 software manuals and download links Save for daily ham radio SWL listening research at." },
+        { name: "FT8 agenda", url: "https://www.ft8agenda.com/", note: "Suggested FT8 dial frequencies by band region and common operating habits Save for daily ham radio SWL listening research at." },
+        { name: "FreeDV", url: "https://freedv.org/", note: "Open source digital voice for HF and VHF weak signal amateur communications Save for daily ham radio SWL listening research." },
+        { name: "M17 Project", url: "https://m17project.org/", note: "Open digital voice protocol and hardware notes for VHF UHF experimenters Save for daily ham radio SWL listening research at." },
+        { name: "JS8Call", url: "https://js8call.com/", note: "Keyboard chat weak signal mode companion built on the WSJT-X ecosystem Save for daily ham radio SWL listening research at." },
+        { name: "Weak Signals", url: "https://www.weak-signals.com/", note: "Articles and links about VHF UHF weak signal operating techniques and gear Save for daily ham radio SWL listening research." },
+        { name: "Codec2", url: "https://www.codec2.org/", note: "Speech codec behind FreeDV and other amateur digital voice experiments worldwide Save for daily ham radio SWL listening research at." },
+        { name: "Essex Ham guides", url: "https://www.essexham.co.uk/", note: "Beginner friendly UK English guides for bands exams digital modes and operating Save for daily ham radio SWL listening research." },
+        { name: "AREDN mesh", url: "https://www.arednmesh.org/", note: "Amateur radio emergency data network mesh firmware for linked IP over RF Save for daily ham radio SWL listening research." }
+      ]
+    },
+    {
+      title: "Satellites & ISS",
+      links: [
+        { name: "Heavens-Above", url: "https://www.heavens-above.com/", note: "Pass times and sky charts for ISS amateur satellites and bright objects Save for daily ham radio SWL listening research." },
+        { name: "AMSAT", url: "https://www.amsat.org/", note: "English amateur satellite news operating frequencies and beginner guides Save for daily ham radio SWL listening research at home or." },
+        { name: "AMSAT-UK", url: "https://amsat-uk.org/", note: "UK focused amateur satellite news frequencies events and beginner articles English Save for daily ham radio SWL listening research at." },
+        { name: "SatNOGS", url: "https://network.satnogs.org/", note: "Community network scheduling satellite passes and decoding telemetry worldwide Save for daily ham radio SWL listening research at home or." },
+        { name: "CelesTrak", url: "https://celestrak.org/", note: "Current TLE orbital elements for tracking satellites with external tools Save for daily ham radio SWL listening research at home." },
+        { name: "N2YO tracking", url: "https://www.n2yo.com/", note: "Live satellite positions footprint and pass predictions for selected spacecraft Save for daily ham radio SWL listening research at home." },
+        { name: "ARISS", url: "https://www.ariss.org/", note: "ISS school contacts schedules and frequencies for space station amateur operation Save for daily ham radio SWL listening research at." },
+        { name: "Satflare", url: "https://www.satflare.com/", note: "Visual satellite tracking predictions and flare calculations in your browser Save for daily ham radio SWL listening research at home." },
+        { name: "Spot the Station", url: "https://spotthestation.nasa.gov/", note: "NASA ISS sighting times and pass opportunities for your city or town Save for daily ham radio SWL listening research." },
+        { name: "In-The-Sky.org", url: "https://in-the-sky.org/", note: "English charts for satellite passes comets and sky events at your location Save for daily ham radio SWL listening research." }
+      ]
+    },
+    {
+      title: "Beacons & time stations",
+      links: [
+        { name: "NCDXF beacons", url: "https://www.ncdxf.org/beacons.html", note: "Official IARU HF beacon project times frequencies and rotation schedule chart Save for daily ham radio SWL listening research at." },
+        { name: "Beaconspot EU", url: "https://www.beaconspot.eu/", note: "European VHF UHF beacon propagation reports and beacon frequency lists Save for daily ham radio SWL listening research at home." },
+        { name: "NG3K beacons", url: "https://www.ng3k.com/Misc/beacon.html", note: "HF beacon reference list frequencies schedules and listening notes in English Save for daily ham radio SWL listening research at." },
+        { name: "WWV NIST", url: "https://www.nist.gov/pml/time-and-frequency-division/radio-stations/wwv", note: "US standard time station WWV frequencies services and listener information pages Save for daily ham radio SWL listening research at." },
+        { name: "WWVH NIST", url: "https://www.nist.gov/pml/time-and-frequency-division/radio-stations/wwvh", note: "Hawaii standard time station WWVH details for Pacific listeners and propagation checks Save for daily ham radio SWL listening research." },
+        { name: "CHU Canada", url: "https://www.nrc-cnrc.gc.ca/eng/solutions/advisory/radio_time/chu.html", note: "Canadian time station CHU schedules frequencies and English documentation for listeners Save for daily ham radio SWL listening research at." },
+        { name: "IARU Region 1", url: "https://www.iaru-r1.org/", note: "European IARU pages including beacon coordination band planning English sections Save for daily ham radio SWL listening research at home." },
+        { name: "RSGB beacons", url: "https://rsgb.org/main/operating/operator-data/beacons/", note: "UK microwave and HF beacon lists operating notes and listener resources English Save for daily ham radio SWL listening research." },
+        { name: "VA3ROM beacons", url: "http://www.va3rom.com/scanbeacon.html", note: "Scanning oriented HF beacon and marker frequency list for North American listeners Save for daily ham radio SWL listening research." },
+        { name: "HB9FXQ propagation", url: "https://www.hb9fxq.ch/propagation/", note: "European focused propagation charts maps and beacon related HF tools English Save for daily ham radio SWL listening research at." }
+      ]
+    },
+    {
+      title: "Repeaters, DMR & scanners",
+      links: [
+        { name: "RepeaterBook", url: "https://www.repeaterbook.com/", note: "Crowd-sourced repeater listings with search maps and coverage notes worldwide Save for daily ham radio SWL listening research at home." },
+        { name: "UK Repeaters", url: "https://ukrepeater.net/", note: "UK repeater and beacon directory for England Wales Scotland listings Save for daily ham radio SWL listening research at home." },
+        { name: "Echolink", url: "https://www.echolink.org/", note: "Internet linking system search for connected repeaters and conference nodes Save for daily ham radio SWL listening research at home." },
+        { name: "Brandmeister Hos", url: "https://hosgeldn.brandmeister.network/", note: "Live BrandMeister DMR network dashboard for reflectors and repeaters English UI Save for daily ham radio SWL listening research at." },
+        { name: "AllStar Link", url: "https://www.allstarlink.org/", note: "Linux based VoIP linking for analog repeaters and ham radio phone patches Save for daily ham radio SWL listening research." },
+        { name: "RadioID.net", url: "https://www.radioid.net/", note: "Search DMR ID registrations networks and callsign mappings for digital voice Save for daily ham radio SWL listening research at." },
+        { name: "RadioReference", url: "https://www.radioreference.com/", note: "Scanner and ham frequency database forums and trunked radio data wiki Save for daily ham radio SWL listening research at." },
+        { name: "Signal Wiki", url: "https://www.sigidwiki.com/wiki/Main_Page", note: "Community wiki to help identify unknown radio signals modes and services Save for daily ham radio SWL listening research at." },
+        { name: "Broadcastify", url: "https://www.broadcastify.com/", note: "Live public safety and aviation scanner audio streams across United States markets Save for daily ham radio SWL listening research." },
+        { name: "LiveATC", url: "https://www.liveatc.net/", note: "Live air traffic control and approach feeds from airports worldwide receive only Save for daily ham radio SWL listening research." }
+      ]
+    },
+    {
+      title: "Societies, awards & contests",
+      links: [
+        { name: "ARRL", url: "https://www.arrl.org/", note: "US society news band plans licensing exam resources and regulatory advocacy Save for daily ham radio SWL listening research at." },
+        { name: "RSGB", url: "https://www.rsgb.org.uk/", note: "UK society exams training band plans contests and representation to regulators Save for daily ham radio SWL listening research at." },
+        { name: "FCC ULS", url: "https://wireless2.fcc.gov/UlsApp/UlsSearch/searchLicense.jsp", note: "Official US license search for callsigns licensee names and license class Save for daily ham radio SWL listening research at." },
+        { name: "Ofcom amateur", url: "https://www.ofcom.org.uk/spectrum/radio-amateur", note: "UK government amateur spectrum licences band plans and guidance in English Save for daily ham radio SWL listening research at." },
+        { name: "IARU", url: "https://www.iaru.org/", note: "International union English pages on band plans emergency communications regions Save for daily ham radio SWL listening research at home." },
+        { name: "DARC (English)", url: "https://www.darc.de/en/", note: "German national society English section events bands and international activities Save for daily ham radio SWL listening research at home." },
+        { name: "RAC Canada", url: "https://www.rac.ca/", note: "Radio Amateurs of Canada English site for licensing advocacy and band information Save for daily ham radio SWL listening research." },
+        { name: "WIA Australia", url: "https://www.wia.org.au/", note: "Wireless Institute of Australia English pages for licensing exams and band plans Save for daily ham radio SWL listening research." },
+        { name: "SOTA", url: "https://www.sota.org.uk/", note: "Summits on the Air rules summit database activator and chaser logs leaderboard Save for daily ham radio SWL listening research." },
+        { name: "POTA", url: "https://parksontheair.us/", note: "Parks on the Air program maps spots hunter activator guides and logging Save for daily ham radio SWL listening research." }
+      ]
+    }
   ];
+
+  var LINK_NOTE_MAX_WORDS = 20;
+  function linksNoteText(note) {
+    var parts = String(note || "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= LINK_NOTE_MAX_WORDS) return parts.join(" ");
+    return parts.slice(0, LINK_NOTE_MAX_WORDS).join(" ");
+  }
+
+  function linksLinkRowHtml(L) {
+    return '<a class="bs-more-row bs-link-row" href="' + escapeHtml(L.url) + '" target="_blank" rel="noopener noreferrer">' +
+      '<span class="bs-more-name">' + escapeHtml(L.name) + "</span>" +
+      '<span class="bs-more-status">' + escapeHtml(linksNoteText(L.note)) + "</span>" +
+      "</a>";
+  }
 
   function linksRender() {
     var host = $("bs-link-list");
     if (!host) return;
-    host.innerHTML = MORE_LINKS.map(function (L) {
-      return '<a class="bs-more-row bs-link-row" href="' + escapeHtml(L.url) + '" target="_blank" rel="noopener noreferrer">' +
-        '<span class="bs-more-name">' + escapeHtml(L.name) + "</span>" +
-        '<span class="bs-more-status">' + escapeHtml(L.note) + "</span>" +
-        "</a>";
+    host.innerHTML = MORE_LINK_CATEGORIES.map(function (cat) {
+      return '<section class="bs-link-cat">' +
+        '<div class="bs-link-cat-rule" aria-hidden="true"></div>' +
+        '<h3 class="bs-link-cat-title">' + escapeHtml(cat.title) + "</h3>" +
+        '<div class="bs-link-cat-list bs-link-list">' +
+        (cat.links || []).map(linksLinkRowHtml).join("") +
+        "</div></section>";
     }).join("");
   }
 
@@ -56883,6 +62256,98 @@ Plugins.toolbox.init = function () {
     moreRenderNoteList("bs-filday-list", FILDAY_ROWS);
   }
 
+  var RTTY_ROWS = [
+    { name: "20 m RTTY", mhz: 14.080, mode: "usb", note: "Contest / DX segment" },
+    { name: "20 m RTTY alt", mhz: 14.100, mode: "usb", note: "Often busy in contests" },
+    { name: "17 m RTTY", mhz: 18.100, mode: "usb", note: "When band open" },
+    { name: "15 m RTTY", mhz: 21.080, mode: "usb", note: "Common contest slice" },
+    { name: "40 m RTTY", mhz: 7.080, mode: "usb", note: "Region-dependent" },
+    { name: "80 m RTTY", mhz: 3.580, mode: "usb", note: "Night / contests" }
+  ];
+
+  var PAGER_ROWS = [
+    { name: "POCSAG UK", mhz: 153.350, mode: "fm", note: "Common UK pager slot" },
+    { name: "POCSAG EU", mhz: 153.825, mode: "fm", note: "Varies by country" },
+    { name: "POCSAG US", mhz: 152.0075, mode: "fm", note: "Example — many channels" },
+    { name: "POCSAG 931 MHz", mhz: 931.4375, mode: "fm", note: "Fleets / industrial" }
+  ];
+
+  function wsprOnTab() {
+    var rows = DIAL_FREQS.filter(function (d) { return /^WSPR$/i.test(String(d.mode || "")); });
+    moreRenderMfqList("bs-wspr-list", rows.map(function (d) {
+      return { name: d.band + " WSPR", mhz: d.mhz, mode: "usb", note: d.mode };
+    }));
+  }
+
+  function rttyOnTab() { moreRenderMfqList("bs-rtty-list", RTTY_ROWS); }
+
+  function pagerOnTab() { moreRenderMfqList("bs-pager-list", PAGER_ROWS); }
+
+  function decToDms(deg, isLat) {
+    deg = Number(deg);
+    if (!isFinite(deg)) return null;
+    var hemi = isLat ? (deg < 0 ? "S" : "N") : (deg < 0 ? "W" : "E");
+    deg = Math.abs(deg);
+    var d = Math.floor(deg);
+    var mFloat = (deg - d) * 60;
+    var m = Math.floor(mFloat);
+    var s = (mFloat - m) * 60;
+    return { d: d, m: m, s: s, hemi: hemi };
+  }
+
+  function formatDmsLine(label, dec, isLat) {
+    var p = decToDms(dec, isLat);
+    if (!p) return label + ": —";
+    var sec = p.s < 10 ? p.s.toFixed(2) : p.s.toFixed(1);
+    return label + ": " + p.d + "° " + p.m + "' " + sec + '" ' + p.hemi;
+  }
+
+  function dmsPaint(msg) {
+    var host = $("bs-dms-host");
+    if (!host) return;
+    var lat = Number(($("bs-dms-lat") || {}).value);
+    var lon = Number(($("bs-dms-lon") || {}).value);
+    var rows = [];
+    if (msg) rows.push({ name: "Status", note: msg });
+    if (isFinite(lat) && isFinite(lon)) {
+      rows.push({ name: "Latitude", note: formatDmsLine("Lat", lat, true).replace(/^Lat: /, "") });
+      rows.push({ name: "Longitude", note: formatDmsLine("Lon", lon, false).replace(/^Lon: /, "") });
+      rows.push({ name: "Decimal", note: lat.toFixed(6) + "°, " + lon.toFixed(6) + "°" });
+    }
+    host.innerHTML = rows.length
+      ? rows.map(function (r) { return moreNoteCardHtml(r.name, r.note); }).join("")
+      : '<p class="bs-hint">Enter lat/lon or use From QTH.</p>';
+  }
+
+  function dmsOnTab() { dmsPaint(""); }
+
+  function bindWsprTab() { moreBindMfqPane("bs-more-wspr", "WSPR", "_bsWsprWired"); }
+  function bindRttyTab() { moreBindMfqPane("bs-more-rtty", "RTTY", "_bsRttyWired"); }
+  function bindPagerTab() { moreBindMfqPane("bs-more-pager", "Pager", "_bsPagerWired"); }
+
+  function bindDmsTab() {
+    var root = $("bs-more-dms");
+    if (!root || root._bsDmsWired) return;
+    root._bsDmsWired = true;
+    if ($("bs-dms-dec2dms")) {
+      $("bs-dms-dec2dms").onclick = function () {
+        dmsPaint(isFinite(Number(($("bs-dms-lat") || {}).value)) ? "Converted." : "Enter lat/lon.");
+      };
+    }
+    if ($("bs-dms-from-qth")) {
+      $("bs-dms-from-qth").onclick = function () {
+        var obs = moreObsFromStorage();
+        if (!obs) {
+          dmsPaint("Set lat/lon on QTH / Sats first.");
+          return;
+        }
+        if ($("bs-dms-lat")) $("bs-dms-lat").value = obs.lat.toFixed(6);
+        if ($("bs-dms-lon")) $("bs-dms-lon").value = obs.lon.toFixed(6);
+        dmsPaint("From QTH.");
+      };
+    }
+  }
+
   function moreRenderNoteList(hostId, rows) {
     var host = $(hostId);
     if (!host) return;
@@ -57004,6 +62469,67 @@ Plugins.toolbox.init = function () {
       { name: "OpenWebRX server", note: "Receiver frequency, profiles, GPS — from the radio server you are logged into." },
       { name: "No background mining", note: "Toolbox does not poll the network when More is closed or when you are on other main tabs." },
       { name: "Version", note: "Title bar shows Plugins.toolbox._version — match deployed toolbox.js on the server." }
+    ],
+    hunt: [
+      { name: "Refresh once", note: "Open Spots → DX and press Refresh — no background cluster polling." },
+      { name: "Sort by band", note: "Use scope chips (All / HF / This band) before chasing every spot." },
+      { name: "Green calls", note: "Spotted in the last ~6 minutes — still verify on the waterfall." },
+      { name: "RBN vs DX", note: "RBN shows skimmer hits — great for finding active CW/digi segments." },
+      { name: "Activators", note: "POTA / SOTA / WWFF panes fetch only when you open them." },
+      { name: "Log it", note: "Click a spot to tune; Log captures decoder lines for later review." }
+    ],
+    doplr: [
+      { name: "Downlink drifts", note: "As a satellite rises, received frequency moves up; on descent it moves down." },
+      { name: "Rule of thumb", note: "±10 kHz per minute is common on 2 m FM LEO passes — wide FM helps." },
+      { name: "Follow mode", note: "Space → Sats → Follow steps the dial — only runs while that pane is open." },
+      { name: "ISS", note: "Voice downlink ~145.8 MHz NFM — Doppler is modest but audible on FM." },
+      { name: "Linear birds", note: "SSB/CW transponders need you to track both RX and TX if you transmit." }
+    ],
+    updn: [
+      { name: "FM LEO", note: "Downlink often 145 MHz region; uplink 435 MHz region — listen downlink only." },
+      { name: "ISS crossband", note: "APRS/voice down on 2 m — uplink on 70 cm (see Space → ISS)." },
+      { name: "Linear transponders", note: "Uplink and downlink on different bands — check AMSAT details per satellite." },
+      { name: "Doppler both ways", note: "Uplink correction matters if you transmit — RX-only listeners tune downlink." }
+    ],
+    condx: [
+      { name: "K-index", note: "High K → HF absorption and auroral flutter — check Sky → Prop." },
+      { name: "SFI / SSN", note: "Higher sunspot numbers generally help 15 m / 10 m / 6 m." },
+      { name: "MUF hint", note: "Sky → MUF is crude — use spots to see what is actually open." },
+      { name: "Greyline", note: "Sky → Grey for terminator enhancement on 20 m / 40 m." },
+      { name: "Storms", note: "Sky → Storm / Alerts when bands die suddenly." }
+    ],
+    bandwx: [
+      { name: "Rain static", note: "Heavy rain can raise noise on GHz — mostly VHF/UHF concern." },
+      { name: "Thunderstorms", note: "Local HF noise and static crashes — not the same as geomagnetic storms." },
+      { name: "Winter HF", note: "Low bands improve at night; Here → WX shows local conditions when open." },
+      { name: "Tropo", note: "High pressure can extend VHF range — Sky → Es static tips." }
+    ],
+    rota: [
+      { name: "Weekly nets", note: "Many clubs rotate NCS — confirm on the club website." },
+      { name: "Sked → Nets", note: "Store MHz and UTC in this browser; click a row to tune." },
+      { name: "Contest vs net", note: "Contest weekends crowd bands — nets may move or skip." },
+      { name: "GB2RS", note: "Sked → GB2RS for RSGB Sunday news dial hints." }
+    ],
+    skedutc: [
+      { name: "Why UTC", note: "Nets and contests worldwide use Zulu time to avoid DST confusion." },
+      { name: "Logging", note: "Convert local QSO time to UTC before LoTW / Club Log." },
+      { name: "Snapshot", note: "Here → UTC shows one capture when opened — no ticking timer." },
+      { name: "QTH clocks", note: "Here → QTH shows local + UTC for receiver lat/lon while open." }
+    ],
+    modes: [
+      { name: "CW", note: "~200 Hz bandwidth — narrow filters help on crowded bands." },
+      { name: "SSB voice", note: "~2.4 kHz — typical ham phone; AM broadcast much wider." },
+      { name: "FT8 / FT4", note: "~50 Hz tone spacing — USB dial per Tune → Dial." },
+      { name: "WSPR", note: "~6 Hz bandwidth — very weak signal; long integrations." },
+      { name: "FM / NFM", note: "12.5–25 kHz channels — airband, repeaters, satellites." },
+      { name: "Digital voice", note: "DMR / D-STAR / Fusion need correct mode — often not on HF profiles." }
+    ],
+    chart: [
+      { name: "160–10 m", note: "ITU ham allocations vary by region — Tune → Plan for limits." },
+      { name: "60 m", note: "Channelized in many countries — not a full phone band everywhere." },
+      { name: "6 m / 4 m", note: "VHF DX and Es — Spots and Sky → Es when hunting openings." },
+      { name: "2 m / 70 cm", note: "Repeaters (Sked → Repeater), satellites (Space), APRS/packet locally." },
+      { name: "SWL broadcast", note: "Often outside ham segments — Tune → SWL samples only." }
     ]
   };
 
@@ -57042,7 +62568,16 @@ Plugins.toolbox.init = function () {
     skedbc: { title: "Broadcasts & schedules", rowsKey: "skedbc", foot: "Confirm times on the broadcaster’s site — HF schedules change with season." },
     skedrx: { title: "Emergency listening", rowsKey: "skedrx", foot: "RX only. Official emergency info comes from civil authorities, not Toolbox." },
     readswl: { title: "SWL starter", rowsKey: "readswl", foot: "Embedded guide — explore other More groups using their Listen/Source tabs." },
-    readabout: { title: "Toolbox data map", rowsKey: "readabout", foot: "What is local vs network — helps you know when the receiver may fetch data." }
+    readabout: { title: "Toolbox data map", rowsKey: "readabout", foot: "What is local vs network — helps you know when the receiver may fetch data." },
+    hunt: { title: "DX hunting", rowsKey: "hunt", foot: "Static tips — cluster data only while Spots panes are open." },
+    doplr: { title: "Doppler cheat", rowsKey: "doplr", foot: "Static — use Space → Sats Follow for live Doppler on one bird." },
+    updn: { title: "Up / down links", rowsKey: "updn", foot: "Static band-plan reminders — always check sat details before transmit." },
+    condx: { title: "Band conditions", rowsKey: "condx", foot: "Pair with Sky → Prop for live K/SSN when a band sounds dead." },
+    bandwx: { title: "Weather & HF", rowsKey: "bandwx", foot: "Static — Here → WX fetches a model when that pane is open." },
+    rota: { title: "Net rotation", rowsKey: "rota", foot: "Sked → Nets stores your own list in this browser." },
+    skedutc: { title: "UTC for nets", rowsKey: "skedutc", foot: "Static — Here → UTC shows a one-shot clock snapshot." },
+    modes: { title: "Modes primer", rowsKey: "modes", foot: "Static bandwidth guide — your decoder panel shows what is on-air." },
+    chart: { title: "HF band chart", rowsKey: "chart", foot: "Not a band plan — see Tune → Plan for segment limits." }
   };
 
   function panelTabHtml_listenerInner(id) {
@@ -57564,6 +63099,10 @@ Plugins.toolbox.init = function () {
     if (name === "hfday") { try { hfdayOnTab(); } catch (eHd) {} return; }
     if (name === "units") { try { unitsOnTab(); } catch (eUn) {} return; }
     if (name === "filday") { try { fildayOnTab(); } catch (eFd) {} return; }
+    if (name === "wspr") { try { wsprOnTab(); } catch (eWs) {} return; }
+    if (name === "rtty") { try { rttyOnTab(); } catch (eRt) {} return; }
+    if (name === "pager") { try { pagerOnTab(); } catch (ePg) {} return; }
+    if (name === "dms") { try { dmsOnTab(); } catch (eDm) {} return; }
     if (LISTENER_PANE_CFG[name]) { try { listenerPaneOnTab(name); } catch (eLsn) {} return; }
   }
 
@@ -57655,14 +63194,17 @@ Plugins.toolbox.init = function () {
   function moreOnTab() {
     try { syncMoreTabHoverHints(); } catch (eMoreTipTab) {}
     var name = "dx";
-    var on = document.querySelector("#bs-tab-more .bs-more-subpane.bs-more-sub-on");
+    var root = moreTabRoot();
+    var on = root ? root.querySelector(".bs-more-subpane.bs-more-sub-on") : null;
     if (on) name = on.getAttribute("data-more-sub") || "dx";
     moreActivateSub(name);
   }
 
   function bindMoreTab() {
     var root = $("bs-tab-more");
-    if (!root || root._bsMoreWired) return;
+    if (!root) return;
+    try { bindNewsTab(); } catch (eNewsBind) {}
+    if (root._bsMoreWired) return;
     root._bsMoreWired = true;
     try { syncMoreTabHoverHints(); } catch (eMoreTip) {}
     root.addEventListener("click", function (ev) {
@@ -57696,7 +63238,6 @@ Plugins.toolbox.init = function () {
     bindPrefixTab();
     bindGb2rsTab();
     bindNetsTab();
-    bindNewsTab();
     bindCustomFeedsTab();
     bindWwffTab();
     bindClusterTab();
@@ -57726,6 +63267,10 @@ Plugins.toolbox.init = function () {
     bindHfdayTab();
     bindUnitsTab();
     bindFildayTab();
+    bindWsprTab();
+    bindRttyTab();
+    bindPagerTab();
+    bindDmsTab();
     bindAllListenerPaneTabs();
     restoreMoreSubTab();
   }
@@ -57800,7 +63345,7 @@ Plugins.toolbox.init = function () {
       '<label class="bs-chk" title="Restore Seen peak list from this browser next visit. Off = fresh list each session (faster). Export CSV first if you need the old list."><input type="checkbox" id="bs-keep-peaks"> Keep peaks between sessions</label>' +
       "</div>" +
       '<div class="bs-row">' +
-      '<label title="0 = unlimited. Trim oldest peaks when list grows. Try 1000–2000 if the panel feels slow.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="5000" step="50" style="width:4.5em"></label>' +
+      '<label title="0 = unlimited. Trim oldest peaks when list grows. Also in Settings → Storage quotas.">Max peaks <input type="number" id="bs-max-peaks" min="0" max="10000" step="25" style="width:4.5em"></label>' +
       "</div></div>" +
       '<div class="bs-opt-group" data-extra="occHeatmap" hidden>' +
       '<span class="bs-opt-lab">Heatmap</span>' +
@@ -57854,6 +63399,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-bm-sub" data-bm-sub="stats" role="tab" aria-selected="false" title="Counts by colour / scannable.">Stats</button>' +
       '<button type="button" class="bs-bm-sub" data-bm-sub="share" role="tab" aria-selected="false" title="Copy bookmark list as text or JSON.">Share</button>' +
       "</div>" +
+      tabScanTrackHtml("bookmarks") +
       '<div class="bs-bm-subpane bs-bm-sub-on" data-bm-sub="list" role="tabpanel">' +
       tabBoxHtml("Bookmarks files",
       '<p class="bs-hint bs-bm-legend" id="bs-bm-legend">Waterfall: <b>yellow</b> = server bookmarks on the radio · <b>green</b> = band plan (e.g. WSPR, not loadable) · <b>blue</b> = local in this browser. Below: <b>Local</b> = blue · <b>Loaded [load]</b> = amber copy for Scan bookmarks (<b>Load yellow</b> imports server yellow only).</p>' +
@@ -57931,7 +63477,7 @@ Plugins.toolbox.init = function () {
       '<label class="bs-chk" title="After Listen s minimum, stay while the waterfall shows activity and leave ~1.5s after quiet."><input type="checkbox" id="bs-holdbusy"> Hold while busy</label>' +
       '<label data-extra="holdReset" hidden title="Clear Hold after this many seconds. Extra: Hold auto-clear.">Hold clear s <input type="number" id="bs-hold-reset-sec" min="5" max="600" step="5" style="width:3.6em"></label>' +
       '<label class="bs-chk bs-chk-record-busy" title="While Scan bookmarks is parked on a channel, save demod clips when the channel is busy (voice-gated). Tick to enable — gates and Record mode are on Audio → Record.">' +
-      '<input type="checkbox" id="bs-record"> Record busy' +
+      '<input type="checkbox" id="bs-record" checked> Record busy' +
       '<button type="button" class="bs-tiny bs-btn-util bs-record-goto-audio" id="bs-record-goto-audio" title="Open Audio → Record. Record busy only turns automatic capture on during bookmark scans. Set voice/noise gates, Record mode (Auto picks air/ham/FM by MHz), max clip length, and review or export clips on the Audio tab.">Audio</button>' +
       "</label>" +
       '<label data-extra="recAutoTag" hidden title="Tag new Record busy clips automatically. Extra: Record busy → auto-tag.">Auto-tag ' +
@@ -58150,12 +63696,12 @@ Plugins.toolbox.init = function () {
       '<div class="bs-opt-group bs-aud-bmscan-col">' +
       '<span class="bs-opt-lab">Bookmark scan</span>' +
       '<div class="bs-row bs-chk-grid bs-aud-bmscan-chk">' +
-      '<label class="bs-chk" title="While Scan bookmarks is parked on a channel, record demod when busy (see Record → Recording options)."><input type="checkbox" id="bs-record-list"> Record busy</label>' +
+      '<label class="bs-chk" title="While Scan bookmarks is parked on a channel, record demod when busy (see Record → Recording options)."><input type="checkbox" id="bs-record-list" checked> Record busy</label>' +
       "</div></div>" +
       '<div class="bs-opt-group bs-aud-limits-col" id="bs-aud-limits-grid">' +
       '<span class="bs-opt-lab">Clip limits</span>' +
       '<div class="bs-row bs-aud-limits-fields">' +
-      '<label title="How many audio clips this browser keeps (5–200). Oldest drops when full.">Max <input type="number" id="bs-max-clips" min="5" max="200" step="1" style="width:3.2em"></label>' +
+      '<label title="How many audio clips this browser keeps. Oldest drops when full. Also in Settings → Storage quotas.">Max <input type="number" id="bs-max-clips" min="25" max="10000" step="25" style="width:3.2em"></label>' +
       '<label data-extra="recCaps" title="Hard-stop one Record busy capture after this many seconds on a single channel.">Max s <input type="number" id="bs-max-clip-sec" min="5" max="600" step="5" style="width:3.6em"></label>' +
       "</div></div></div>" +
       '<p class="bs-hint">Start receiver audio first. Clips land in the list below. Full gates (mode / SNR / squelch) are on <b>Record</b>.</p>',
@@ -58462,10 +64008,10 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-tiny bs-btn-clear" id="bs-dec-arch-clear" title="Delete all saved decoder lines in this browser.">Clear archive</button>' +
       "</div></div>" +
       '<div class="bs-log-feed bs-dec-arch-feed" id="bs-dec-arch-feed"></div>' +
-      '<p class="bs-hint bs-log-foot">Up to <b>' + DECODER_ARCHIVE_MAX + "</b> lines in <code>localStorage</code>. " +
+      '<p class="bs-hint bs-log-foot">Up to <b>' + decoderArchiveCap() + "</b> lines in <code>localStorage</code> (Settings → Storage quotas). " +
       "Filled automatically from decoder/meta Log lines. RTTY and PSK are inferred from digimode panel text. Export uses the mode chip.</p>",
       { wide: true, id: "bs-log-archive-box", cls: "bs-log-box",
-        help: "Saved decoder traffic by mode. Filter, search, export CSV/JSON. Browser-local archive alongside the 400-line Log feed." }) +
+        help: "Saved decoder traffic by mode. Filter, search, export CSV/JSON. Browser-local archive alongside the capped Log feed." }) +
       "</div>" +
       '<div class="bs-lg-subpane" data-lg-sub="notes" role="tabpanel" hidden>' +
       tabBoxHtml("Notes",
@@ -58741,16 +64287,27 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Show or hide the Skip tab in the header."><input type="checkbox" class="bs-tab-vis" data-tab="skip" checked> Skip</label>' +
         '<label class="bs-chk" title="Show or hide More. DX, Sats, Passes, RBN, Time, Prop, Grey, Contest, Nets, Links."><input type="checkbox" class="bs-tab-vis" data-tab="more" checked> More</label>' +
         '<label class="bs-chk" title="Settings cannot be hidden."><input type="checkbox" class="bs-tab-vis" data-tab="settings" checked disabled> Settings (always on)</label>' +
+        '<label class="bs-chk" title="Help and install guide — main tab after Settings."><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help (?)</label>' +
         "</div>" +
         '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-tabs-show-all" title="Turn every main tab back on (not header buttons).">Show all tabs</button></div>' +
         '<p class="bs-range-mode-title" style="margin-top:0.65rem">Header buttons (top right)</p>' +
         '<p class="bs-hint">These sit beside the tab strip — not main tabs. <b>S</b> side dock, <b>R</b> hard refresh, <b>%</b> dock width, scale cycle, <b>−</b> minimize, and <b>×</b> close are always shown.</p>' +
         '<div class="bs-row bs-chk-grid" id="bs-visible-header-chrome">' +
-        '<label class="bs-chk" title="Brown ? button — Help and install guide (not a main tab)."><input type="checkbox" class="bs-tab-vis" data-tab="help" checked> Help (?)</label>' +
         '<label class="bs-chk" title="Magnifier in the header — search controls by keyword."><input type="checkbox" id="bs-find-in-toolbox"> Find</label>' +
         '<label class="bs-chk" title="M button — Minimal / Full view on the current tab."><input type="checkbox" id="bs-minimal-button"> Minimal (M)</label>' +
         "</div>",
         { id: "bs-visible-tabs-box", wide: true }) +
+      settingsBoxHtml("UX feel (optional)",
+        '<p class="bs-hint">Try quieter layouts <b>without changing</b> your saved Visible tabs or Extras ticks. All off = classic Toolbox.</p>' +
+        '<div class="bs-row bs-chk-grid" id="bs-ux-feel-toggles">' +
+        '<label class="bs-chk" title="Soft-hide Range, Analyzer, Skip, Memory, and Help in the header."><input type="checkbox" id="bs-ux-lean-chrome"> Lean chrome</label>' +
+        '<label class="bs-chk" title="Simple presentation: lean tabs + soft-hide advanced Explore extras."><input type="checkbox" id="bs-ux-simple-mode"> Simple mode</label>' +
+        '<label class="bs-chk" title="Collapse secondary Explore boxes (VFO, IF, Waterfall, …)."><input type="checkbox" id="bs-ux-quieter"> Quieter surfaces</label>' +
+        '<label class="bs-chk" title="Show the Task strip under the tab bar."><input type="checkbox" id="bs-ux-task-entry"> Task-first entry</label>' +
+        '<label class="bs-chk" title="Group Settings → Extras by job instead of by tab."><input type="checkbox" id="bs-ux-extras-job"> Extras by job</label>' +
+        "</div>",
+        { id: "bs-ux-feel-box", wide: true, collapsible: true, open: false, cls: "bs-min-hide",
+          help: "Optional soft overlays — off by default; does not rewrite Visible tabs or Extras." }) +
       settingsBoxHtml("Extra sections",
         '<p class="bs-hint">Optional light sub-tabs on Log, Watch, Bookmarks, Audio, Skip, Peaks, and Range. All on by default.</p>' +
         '<div class="bs-row bs-chk-grid" id="bs-visible-extra">' +
@@ -58775,6 +64332,18 @@ Plugins.toolbox.init = function () {
         '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-explore-show-all" title="Turn every Explore box back on (Tune is always on).">Show all Explore boxes</button></div>',
         { id: "bs-visible-explore-box", wide: true,
           help: "Show or hide Explore boxes. Tune is always on. Newer light boxes start off — tick to show." }) +
+      settingsBoxHtml("Light features",
+        '<p class="bs-hint">Small helpers across tabs (not full Explore boxes). All on by default.</p>' +
+        '<div class="bs-row bs-chk-grid" id="bs-visible-light">' +
+        LIGHT_FEAT_DEFS.map(function (d) {
+          return '<label class="bs-chk" title="Show or hide: ' + escapeHtml(d.lab) + '.">' +
+            '<input type="checkbox" class="bs-light-vis" data-light-feat="' + d.id + '" checked> ' +
+            escapeHtml(d.lab) + "</label>";
+        }).join("") +
+        "</div>" +
+        '<div class="bs-row"><button type="button" class="bs-tiny bs-btn-util" id="bs-light-show-all" title="Turn every light feature back on.">Show all light features</button></div>',
+        { id: "bs-visible-light-box", wide: true,
+          help: "Optional micro-features (backup kit, log pins, More CW, …) — hide to declutter." }) +
       '<div class="bs-settings-duo" id="bs-settings-prefs">' +
       settingsBoxHtml("Panel startup",
         '<div class="bs-row bs-chk-grid">' +
@@ -58830,9 +64399,12 @@ Plugins.toolbox.init = function () {
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="Show the Bands / Bookmarks scan strip when idle. Stop and status still appear while a scan is running even when this is off."><input type="checkbox" id="bs-show-scan-strip" checked> Show scan strip</label>' +
         '<label class="bs-chk" title="Hide OpenWebRX\u2019s floating receiver panel (modes, volume, squelch, etc.). Audio stays on — use Explore for those controls. Default off."><input type="checkbox" id="bs-hide-stock-rx"> Hide stock receiver panel</label>' +
+        '<label class="bs-chk" title="On HTTP receivers, detached tab windows show a short \u201cNot secure\u201d explanation. Tick to hide that banner (and shorten the loading line)."><input type="checkbox" id="bs-hide-detach-http-note"> Hide HTTP note on detached tabs</label>' +
         "</div>" +
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="When this tab goes to the background, mute receiver audio (owrx_hush). Same as stock OpenWebRX hush. Untick to keep listening while you use other tabs. Default on."><input type="checkbox" id="bs-mute-on-tab" checked> Mute when changing tab</label>' +
+        '<label class="bs-chk" title="Stop Play / Play all on saved clips when you leave the Audio or Decode tab. Default on."><input type="checkbox" id="bs-stop-clip-on-tab" checked> Stop clips when leaving Audio</label>' +
+        '<label class="bs-chk" title="Stop clip playback when you close the Toolbox panel (×). Default on."><input type="checkbox" id="bs-stop-clip-on-panel" checked> Stop clips when closing panel</label>' +
         "</div>" +
         '<div class="bs-row bs-chk-grid">' +
         '<label class="bs-chk" title="When ticked (default), right-click a coloured button opens the shade menu. Untick for neutral slate buttons and no colour menu. Header tabs and sub-tabs are never colour-picked."><input type="checkbox" id="bs-btn-colours-on" checked> Show colour picker</label>' +
@@ -58866,11 +64438,11 @@ Plugins.toolbox.init = function () {
         '<label class="bs-chk" title="Keep Toolbox beside OpenWebRX on this page (no overlay on the waterfall)."><input type="checkbox" id="bs-side-dock-set"> Side dock</label>' +
         '<label title="Which side of the page Toolbox uses when Side dock is on.">Side <select id="bs-side-dock-side"><option value="left">Left</option><option value="right">Right</option></select></label>' +
         "</div>" +
-        '<div class="bs-row bs-side-size-row" title="How much of the page the Toolbox column uses when side dock is on. Default 35%. Same as dragging the panel’s right edge.">' +
+        '<div class="bs-row bs-side-size-row" title="How much of the page the Toolbox column uses when side dock is on. Default 33%. Same as dragging the panel’s right edge.">' +
         '<label class="bs-side-size-lab"><span class="bs-side-size-name">Side size %</span>' +
         '<input type="range" id="bs-side-pct-range" min="20" max="60" step="1">' +
         '<input type="number" id="bs-side-pct" min="20" max="60" step="1">' +
-        '<span class="bs-hint" id="bs-side-pct-lbl">35%</span>' +
+        '<span class="bs-hint" id="bs-side-pct-lbl">33%</span>' +
         "</label>" +
         "</div>" +
         '<p class="bs-hint">Explore: free placement only (drag titles, corners to resize) — <b>Layout</b> box for Export/Import. Identify / Analyzer: drag titles · Wide/Half on headers. Side dock: drag the inner edge to change Side size % (20–60). Guest permission: Settings → Public → Panel → Change panel layout.</p>',
@@ -58897,15 +64469,6 @@ Plugins.toolbox.init = function () {
         "</div>",
         { id: "bs-quiet-hours-box", extra: "idlePresets", cls: "bs-min-hide" }) +
       "</div>" +
-      settingsBoxHtml("Jump tuning · experimental (FM broadcast)",
-        '<div class="bs-row">' +
-        '<label class="bs-chk" title="Off by default. When on, Jump loudest works on FM broadcast and uses Grid / ±kHz / Detect below. Same Extra under Settings → Extras.">' +
-        '<input type="checkbox" id="bs-jump-fm-exp-on"> Enable Jump loudest on FM broadcast</label>' +
-        "</div>" +
-        '<p class="bs-hint">Wide WFM carriers do not peak-pick reliably — leave off for normal listening. When enabled, Jump loudest appears on FM and uses the controls below (also under Extras → <b>Jump · FM broadcast</b>). Jump dB / Cluster / Center stay under Jump loudest on Explore and Identify.</p>' +
-        jumpFmTuneRowHtml("bs-set-jump-fm-grid", "bs-set-jump-fm-scan", "bs-set-jump-fm-detect"),
-        { id: "bs-jump-fm-exp-box", wide: true, cls: "bs-min-hide",
-          help: "Opt-in Jump loudest on FM broadcast (experimental). Off by default." }) +
       extrasSettingsHtml() +
       settingsBoxHtml("More sections",
         '<p class="bs-hint">Same groups as the <b>More</b> tab bar. <b>Five</b> panes per group are on by default; tick extras here to show them.</p>' +
@@ -58949,6 +64512,18 @@ Plugins.toolbox.init = function () {
         '<div id="bs-settings-session-body"></div>',
         { id: "bs-settings-session-box", wide: true, cls: "bs-dash-box",
           help: "Current MHz, mode, profile, toolbox session time, and your tune trail in this tab." }) +
+      settingsBoxHtml("Live pulse",
+        '<div id="bs-settings-runtime-body"></div>',
+        { id: "bs-settings-runtime-box", wide: true, cls: "bs-dash-box bs-dash-runtime-box",
+          help: "Active Toolbox jobs, detached tab windows, panel layout, browser storage quotas, network hint, and quick debug links." }) +
+      settingsBoxHtml("Toolbox plugin files",
+        '<div id="bs-settings-tbassets-body" class="bs-dash-tbassets-root"><p class="bs-hint">Loading plugin file stats…</p></div>',
+        { id: "bs-settings-tbassets-box", wide: true, cls: "bs-dash-box bs-dash-tbassets-box",
+          help: "Build tag, toolbox.js / toolbox.css size (lines, transfer vs decoded), install path (local vs CDN), and host disk hint from hoststats." }) +
+      settingsBoxHtml("Other receiver plugins",
+        '<div id="bs-settings-owrxplugins-body" class="bs-dash-owrxplugins-root"><p class="bs-hint">Scanning Plugins…</p></div>',
+        { id: "bs-settings-owrxplugins-box", wide: true, cls: "bs-dash-box bs-dash-owrxplugins-box",
+          help: "Other OpenWebRX+ receiver plugins on this page (init.js), version tags, and how Toolbox uses them (notify, band_survey clash, …)." }) +
       settingsBoxHtml("Radio & SDR",
         '<div id="bs-settings-radio-body"></div>',
         { id: "bs-settings-radio-box", wide: true, cls: "bs-dash-box",
@@ -59192,15 +64767,15 @@ Plugins.toolbox.init = function () {
         saveSettings();
       };
     });
-    var fmExp = $("bs-jump-fm-exp-on");
-    if (fmExp && !fmExp._bsJumpFmExpBound) {
-      fmExp._bsJumpFmExpBound = true;
-      fmExp.onchange = function () {
-        setJumpFmExp(!!fmExp.checked);
-        setStatus(fmExp.checked
+    var fmExpEx = $("bs-extra-jumpFmExp");
+    if (fmExpEx && !fmExpEx._bsJumpFmExpBound) {
+      fmExpEx._bsJumpFmExpBound = true;
+      fmExpEx.addEventListener("change", function () {
+        setJumpFmExp(!!fmExpEx.checked);
+        setStatus(fmExpEx.checked
           ? "Jump loudest on FM broadcast enabled (experimental)."
           : "Jump loudest on FM broadcast off.");
-      };
+      });
     }
     try { injectJumpFmRowsIfMissing(); } catch (eFmInj) {}
     try { applyJumpBandDefaults(false); } catch (eApply) {}
@@ -59388,16 +64963,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-record-list")) {
       $("bs-record-list").onchange = function () { syncRecordBusyUi($("bs-record-list").checked); readForm(); };
     }
-    function onListenScanClick() {
-      if (listenScanRunning && !listenPaused) return;
-      if (listenPaused) {
-        resumeListenScan();
-        if (listenScanRunning) setListenPaused(false);
-        return;
-      }
-      startListenScan();
-    }
-    if ($("bs-listen-top")) $("bs-listen-top").onclick = onListenScanClick;
+    try { bindBookmarkScanToolbarControls(); } catch (eBmTb) {}
     if ($("bs-bm-save")) $("bs-bm-save").onclick = saveBookmarks;
     if ($("bs-bm-load")) $("bs-bm-load").onclick = startLoadBookmarks;
     if ($("bs-bm-loaduser")) $("bs-bm-loaduser").onclick = loadUserBookmarksFromStore;
@@ -59457,7 +65023,7 @@ Plugins.toolbox.init = function () {
 
   /** Light bind after a cold/deferred tab’s HTML lands. */
   function afterDeferredTabBuilt(name) {
-    var pane = document.getElementById("bs-tab-" + name);
+    var pane = tabPaneEl(name);
     if (!pane) return;
     try { bindCollapsibleBoxes(pane); } catch (eCol) {}
     try { restoreCollapsibleBoxes(pane); } catch (eRes) {}
@@ -59480,6 +65046,11 @@ Plugins.toolbox.init = function () {
     }
     if (name === "skip") {
       try { bindSkipTabControls(); } catch (eSkipBind) {}
+    }
+    if (name === "range") {
+      try { bindRangeTabControls(); } catch (eRgBind) {}
+      try { fillRangeTabUi(); } catch (eRgUi) {}
+      try { restoreRangeSubTab(); } catch (eRgSub) {}
     }
     if (name === "bookmarks") {
       try { bindBookmarksTabControls(); } catch (eBmBind) {}
@@ -60147,6 +65718,11 @@ Plugins.toolbox.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && $("bs-tab-more") && !$("bs-news-refresh")) {
+      /* B241: More → Read → News controls missing (stale More HTML). */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing && $("bs-bd-subs") && !$("bs-bd-subs").querySelector('[data-bd-sub="coverage"]')) {
       existing.parentNode.removeChild(existing);
       existing = null;
@@ -60156,6 +65732,20 @@ Plugins.toolbox.init = function () {
       existing = null;
     }
     if (existing && $("bs-tab-more") && !$("bs-more-now")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-more-subs") && $("bs-more-subs").querySelector('[data-more-group="feeds"]')) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-tab-more") &&
+        !tabPaneQuery("more", '#bs-tab-more .bs-more-sub[data-more-sub="myfeeds"]')) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-tab-more") &&
+        !tabPaneQuery("more", '#bs-tab-more .bs-more-sub[data-more-sub="wspr"]')) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -60295,8 +65885,17 @@ Plugins.toolbox.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    if (existing && $("bs-ux-feel-box")) {
-      try { $("bs-ux-feel-box").remove(); } catch (eUxRm) {}
+    if (existing && !$("bs-ux-feel-box")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-visible-light-box")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-public-policy") && !$("bs-pub-header-chrome")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
     }
     if (existing && $("bs-ux-roles")) {
       existing.parentNode.removeChild(existing);
@@ -60307,6 +65906,15 @@ Plugins.toolbox.init = function () {
       existing = null;
     }
     if (existing && !$("bs-st-show-system")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-settings-runtime-body")) {
+      /* B257: System → Live pulse (jobs, detach, storage, quick links). */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-settings-tbassets-body")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -60464,12 +66072,41 @@ Plugins.toolbox.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
+    if (existing && $("bs-pub-more-policy") && !$("bs-pub-more-all")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
     if (existing && !$("bs-extra-autoStartOwrx") && !$("bs-autostart-owrx")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    if (existing && !$("bs-help-tog")) {
-      /* v364: Help ? moved next to M in head actions. */
+    if (existing && $("bs-tab-prev")) {
+      /* B277: remove prev/next tab arrows from header. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-head-ver-row")) {
+      /* B280: version + header tools on one row with main tabs. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-mute") && !$("bs-mute-beep")) {
+      /* B281: Mute beep in scan Courtesy (toolbar + Range). */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-head-chrome")) {
+      /* B290: grid header — version row + tabs row, 4+4 tools on the right. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-help-tog")) {
+      /* B276: Help (?) is a main tab after Settings — drop legacy header ? button. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && $("bs-tabs") && !$("bs-tabs").querySelector('.bs-tab[data-tab="help"]')) {
+      /* B276: Help tab in main strip after Settings. */
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -60553,6 +66190,15 @@ Plugins.toolbox.init = function () {
     }
     if (existing && !$("bs-mute-on-tab")) {
       /* v403: Appearance → mute when changing browser tab. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-stop-clip-on-tab")) {
+      /* B254: Appearance → stop clip playback on tab / panel leave. */
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    if (existing && !$("bs-hide-detach-http-note")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -60815,13 +66461,17 @@ Plugins.toolbox.init = function () {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    /* v672: Enable switch for Jump loudest on FM broadcast (experimental). */
-    if (existing && $("bs-jump-fm-exp-box") && !$("bs-jump-fm-exp-on")) {
+    /* B270: FM Jump — Extras only (drop standalone Jump tuning · experimental box). */
+    if (existing && $("bs-jump-fm-exp-box")) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
-    /* v667: FM Jump extras → Settings experimental only; Jump loudest off on WFM. */
-    if (existing && (!$("bs-jump-fm-exp-box") || $("bs-ex-jump-fm-grid") || $("bs-jump-fm-grid"))) {
+    if (existing && $("bs-extras-section") && !$("bs-set-jump-fm-grid")) {
+      existing.parentNode.removeChild(existing);
+      existing = null;
+    }
+    /* v667: FM Jump row must not live on Explore (Settings Extras only). */
+    if (existing && ($("bs-ex-jump-fm-grid") || $("bs-jump-fm-grid"))) {
       existing.parentNode.removeChild(existing);
       existing = null;
     }
@@ -61051,32 +66701,9 @@ Plugins.toolbox.init = function () {
     if ($("bs-lockmin")) $("bs-lockmin").value = S.lockoutMin || 30;
     if ($("bs-sched")) $("bs-sched").value = S.scheduleHrs || 0;
     fillSettingsForm();
-    fillRangeFreqFields({ force: true });
-    if ($("bs-range-step")) $("bs-range-step").value = S.rangeStepKhz || 0;
-    if ($("bs-range-offset")) $("bs-range-offset").value = S.rangeOffsetKhz || 0;
-    if ($("bs-range-grid")) $("bs-range-grid").checked = !!S.rangeChannelGrid;
-    syncRangeGridPresetSelect();
-    if ($("bs-range-grid-preset")) $("bs-range-grid-preset").value = S.rangeGridPreset || "auto";
-    if ($("bs-range-passes")) $("bs-range-passes").value = S.passes;
-    if ($("bs-range-ask-passes")) $("bs-range-ask-passes").checked = S.rangeAskPasses !== false;
-    if ($("bs-range-dwell")) $("bs-range-dwell").value = S.dwell;
-    if ($("bs-range-minhits")) $("bs-range-minhits").value = S.minHits;
-    if ($("bs-range-thresh")) $("bs-range-thresh").value = S.threshDb;
-    if ($("bs-range-hidespurs")) $("bs-range-hidespurs").checked = S.hideSpurs !== false;
-    if ($("bs-range-hide-bookmarked")) $("bs-range-hide-bookmarked").checked = S.hideBookmarked !== false;
-    if ($("bs-range-mute")) $("bs-range-mute").checked = !!S.mute;
-    if ($("bs-range-wideband")) $("bs-range-wideband").checked = !!S.widebandPeaks;
-    if ($("bs-range-ownradio")) $("bs-range-ownradio").checked = ownerOverrideAllowed() && !!S.ownRadio;
     syncAloneUi(!!S.aloneOnly);
-    syncRangeModeRadios();
     syncBandsScanModeRadios();
-    try { fillRangeExtraForm(); } catch (eFillRx) {}
-    fillRangeModeProfileSelect();
-    if (S.rangeMode === "profile") maybeAutoRangeHopForProfile(true);
-    updateRangeModeUi();
-    updateRangeEstimate();
-    bindRangeSpectrum();
-    restoreRangeSpectrumView();
+    try { fillRangeTabUi(); } catch (eFillRx) {}
   }
 
   /** Fill Bookmarks-tab form fields (safe when tab is still a cold stub). */
@@ -61089,7 +66716,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-hideauto")) $("bs-hideauto").checked = !!S.hideAuto;
     if ($("bs-holdbusy")) $("bs-holdbusy").checked = S.holdBusy !== false;
     if ($("bs-continuousbm")) $("bs-continuousbm").checked = S.continuousBmScan !== false;
-    try { syncRecordBusyUi(!!S.recordBusy); } catch (eRec) {}
+    try { syncRecordBusyUi(S.recordBusy !== false); } catch (eRec) {}
     if ($("bs-recmode")) {
       var rm = normalizeRecMode(S.recMode);
       $("bs-recmode").value = rm;
@@ -61179,12 +66806,22 @@ Plugins.toolbox.init = function () {
       tabBar.addEventListener("click", function (ev) {
         var btn = ev.target && ev.target.closest && ev.target.closest(".bs-tab[data-tab]");
         if (!btn || !tabBar.contains(btn) || btn.hidden) return;
-        switchTab(btn.getAttribute("data-tab"));
+        var tabId = btn.getAttribute("data-tab");
+        if (isTabDetached(tabId)) {
+          focusDetachedTab(tabId);
+          Array.prototype.forEach.call(tabBar.querySelectorAll(".bs-tab"), function (b) {
+            b.classList.toggle("bs-tab-on", b.getAttribute("data-tab") === tabId);
+          });
+          return;
+        }
+        switchTab(tabId, false, { userMainTab: true });
       });
     }
   }
 
   function makePanelFinishSliceBind(panel) {
+    try { installTabPopoutBootHandler(); } catch (ePopBoot) {}
+    try { reconcileDetachedTabState({ silent: true }); } catch (eRecDet) {}
     /* Apply Visible-tab hides BEFORE choosing the startup tab. */
     try { syncMainTabOrder(); } catch (eOrd0) {}
     try { applyHiddenTabs(); } catch (eHid0) {}
@@ -61198,6 +66835,7 @@ Plugins.toolbox.init = function () {
     applyToolbarVisibility();
     applyStockReceiverVisibility();
     applyMuteOnTabHidePref();
+    applyHideDetachHttpNotePref();
     fillExtrasForm();
     applyExtrasUi();
     maybePromoteExtrasDefaultAll();
@@ -61212,6 +66850,7 @@ Plugins.toolbox.init = function () {
     maybeForceAutoOpenOffV480();
     maybePromotePublicExtrasDefaultAll();
     bindExtrasKeyboard();
+    try { radioJobBindCrossWindow(); } catch (eRj) {}
     bindExclusiveTabOpts();
     bindCollapsibleBoxes(panel);
     restoreCollapsibleBoxes(panel);
@@ -61247,8 +66886,10 @@ Plugins.toolbox.init = function () {
       inp.onchange = function () {
         if (inp.disabled) return;
         if (inp.getAttribute("data-extra-id") === "publicMode") {
-          if (isHardPublicInstall() || serverPublicMode != null) return;
+          if (isHardPublicInstall() || serverOwnsPublicModeToggle()) return;
         }
+        try { touchSettingsUiLock(); } catch (eLock) {}
+        try { pinMainToolboxTab("settings"); } catch (ePinPm) {}
         var scrollY = captureSettingsScroll();
         readExtrasFromForm();
         saveSettings();
@@ -61275,15 +66916,23 @@ Plugins.toolbox.init = function () {
     if ($("bs-pub-allow-all")) $("bs-pub-allow-all").onclick = function () { setPublicPolicyPreset("all"); };
     if ($("bs-pub-allow-safe")) $("bs-pub-allow-safe").onclick = function () { setPublicPolicyPreset("safe"); };
     if ($("bs-pub-copy-policy")) $("bs-pub-copy-policy").onclick = copyPublicPolicySnippet;
+    if ($("bs-pub-more-all")) $("bs-pub-more-all").onclick = function () { setPublicMoreSubsAll(); };
+    if ($("bs-pub-more-safe")) $("bs-pub-more-safe").onclick = function () { setPublicMoreSubsSafe(); };
+    if ($("bs-pub-extras-all")) $("bs-pub-extras-all").onclick = function () { setPublicExtrasAll(); };
+    if ($("bs-pub-extra-sub-all")) $("bs-pub-extra-sub-all").onclick = function () { setPublicExtraSubsAll(); };
+    if ($("bs-pub-tabs-from-visible")) $("bs-pub-tabs-from-visible").onclick = function () { syncPublicTabsFromVisible(); };
     try { ensureSettingsCheckboxBulkRows($("bs-settings")); } catch (eBulk0) {}
     try { bindSettingsBoxBulkClicks($("bs-settings")); } catch (eBulk1) {}
     try { bindSettingsSubTabs(); } catch (eStSub) {}
     try { wireScanStripPref(); } catch (eScanStrip) {}
     try { bindSdrControlSettings(); } catch (eSdrB) {}
     Array.prototype.forEach.call(document.querySelectorAll(
-      "#bs-public-policy input.bs-pub-tab, #bs-public-policy input.bs-pub-feat, #bs-public-policy input.bs-pub-extra, #bs-public-policy input.bs-pub-more-sub"
+      "#bs-public-policy input.bs-pub-tab, #bs-public-policy input.bs-pub-feat, #bs-public-policy input.bs-pub-extra, " +
+      "#bs-public-policy input.bs-pub-more-sub, #bs-public-policy input.bs-pub-chrome, #bs-public-policy input.bs-pub-extra-sub"
     ), function (inp) {
       inp.onchange = function () {
+        try { touchSettingsUiLock(); } catch (eLock0) {}
+        try { pinMainToolboxTab("settings"); } catch (ePin0) {}
         var scrollY = captureSettingsScroll();
         var pageScroll = capturePageScroll();
         var settingsEl = settingsScrollEl();
@@ -61291,9 +66940,22 @@ Plugins.toolbox.init = function () {
         saveSettings();
         applyPublicPolicyUi();
         applyExtrasUi();
+        try { pinMainToolboxTab("settings"); } catch (ePin1) {}
         restoreAllPanelScroll(scrollY, null, pageScroll, settingsEl);
       };
     });
+    var pubNet = $("bs-pub-network-budget");
+    if (pubNet) {
+      pubNet.onchange = function () {
+        try { touchSettingsUiLock(); } catch (eLock) {}
+        var scrollY = captureSettingsScroll();
+        readPublicPolicyFromForm();
+        saveSettings();
+        applyPublicPolicyUi();
+        applyPublicNetworkBudgetCap();
+        restoreSettingsScroll(scrollY);
+      };
+    }
     ["bs-pub-explore-min", "bs-pub-explore-max"].forEach(function (id) {
       var el = $(id);
       if (!el) return;
@@ -61415,6 +67077,9 @@ Plugins.toolbox.init = function () {
     updateTabLabels();
 
     $("bs-close").onclick = function () {
+      try {
+        if (S.stopClipOnPanelHide !== false) stopSavedClipPlaybackQuiet();
+      } catch (eClipClose) {}
       if (isPanelDetached()) dockPanel({ keepHidden: true });
       var pClose = $("bs-panel");
       if (pClose) pClose.hidden = true;
@@ -61439,12 +67104,8 @@ Plugins.toolbox.init = function () {
     }
     try { syncToolboxFindChrome(); } catch (eFindSync) {}
     try { wireToolboxFind(); } catch (eFindWire) {}
-    if ($("bs-help-tog")) {
-      $("bs-help-tog").onclick = function (ev) {
-        ev.stopPropagation();
-        openHelp();
-      };
-    }
+    try { syncPanelTabNavChrome(); } catch (eTabNav) {}
+    try { syncHeadWindowChrome(); } catch (eWinChr2) {}
     try { syncUiScaleCycleChrome(); } catch (eScCyc) {}
     try { wireUiScaleCycleBtn(); } catch (eScWire) {}
     if ($("bs-side-pct-reset")) {
@@ -61537,6 +67198,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-range-minhits")) $("bs-range-minhits").onchange = readRangeForm;
     if ($("bs-range-hidespurs")) $("bs-range-hidespurs").onchange = readRangeForm;
     if ($("bs-range-mute")) $("bs-range-mute").onchange = readRangeForm;
+    if ($("bs-range-mute-beep")) $("bs-range-mute-beep").onchange = readRangeForm;
     if ($("bs-range-wideband")) $("bs-range-wideband").onchange = readRangeForm;
     if ($("bs-range-ownradio")) $("bs-range-ownradio").onchange = readRangeForm;
     if ($("bs-range-alone")) $("bs-range-alone").onchange = readRangeForm;
@@ -61698,22 +67360,10 @@ Plugins.toolbox.init = function () {
     }
     initExploreUi();
     $("bs-stop").onclick = stopSurvey;
-    if ($("bs-stop-bm")) $("bs-stop-bm").onclick = stopSurvey;
     if ($("bs-range-stop")) $("bs-range-stop").onclick = stopSurvey;
+    try { bindBookmarkScanToolbarControls(); } catch (eBmTb0) {}
     try { bindJumpTuningControls(); } catch (eJumpTune) {}
     try { bindPeaksTabControls(); } catch (ePeaks0) {}
-    $("bs-hold").onclick = function () {
-      var wasHold = listenCmd === "hold";
-      listenCmd = wasHold ? "" : "hold";
-      $("bs-hold").classList.toggle("bs-on", listenCmd === "hold");
-      if (wasHold && listenPaused) resumeListenScan();
-      if (listenCmd === "hold") armHoldReset();
-      else clearHoldResetTimer();
-      setStatus(listenCmd === "hold" ? "Holding this frequency." : "Hold released.");
-    };
-    $("bs-skip").onclick = function () { listenCmd = "skip"; };
-    $("bs-lockout").onclick = function () { listenCmd = "lock"; };
-    $("bs-alwaysskip").onclick = function () { alwaysSkipAndContinue(); };
     try { bindSkipTabControls(); } catch (eSkipBind0) {}
     try { bindTrafficLog(); } catch (eLogBind0) {}
     try { trafficLogRender(); } catch (eLogR0) {}
@@ -61730,6 +67380,7 @@ Plugins.toolbox.init = function () {
       if ($(id)) $(id).onchange = readForm;
     });
     if ($("bs-mute")) $("bs-mute").onchange = readForm;
+    if ($("bs-mute-beep")) $("bs-mute-beep").onchange = readForm;
     if ($("bs-wideband")) $("bs-wideband").onchange = readForm;
     if ($("bs-hidespurs")) {
       $("bs-hidespurs").onchange = function () {
@@ -61783,9 +67434,17 @@ Plugins.toolbox.init = function () {
     }
     if ($("bs-st-show-system")) $("bs-st-show-system").onchange = onSettingsSubVisChange;
     if ($("bs-st-show-public")) $("bs-st-show-public").onchange = onSettingsSubVisChange;
+    function onHeaderChromePrefChange() {
+      readForm({ noHeavyUi: true });
+      try { applyToolboxFindVisibility(); } catch (eFindHdr) {}
+      try { applyMinimalButtonVisibility(); } catch (eMinHdr) {}
+    }
+    if ($("bs-find-in-toolbox")) $("bs-find-in-toolbox").onchange = onHeaderChromePrefChange;
+    if ($("bs-minimal-button")) $("bs-minimal-button").onchange = onHeaderChromePrefChange;
     [
       "bs-remember-tab", "bs-switch-peaks", "bs-notify-done", "bs-sound-peak", "bs-copy-done",
-      "bs-sched-idle", "bs-pause-tune", "bs-find-in-toolbox", "bs-minimal-button", "bs-hide-stock-rx", "bs-mute-on-tab",
+      "bs-sched-idle", "bs-pause-tune", "bs-hide-stock-rx", "bs-hide-detach-http-note", "bs-mute-on-tab",
+      "bs-stop-clip-on-tab", "bs-stop-clip-on-panel",
       "bs-btn-colours-on", "bs-btn-colours-off", "bs-btn-shade-hint", "bs-hover-help",
       "bs-ux-role-presets", "bs-ux-lean-chrome", "bs-ux-simple-mode",
       "bs-ux-quieter", "bs-ux-task-entry", "bs-ux-extras-job"
@@ -62138,12 +67797,7 @@ Plugins.toolbox.init = function () {
     try { bindScanTricks($("bs-tab-range")); } catch (eStR) {}
     try { syncScanTricksUi(); } catch (eStU) {}
     if ($("bs-bd-subs")) {
-      $("bs-bd-subs").onclick = function (ev) {
-        var btn = ev.target && ev.target.closest && ev.target.closest(".bs-bd-sub");
-        if (!btn) return;
-        var name = btn.getAttribute("data-bd-sub");
-        if (name) setBandsSubTab(name);
-      };
+      try { bindBandsTabPaneControls($("bs-tab-bands")); } catch (eBdBind0) {}
       restoreBandsSubTab();
     }
     if ($("bs-bd-coverage-refresh")) {
@@ -62152,46 +67806,7 @@ Plugins.toolbox.init = function () {
         try { bandsCoverageOnTab(); } catch (eCov) {}
       };
     }
-    if ($("bs-bd-edit")) {
-      $("bs-bd-edit").onclick = function (ev) {
-        var t = ev.target;
-        if (!t) return;
-        var editVal = t.getAttribute && t.getAttribute("data-band-edit");
-        if (editVal == null && t.closest) {
-          var eb = t.closest("[data-band-edit]");
-          if (eb) { editVal = eb.getAttribute("data-band-edit"); t = eb; }
-        }
-        if (editVal != null) {
-          fillBandEditor(editVal);
-          return;
-        }
-        var delVal = t.getAttribute && t.getAttribute("data-band-del");
-        if (delVal == null && t.closest) {
-          var db = t.closest("[data-band-del]");
-          if (db) { delVal = db.getAttribute("data-band-del"); t = db; }
-        }
-        if (delVal != null) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          deleteBandProfile(delVal);
-          return;
-        }
-        var move = t.getAttribute && t.getAttribute("data-band-move");
-        if (move == null && t.closest) {
-          var mb = t.closest("[data-band-move]");
-          if (mb) { move = mb.getAttribute("data-band-move"); t = mb; }
-        }
-        if (move != null) {
-          moveBandOrder(move, Number(t.getAttribute("data-dir")) || 1);
-          var pop = $("bs-bd-edit-pop");
-          if (pop && !pop.hidden && $("bs-bd-edit-value") &&
-              $("bs-bd-edit-value").value === move) {
-            fillBandEditor(move);
-          }
-          return;
-        }
-      };
-    }
+    try { bindBandsTabPaneControls($("bs-tab-bands")); } catch (eBdBind1) {}
     if ($("bs-bd-edit-clear")) {
       $("bs-bd-edit-clear").onclick = function () {
         if (!window.confirm("Clear all band aliases, notes, unhide all bands, and reset custom order?")) return;
@@ -62257,32 +67872,7 @@ Plugins.toolbox.init = function () {
     if ($("bs-bd-edit-bottom")) $("bs-bd-edit-bottom").onclick = function () { moveBandFromEditor("bottom"); };
     if ($("bs-bd-edit-pop")) {
       $("bs-bd-edit-pop").onclick = function (ev) { if (ev) ev.stopPropagation(); };
-      if (!openBandEditPopup._docBound) {
-        openBandEditPopup._docBound = true;
-        document.addEventListener("click", function (ev) {
-          var pop = $("bs-bd-edit-pop");
-          if (!pop || pop.hidden) return;
-          if (ev.target && ev.target.closest &&
-              (ev.target.closest("#bs-bd-edit-pop") ||
-               ev.target.closest("[data-band-edit]"))) return;
-          closeBandEditPopup();
-        });
-        document.addEventListener("keydown", function (ev) {
-          var pop = $("bs-bd-edit-pop");
-          if (!pop || pop.hidden) return;
-          if (ev.key === "Escape") {
-            ev.preventDefault();
-            closeBandEditPopup();
-            return;
-          }
-          if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
-          /* Shift still nudges a number or moves inside a note. Plain arrows always change band. */
-          if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          editAdjacentBand(ev.key === "ArrowUp" ? -1 : 1);
-        }, true);
-      }
+      try { ensureBandEditPopupDocListeners(document); } catch (eBdDoc) {}
     }
 
     var ox = 0;
@@ -64813,15 +70403,31 @@ Plugins.toolbox.init = function () {
     }
   }
 
+  function exploreSyncTuneAndAudioScopeAfterTabMove(tabId) {
+    tabId = tabId || "explore";
+    var doc = tabPaneDocument(tabId);
+    try {
+      if (doc) explorePinTuneRow(doc);
+      else explorePinTuneRow(document);
+    } catch (ePin) {}
+    exploreRestartAudioScope();
+  }
+
+  function exploreRestartAudioScope() {
+    exCtl.scopeRaf = 0;
+    try { exploreStartAudioScope(); } catch (eSt) {}
+  }
+  Plugins.toolbox._exploreRestartAudioScope = exploreRestartAudioScope;
+
   function exploreAudioScopeWanted() {
-    var canvas = $("bs-ex-audio-scope-c");
+    if (!isTabPaneActive("explore")) return false;
+    var doc = tabPaneDocument("explore") || document;
+    var canvas = doc.getElementById("bs-ex-audio-scope-c");
     if (!canvas) return false;
-    var panel = $("bs-panel");
-    if (!panel || panel.classList.contains("bs-hidden") || panel.getAttribute("aria-hidden") === "true") return false;
-    if (panel.style && panel.style.display === "none") return false;
-    var pane = $("bs-tab-explore");
-    if (pane && !pane.classList.contains("bs-tab-on")) return false;
-    var box = $("bs-ex-box-tune");
+    var panel = doc.getElementById("bs-panel");
+    if (panel && (panel.classList.contains("bs-hidden") || panel.getAttribute("aria-hidden") === "true")) return false;
+    if (panel && panel.style && panel.style.display === "none") return false;
+    var box = doc.getElementById("bs-ex-box-tune");
     if (box && box.classList.contains("bs-ex-box-min")) return false;
     return true;
   }
@@ -64849,19 +70455,22 @@ Plugins.toolbox.init = function () {
   }
 
   function exploreStartAudioScope() {
-    if (!$("bs-ex-audio-scope-c")) return;
-    if (exCtl.scopeRaf) return;
+    var doc = tabPaneDocument("explore") || document;
+    if (!doc.getElementById("bs-ex-audio-scope-c")) return;
+    if (exCtl.scopeRaf && exCtl.scopeRaf !== -1) return;
+    exCtl.scopeRaf = 0;
     exploreScheduleAudioScope(0);
   }
 
   function explorePaintAudioScope() {
     exCtl.scopeRaf = 0;
-    var canvas = $("bs-ex-audio-scope-c");
-    if (!canvas) return;
     if (!exploreAudioScopeWanted()) {
       exploreScheduleAudioScope(250);
       return;
     }
+    var doc = tabPaneDocument("explore") || document;
+    var canvas = doc.getElementById("bs-ex-audio-scope-c");
+    if (!canvas) return;
     var ctx2d;
     try { ctx2d = canvas.getContext("2d"); } catch (eCtx) { ctx2d = null; }
     if (!ctx2d) {
@@ -64889,7 +70498,7 @@ Plugins.toolbox.init = function () {
     }
     var an = ensureAudioScopeAnalyser();
     var eng = window.audioEngine;
-    var lab = $("bs-ex-scope-lab");
+    var lab = doc.getElementById("bs-ex-scope-lab");
     if (!an || !eng || !eng._bs_fftBuf) {
       if (lab) lab.textContent = "wait";
       ctx2d.fillStyle = "#64748b";
@@ -65853,7 +71462,7 @@ Plugins.toolbox.init = function () {
     );
     try {
       var anchor = $("bs-rec-opts-box") || $("bs-record-list") ||
-        document.querySelector("#bs-tab-audio .bs-au-subpane[data-au-sub=\"record\"]");
+        tabPaneQuery("audio", '#bs-tab-audio .bs-au-subpane[data-au-sub="record"]');
       if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ block: "nearest", behavior: "smooth" });
     } catch (eScr) {}
   }
@@ -67096,7 +72705,7 @@ Plugins.toolbox.init = function () {
   }
 
   function exploreListenPaint() {
-    var box = $("bs-ex-box-listen") || document.querySelector("#bs-tab-explore .bs-ex-box-listen");
+    var box = $("bs-ex-box-listen") || tabPaneQuery("explore", "#bs-tab-explore .bs-ex-box-listen");
     var hero = $("bs-ex-listen-hero") || (box && box.querySelector("#bs-ex-listen-hero, .bs-ex-listen-hero"));
     var chips = $("bs-ex-listen-chips") || (box && box.querySelector("#bs-ex-listen-chips"));
     var nextEl = $("bs-ex-listen-next") || (box && box.querySelector("#bs-ex-listen-next"));
@@ -67312,7 +72921,7 @@ Plugins.toolbox.init = function () {
       if (typeof currentPanelTab === "function" && currentPanelTab() !== "explore") return false;
       if (typeof isExploreBoxHidden === "function" && isExploreBoxHidden(id)) return false;
     } catch (e) { return false; }
-    return !!($(id) || document.querySelector("#bs-tab-explore #" + id));
+    return !!($(id) || tabPaneQuery("explore", "#bs-tab-explore #" + id));
   }
 
   function exploreFmtClock(d, utc) {

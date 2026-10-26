@@ -216,6 +216,17 @@ def _rss_url_allowed(url: str) -> bool:
 class ToolboxRssProxyController(Controller):
     """GET /owrx-toolbox-rss?url=https://… — RSS/Atom → JSON for Toolbox News."""
 
+    def _feed_url_from_query(self) -> str:
+        try:
+            if "url" not in self.request.query:
+                return ""
+            raw = self.request.query["url"][0]
+            if isinstance(raw, bytes):
+                return urllib.parse.unquote(raw.decode("utf-8", errors="replace")).strip()
+            return urllib.parse.unquote(str(raw)).strip()
+        except Exception:
+            return ""
+
     def optionsAction(self) -> None:
         origin = self.handler.headers.get("Origin", "*")
         self.send_response(
@@ -232,11 +243,7 @@ class ToolboxRssProxyController(Controller):
         )
 
     def getAction(self) -> None:
-        raw = self.handler.request.query_arguments.get("url", [b""])[0]
-        try:
-            feed_url = urllib.parse.unquote(raw.decode("utf-8", errors="replace")).strip()
-        except Exception:
-            feed_url = ""
+        feed_url = self._feed_url_from_query()
         if not feed_url or not _rss_url_allowed(feed_url):
             self._json({"status": "error", "message": "bad url"}, 400)
             return

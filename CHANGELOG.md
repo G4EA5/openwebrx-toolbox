@@ -1,5 +1,469 @@
 # Changelog
 
+## [B296] — Audit fixes
+
+- **Max audio** quota trim drops oldest clips (same as recording), not newest.
+- Deploy/archive scripts read **B###** `_version`; storage-quota docs added.
+
+## [B295] — Heat days default 30
+
+- Band × hour heatmap window defaults to **30 days** (max allowed; was 7). Saved **7** migrates once.
+
+## [B294] — Storage quota default 999
+
+- Settings storage caps default to **999** (was 400); saved **400** values migrate once on load.
+
+## [B293] — Win row above util row
+
+- **S · R · − · ×** on the top chrome row (with the version line); **Find · 100 · % · M** on the row with tabs.
+
+## [B292] — Header chrome flush right
+
+- Eight tool buttons pin to the far right (2×4); version text slightly larger with clearer `|` spacing.
+
+## [B291] — Split header links
+
+- **OWRX Toolbox vB…** → toolbox repo; **G4EA5 GitHub** → github.com/G4EA5.
+
+## [B290] — Header 4+4 grid restored
+
+- Right column: Find·100·%·M over S·R·−·×; version centred on the top row beside the upper four.
+
+## [B289] — Header label → GitHub
+
+- Centred **OWRX Toolbox vB… - G4EA5** opens [github.com/G4EA5](https://github.com/G4EA5) in a new tab.
+
+## [B288] — Header build label
+
+- Centred header shows **OWRX Toolbox vB… — G4EA5** (not bare `vB…`).
+
+## [B287] — Version on Find row
+
+- Build label is centred on the same line as Find · 100 · % · M; tabs align with S · R · − · ×.
+
+## [B286] — Version centred on top
+
+- Centred band above tabs (superseded by B287).
+
+## [B285] — Version on tool row
+
+- Build label beside header buttons (superseded by B286).
+
+## [B284] — Uniform header tool buttons
+
+- All eight top-right chrome buttons (Find, scale, %, M, S, R, −, ×) use the same square size.
+
+## [B283] — Version above tabs
+
+- Build label (**vB…**) centred on its own row **above** the main tab strip (tools stay top-right on the tab row).
+
+## [B282] — Compact header chrome
+
+- Build **version** sits left, vertically centred, slightly larger type.
+- Header tools stack: **Find · scale · % · M** on top; **S · R · − · ×** underneath — frees tab strip width.
+
+## [B281] — Mute scan beep
+
+- **Mute beep** in Bands scan strip **Courtesy** and Range **Scan options → Courtesy** — silences the new-peak beep during scans (bookmark scans too). Synced with Range; independent of **Sound on new peak**.
+
+## [B280] — Header chrome + Find / Minimal defaults
+
+- Build version and all header tools (− × R S M % scale Find) sit on **one line** with main tabs, matched height.
+- **Find** and **Minimal (M)** header buttons are **on by default** (existing installs migrate once).
+
+## [B279] — Detach tabs in the dock browser tab
+
+- Right-click a main tab → **Detach in this tab (dock page)** or **Detach together in this tab…** — fullscreen overlay on the receiver tab (same browser tab as the side dock), no extra window.
+
+## [B278] — Help not detachable
+
+- **Help** (and **Settings**) cannot be detached to a pop-out; any stray detached Help tab is reattached on sync.
+
+## [B277] — Header + side dock defaults
+
+- Removed **← / →** main-tab arrows from the panel header (use the tab strip).
+- Default **side dock** width is **33%** (was 35%); **%** reset uses 33%.
+
+## [B276] — Help (?) as main tab
+
+- Help manual is a **?** tab after **Settings** in the main strip (header ? button removed).
+
+## [B275] — Pop-ups follow detached tabs
+
+- Shared overlay helpers; Find, Factory reset, tab context menu, detach pickers, colour picker, bookmark/band editors, Identify raw data, and S-meter cal mount in the detached window.
+
+## [B274] — S-meter Calibrate when Settings detached
+
+- Calibrate dialog and shade mount in the detached Settings pop-out window (not hidden on the main receiver tab).
+
+## [B273] — Settings SDR devices typography
+
+- SDR hardware cheat sheet in **Settings → SDR devices** uses normal settings text instead of large amber solar-grid styling.
+
+## [B272] — Settings General + Public completeness
+
+- **General** — restore **UX feel** and **Light features** settings boxes.
+- **Public** — visitor allowlist for **header buttons** (Help/Find/Minimal), **extra sections**, and **network budget** cap; buttons **Sync tabs from Visible**, **Allow all extras**, **Safe More panes**, **Allow all extra sections**.
+
+## [B271] — Public: allow all More panes
+
+- **Settings → Public** — **Allow all More panes** ticks every More sub-tab in the visitor allowlist (and adds the More main tab if it was off).
+
+## [B270] — Drop duplicate FM Jump settings box
+
+- Remove the large **Jump tuning · experimental (FM broadcast)** box from Settings → General; enable **Jump · FM broadcast** and Grid / ±kHz / Detect live under **Settings → Extras** only.
+
+## [B269] — Settings → Public: block Explore steal
+
+- Settings → Public buttons no longer jump to Explore: programmatic `switchTab` is ignored while Settings/Public is engaged (UI lock + pane detection), and `currentPanelTab()` prefers the Settings pane when it is on.
+
+## [B268] — Settings → Public: stay on Settings
+
+- Fix Public sub-tab controls (public mode, allowlist, Allow all, …) jumping to Explore — pin Settings header/pane during public policy refresh and skip `applyHiddenTabs` tab switches while Settings is open.
+
+## [B267] — One scan / analysis at a time
+
+- Exclusive radio jobs: starting Analyzer Live, Identify Live, Scan bands/range/bookmarks, or Nest scan prompts to stop whatever else is running (including across Toolbox windows on the same browser).
+- Blocks double-start of the same job; Analyzer “Live on open” asks before stopping an active scan.
+
+## [B266] — Settings → System: other receiver plugins
+
+- New **Other receiver plugins** panel lists every id on `window.Plugins` (besides the loader), version tags, script paths, Toolbox integration notes (notify, band_survey clash), and `owrx_receiver_plugins` in Nerd export.
+
+## [B265] — Settings → System: Toolbox plugin files
+
+- New **Toolbox plugin files** panel: build tag, local vs CDN install, host disk KB, combined line/char counts, per-file transfer vs decoded sizes (Performance API), URLs, Re-scan, and **toolbox_files** in Nerd vault export.
+
+## [B264] — Settings → Public: no Explore steal
+
+- Fix duplicate `bs-tab-on` on the header (Explore + Settings) so Public sub-tab and allowlist edits no longer retune to Explore.
+- Public policy refresh uses header visibility sync only (not full `applyHiddenTabs` tab switch).
+- Opening **Settings → Public** pins the Settings main tab.
+
+## [B263] — Settings → Public: stay on Settings
+
+- Ticking Public allowlist controls no longer jumps to Explore — `currentPanelTab()` respects the Settings header, and `applyHiddenTabs()` does not retune the main tab while Settings is open.
+
+## [B262] — Fix Toolbox boot black screen (B261)
+
+- Stop Settings → Public admin refresh from running during panel build / restore (could stall or blank the page after “Loading Toolbox…”).
+- Reentrancy guards on public/extras UI refresh so nested apply calls cannot recurse.
+
+## [B261] — Public settings clickable for owner/admin
+
+- **toolbox_public_mode: false** from OpenWebRX (default on patched hosts) no longer locks the Toolbox **Public / shared receiver** tick or greys out the whole Public sub-tab — only **server ON** is read-only here.
+- **Settings** stay usable while the admin probe is pending; **Public allowlist** edits work on personal installs (`TOOLBOX_ALLOW_OWNER_OVERRIDE` true) even when the `/settings` HTML probe is flaky behind a proxy.
+- Opening **Settings → Public** re-runs the admin check and refreshes Public controls.
+
+## [B260] — Public Allow all + Identify tab switch
+
+- **Settings → Public → Allow all** updates the form again on hard-public installs (session edit + Copy policy) instead of snapping back to baked safe defaults; save no longer wipes the in-memory draft while you are logged in as admin.
+- **Identify / Analyzer** tabs show in the header when enabled under Visible tabs even with **Lean chrome** or **Simple mode** on.
+- **Allow all** turns on Identify and Analyzer in Visible tabs; **Identify** tab open works in detached pop-outs (correct document for pane + tab bar).
+
+## [B259] — Nerd vault: more debug stats
+
+- **FFT near VFO** (bins, min/max/mean dB, tune bin, Waterfall min/max), **Toolbox hooks & jobs**, **localStorage top keys**, **sessionStorage**, **footer bars**, **Live pulse JSON**, and **navigation timing** (TTFB/DOM/load) in Settings → System → Nerd vault and nerd export.
+
+## [B258] — System Live pulse: decode, passes, ping
+
+- **Last decode** — latest Log / decoder line with **Tune** button when MHz is known.
+- **Space (LEO passes)** — selected satellite pass line + next birds (after More → Passes TLEs); **Following** badge when Doppler follow is on.
+- **HTTP ping** chip — round-trip to **status.json** and **hoststats.json** (~12s while System is open).
+
+## [B257] — Settings → System: Live pulse
+
+- New **Live pulse** box: active Toolbox jobs, detached windows (with **Focus window**), panel layout, peaks/clips/log/storage quotas, browser network + viewport, **status.json** age, and quick links (**status.json**, **hoststats.json**, **Copy MHz**, **Copy build**). Included in System export JSON.
+
+## [B256] — Identify detached: overview spectrum live
+
+- **Overview spectrum** (and Live identify) keep updating in a detached Identify pop-out while you run scans on the main window — no longer frozen when the main panel is on another tab.
+
+## [B255] — Detached tabs: drop duplicate title bar
+
+- Pop-out windows no longer show the extra header row with the tab name — the tab strip (and window title) already identify the tab. **Reattach all** sits on the right of that strip; single-tab pop-outs show only **Reattach all**.
+
+## [B254] — Audio: stop clip playback on tab / panel leave
+
+- **Settings → Appearance:** **Stop clips when leaving Audio** (default on) — ends Play / Play all when you switch away from **Audio** or **Decode**.
+- **Stop clips when closing panel** (default on) — stops playback when you close Toolbox with **×**.
+
+## [B253] — Bookmarks options: Record busy on by default
+
+- **Record busy** under **Bookmarks → Bookmarks options** defaults to **on** (matches factory settings). Older saves are upgraded once; checkboxes no longer flip off before the form is filled from saved settings.
+
+## [B252] — Explore boxes: hide (×) next to ?
+
+- Each hideable Explore box gets **×** to the right of **?** — confirms, then hides the box (same as unticking it under **Settings → Visible tabs → Explore boxes**). **Tune** stays always on.
+
+## [B251] — Explore Tune: remove collapse chevron
+
+- Tune header is no longer a collapse toggle (chevron removed); Mute/Vol/Shot stay on the right. Collapse did not hide the scope row because of pinned layout CSS.
+
+## [B250] — Hide HTTP note on detached tabs
+
+- **Settings → Appearance → Hide HTTP note on detached tabs** — suppresses the “Same receiver (HTTP) / Not secure” banner on tab pop-outs (HTTP only).
+- **Hide** on the banner saves the same preference; loading line in `tab-popout.html` stays short when hidden.
+
+## [B244] — More → News: more feeds + orange Refresh
+
+- Added Southgate, SOTA, RAC, Hackaday (ham), DARC, Essex Ham, and ARRL Audio RSS chips (feed list built from `NEWS_FEEDS`).
+- News **Refresh** uses standard orange `bs-btn-refresh` (matches header hard-refresh **R**).
+
+## [B243] — News RSS proxy crash fix (OpenWebRX)
+
+- `/owrx-toolbox-rss` no longer crashes on `query_arguments` (uses `request.query` like other OWRX controllers). News/Feeds load via the receiver proxy again instead of hanging on “Loading headlines…”.
+
+## [B242] — More → Read → News: auth + switch feeds while loading
+
+- RSS fetch sends **credentials** and copies **dash_auth** / **hub_auth** from the page URL for homelab auth-proxy.
+- Clearer login error; 22s timeout per attempt; switching ARRL/RSGB/… cancels the stuck load and starts the new feed.
+
+## [B241] — More → Read → News: bind + RSS fetch
+
+- News Refresh and source chips wire reliably (delegated clicks, re-bind after More tab moves / rebuild).
+- RSS fallback uses AllOrigins `/get` JSON; stale More panes without News controls force a panel rebuild.
+
+## [B240] — More → Links: visible rules and full 20-word blurbs
+
+- Double rule is a dedicated bar **above** each category title (brighter, not on the `h3` border).
+- Descriptions are **20 words** each; nested per-category scroll removed so text is not clipped.
+- Deploy live `htdocs` was stuck on B237 (20-character cap) — sync watchdog + htdocs together.
+
+## [B239] — More → Links: rule above category title
+
+- Double line sits **above** each category heading (was under the title).
+
+## [B238] — More → Links: 20-word descriptions
+
+- Site blurbs may use up to **20 words** each (restored full sentences; B237’s 20-character cap was a misunderstanding).
+
+## [B237] — More → Links: 20-character blurbs (superseded by B238)
+
+- Brief experiment; use B238 instead.
+
+## [B236] — More → Links: larger category headings
+
+- Section titles use bigger type and a double rule under each category name.
+
+## [B235] — Header: − × on version row, R under ×
+
+- Minimize and Close sit on the top row beside **vB…**; hard-refresh **R** stays on the row below, right-aligned under Close.
+
+## [B234] — More → Links: ten categories × ten (100)
+
+- **OpenWebRX & SDR**, **Remote receivers**, **DX & news**, **Logbooks**, **Propagation**, **Digital modes**, **Satellites**, **Beacons & time**, **Repeaters & scanners**, **Societies & contests**.
+
+## [B233] — More → Links: six categories × ten
+
+- **SDR & web receivers**, **DX spots & logbooks**, **Propagation & conditions**, **Satellites & tracking**, **Beacons, repeaters & scan**, **Societies & on-air programs**.
+
+## [B232] — More → Links: 60 English sites
+
+- Ham, satellites, beacons, scanning, US/UK/Europe societies; each row has a short English description (now up to 20 words in B238).
+
+## [B231] — More → Read → Links: more ham staples
+
+- ARRL, RSGB, SOTA/POTA/WWFF/IOTA, VOACAP, WSPRnet, band conditions, WSJT-X, DX Summit, eHam, RadioReference, HamStudy, Ofcom.
+
+## [B230] — Range sub-tab: Scanner (was Scan)
+
+- Inner Range bar label **Scanner** for the main sweep pane (id unchanged).
+
+## [B229] — Detach together → new browser tab
+
+- Main-tab menu: **Detach together to new browser tab…** (same multi-select picker as the pop-out window, opens one tab with the group).
+
+## [B228] — Remove “Detach all tabs”
+
+- Right-click main tab menu no longer offers bulk detach-all; per-tab detach, together, and **Reattach all** stay.
+
+## [B227] — Header top-right sizing
+
+- Tab **← / →** a bit smaller; **vB…** build label larger; Find / Help / scale / dock row buttons slightly larger.
+
+## [B226] — More pane arrows: no horizontal jump
+
+- Reserve scrollbar gutter on scrolling More sub-panes; ← / → / ? sit in a fixed-width header cluster so they stay put when some panes scroll and others do not.
+
+## [B225] — More tab: ← / → beside each pane’s ?
+
+- Step through every **visible** inner More pane in order (e.g. Spots DX → RBN → POTA → … → Read Chart), wrapping at the ends. Skips panes hidden in Settings.
+
+## [B224] — Header: tab arrows beside build version
+
+- **←** / **→** sit on the version row (left of **vB…**), larger than the chrome button row. Still step through visible main tabs with wrap.
+
+## [B223] — Header: prev/next arrows before Help
+
+- **←** / **→** beside **?** step through visible main tabs (including Help when shown), wrapping at the ends. Detached tabs still open in their pop-out.
+
+## [B222] — More tab: clearer hover tips on groups and inner panes
+
+- Rewrote `title` / float-tip text for every More group (Spots, Space, …) and sub-tab (DX, Prop, News, …) — live vs static, click-to-tune, and what you will see.
+
+## [B221] — Docs: Docker persistence (README, Help, first install)
+
+- Clarify what survives container restart vs browser vs OpenWebRX data volumes (`init.js`, local toolbox files, yellow bookmarks).
+
+## [B220] — Explore audio scope after tab detach / reattach
+
+- Re-pin the Explore **Tune** row (audio FFT + S-meter) in the tab’s document when a main tab moves to or from a pop-out.
+- Restart the audio scope canvas loop using `tabPaneDocument("explore")` so the white empty scope box does not stick after **Reattach**.
+
+## [B219] — Header: version above chrome buttons, uniform sizes
+
+- Build tag (**vB219**, etc.) sits top-right above Find / Help / scale / dock / refresh / min / close.
+- All header chrome buttons share the same rectangular size as the panel scale control.
+
+## [B218] — Scan bookmarks works in detached Bookmarks pop-out
+
+- Re-bind **Scan bookmarks** / **Stop** / **Hold** / **Skip** on the scan strip when `#bs-toolbar` moves into a tab pop-out; `$()` resolves those controls in the detach window. Passes prompt and job-conflict dialogs use the pop-out window.
+
+## [B217] — Bookmark scan Stop clears “Stopping…” status
+
+- **Stop** on bookmark scan clears hold/skip state, aborts in-progress recording waits, and always replaces **Stopping…** with a finished message (quiet-status filter no longer swallows “Pass … stopped” lines). If the loop does not exit within a few seconds, scan state is torn down anyway.
+
+## [B216] — Detached Range scan: progress on Range, not Bands
+
+- Main **Bands** scan strip (and progress) no longer appears while a **Range** scan is running (including when Range is in a pop-out). Bands **Scan bands** button label is not switched to “Scanning bands” during Range scans.
+
+## [B215] — Explore Hop row: even button gaps
+
+- **Jump loudest**, **Reject birdie**, and **ID** use the same **8px** gap between them (ID no longer pushed to the far edge).
+
+## [B214] — Explore Hop row: roomier ID button
+
+- **Jump loudest** and **Reject birdie** cap at ~38% width each; **ID** is larger at the end of the row.
+
+## [B213] — Scan status on detached tab, not over Explore
+
+- When **Range**, **Bands**, or **Bookmarks** is in a pop-out and a scan is running, **status + progress** show on that tab (inline under the section tabs / Range scan box), not on the main receiver tab over Explore.
+- Main scan strip no longer uses the generic “busy” bands toolbar during a **Range** scan; toolbar follows detached **Bands** / **Bookmarks** scans even if another sub-tab is selected in the pop-out.
+
+## [B212] — Dialogs on top in detached tab pop-outs
+
+- **Load yellow**, bookmark/band edit, box **?** help, Find, Identify raw packets, factory reset, and S-meter cal dialogs mount on the **detach window’s** `document.body` (not the main receiver tab behind the pop-out).
+
+## [B211] — Scan bookmarks strip on Bookmarks tab again
+
+- **Scan bookmarks** (and Hold / Skip / …) live in the **scan strip** between the main tab bar and the tab body — not inside the Bookmarks sub-panes. Fixed toolbar logic that hid that strip on Bookmarks when another tab was open in a detach pop-out.
+
+## [B210] — Reattach restores Bands scan strip without refresh
+
+- **Reattach** / **Reattach all** moves `#bs-toolbar` back into the main panel with `adoptNode` before the pop-out closes (closing the window had been destroying the strip).
+
+## [B209] — Detach pop-out: full Bands chrome + tab / same-window options
+
+- **Bands / Bookmarks** pop-outs always show the **Scan** toolbar (even when “Show scan strip” is off on the main panel); strip is inserted above sub-tabs on mount.
+- Right-click menu: **Detach to new browser tab**, **Add to open pop-out** (one window or picker), plus existing new-window / together / add-to-list items.
+- Pop-out tab bar supports the same right-click detach menu as the main Toolbox.
+
+## [B208] — Detached Bands / Bookmarks include scan strip
+
+- When **Bands** or **Bookmarks** is in a tab pop-out, the shared **Scan bands** / **Scan bookmarks** toolbar (`#bs-toolbar`) moves into that window above the sub-tabs and band list — not left on the main receiver tab.
+
+## [B207] — Fix plugin load (syntax error in HTTP detach note)
+
+- Repaired a broken string in the detached-tab HTTP banner that prevented `toolbox.js` from parsing (no Toolbox button / auto-open).
+
+## [B206] — Range scan in detached pop-out
+
+- Full Range tab wiring when the pane is in a pop-out (Scan / Fresh / Stop, MHz inputs, mode, grid).
+- Range scan confirm/prompt dialogs show on the detach window (coverage gaps, ask passes).
+- `readRangeForm` reads scan mode from the detached pane; cold Range inject binds controls on build.
+
+## [B205] — HTTP security note on detached tab pop-outs
+
+- Expanded pop-out banner: same origin as main Toolbox, what “Not secure” means, cleartext traffic and logins on HTTP, LAN vs remote (HTTPS / VPN-only).
+
+## [B204] — Detached Bands edit + reattach confirm on pop-out
+
+- **Bands edit** in a detached window: sub-tabs and edit list are wired in the pop-out; the edit dialog opens on that window (not hidden on the main receiver).
+- **Reattach all** in a pop-out uses `confirm()` on the pop-out window so the prompt is not stuck behind the detached window.
+
+## [B203] — Reattach: tab panes refresh (Analyzer display)
+
+- After **reattach**, duplicate tab panes in the main panel are removed so IDs like `#bs-sa-spec` resolve to the visible pane.
+- **Analyzer** (and Range/Bands/Explore) re-bind layout, resize observers, and redraw spectrum/waterfall when a pane moves back from a pop-out.
+
+## [B202] — Detached tabs: Range scan + DOM lookup
+
+- Range **Scan range** works in detached pop-outs (correct MHz reads, SDR row, Stop button, handlers re-bound on detach).
+- `$()` prefers controls inside detached tab panes; `currentPanelTab()` follows the active pop-out tab for paired Bands/Range options.
+
+## [B201] — Reattach closes pop-out windows
+
+- **Reattach all tabs** (and each window’s Reattach all) moves panes back and **closes** detached pop-outs, with a confirm dialog before bulk reattach.
+
+## [B200] — Range MHz in detached pop-out
+
+- Detached Range tab now syncs start/end MHz (e.g. 144–146) and scan options from settings into the pop-out pane.
+
+## [B199] — F5 on detached tab window
+
+- Pop-out URL carries `group=` so after **F5** the receiver re-mounts tabs into that window (keep the main receiver tab open).
+- Rebuilds pane HTML when refresh destroyed the old pop-out document.
+
+## [B198] — Tab detach menu always; HTTP note on pop-outs
+
+- Right-click **any** main tab (Explore, Bands, …) always opens the menu — turn on **Detach main tabs** from the menu or Extras.
+- Clearer labels: **Detach this tab to new window**, **Detach all tabs to new windows**.
+- Pop-out URL locked to the same receiver address; brief note when the site is HTTP (browser “Not secure” is expected unless you use HTTPS).
+
+## [B197] — Recover lost detached tabs
+
+- Closed or missing pop-out windows no longer leave Explore/Bands/Range “gone”: reconcile rebuilds panes in the main Toolbox and clears detached tab styling.
+- Right-click any tab for **Reattach all tabs** when tabs are lost (even if Detach extra was turned off); full detach menu when the extra is on.
+
+## [B196] — Tab menu vs hover tip
+
+- Right-click tab menu / Detach together picker dismisses the floating hover tip so it does not sit on top of menu items.
+
+## [B195] — Detach pop-out boot fix + Reattach all on menu
+
+- Tab pop-outs call back to the receiver (`tab-popout.html` handshake) so **Detach together** no longer sticks on “Loading tab…”. **Reattach all tabs** is always the first item on every main-tab right-click menu.
+
+## [B194] — Detach tab groups (2–3+ per window)
+
+- Each detached window has a **mini tab bar** for every pane in that group. **Detach together…** picks multiple tabs; **Add to window** merges into an existing pop-out. **Detach all** opens windows in **groups of 3**.
+
+## [B193] — Detach all main tabs
+
+- Right-click any main tab → **Detach all visible tabs** (up to every bar tab you have visible) or **Reattach all detached**. Per-tab cap removed; **Help** stays in the main Toolbox window.
+
+## [B192] — Detach tab URL
+
+- Tab pop-outs open `tab-popout.html?tab=…&label=…` under the Toolbox plugin path instead of `about:blank`.
+
+## [B191] — Detach tab pop-out layout
+
+- Detached tabs mount inside a mini `#bs-panel` / `#bs-body` shell so Explore and other panes keep normal Toolbox CSS (fixes overlapping controls in tab pop-outs).
+
+## [B190] — Detach main tabs (optional Extra)
+
+- **Settings → Extras → Detach main tabs** (off by default): right-click a main tab → **Detach to new window** for a second monitor; **Reattach** from the menu or the pop-out header. Full-panel **D** detach still works; individual tab detaches are cleared when you detach the whole Toolbox.
+
+## [B189] — More: 12 panes × 7 groups, My feeds under Read
+
+- Each More group (Spots, Space, Tune, Sky, Here, Sked, Read) has **12** inner panes; sub-tab bar uses a **6×2** grid.
+- **Feeds** group removed — **Read → My feeds** (same RSS UI as before).
+- **12** new lightweight panes (static notes, WSPR/RTTY/Pager dials, Here → DMS, etc.) — no extra background polling.
+
+## [B188] — Revert B186 tab chrome
+
+- Restored classic yellow main tabs and plain sub-tab bars (removed per-tab colours, glyphs, and gradient sub styling from B186). Coverage map fixes (B187) unchanged.
+
+## [B187] — Bands Coverage map scale fix
+
+- Fixed MHz vs Hz bug that squashed the bar to ~±0.05 MHz; axis and gaps use correct units; status.json spans preferred over name parsing.
+- Zoom presets (All / HF / VHF / UHF / ≥1 GHz), grid background, centre axis label.
+
+## [B186] — Tab and sub-tab chrome (CSS only)
+
+- Main header tabs: per-tab accent colours, small glyphs, active tab uses that accent (not one flat yellow for every tab).
+- Sub-tab bars: segmented “pill” look, pane-matched accent on the selected sub-tab, icons on common subs; More groups get matching glyphs.
+
 ## [B185] — Bands Coverage map size
 
 - Taller MHz bar (full width, ~72px+), axis labels, and a scrollable profile chip list when spans are too narrow to read on the bar.

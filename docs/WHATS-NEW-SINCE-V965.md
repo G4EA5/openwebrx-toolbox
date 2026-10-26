@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B185** (current). Check install and the Help tab show the running build (e.g. `B185`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B272** (current). Check install and the Help tab show the running build (e.g. `B271`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,14 +13,34 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B185** | Current era (`toolbox-vB185` tag on GitHub when published) |
+| **B1…B272** | Current era (`toolbox-vB272` tag on GitHub when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB185/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB272/toolbox.js` (or `@main` for latest).
 
 ---
 
-## Recent (B146–B184)
+## Recent (B146–B272)
+
+- **B272** — **Settings** — UX feel + Light features boxes back; **Public** header/extra-section/network allowlist + sync/preset buttons.
+- **B271** — **Settings → Public** — **Allow all More panes** for the visitor allowlist.
+- **B270** — **Settings** — FM Jump experimental controls moved into **Extras** (standalone box removed).
+- **B269** — **Settings → Public** — stronger fix: auto tab switches cannot leave Settings while you edit Public policy (header/pane lock).
+- **B268** — **Settings → Public** — ticking allowlist / public mode no longer jumps back to Explore.
+- **B267** — Only one heavy radio job at a time (scans vs Analyzer / Identify Live) — confirm stops the other; works across detached Toolbox windows in the same browser.
+- **B266** — **Settings → System → Other receiver plugins** — lists other OpenWebRX+ plugins on the page and how Toolbox uses them (or “toolbox only”).
+- **B223** — Header **←** / **→** before **?** to step through visible main tabs.
+- **B222** — **More** tab: richer hover text on each group and inner pane (what it does, live vs static).
+- **B221** — README + Help: **Docker** — peaks/settings/clips persist in the **browser**; host `init.js` / bookmarks need **volumes**.
+- **B220** — Explore **audio scope** (FFT between frequency and S-meter) repaints after **detach / reattach** main tabs — no stuck white box.
+- **B213** — Detached **Range** / **Bands** / **Bookmarks** scans show status and progress on the pop-out tab, not over Explore on the main window.
+- **B212** — Detached tab pop-outs: **Load yellow**, edit dialogs, and other overlays open on the pop-out window (not hidden behind it).
+- **B211** — **Scan bookmarks** row shows again on the main **Bookmarks** tab (scan strip above the sub-tabs).
+- **B210** — **Reattach** brings the Bands / Bookmarks **Scan** strip back on the main panel without a page refresh.
+- **B209** — Detach menu: **new browser tab**, **add to open pop-out**; Bands pop-out keeps full **Scan** strip even when the main panel hides the scan strip.
+- **B208** — Detached **Bands** / **Bookmarks** pop-outs include the **Scan bands** / **Scan bookmarks** strip (timing, dwell, Stop, status) — not only the sub-tabs and list below.
+- **B188** — Reverted **B186** tab/sub-tab styling (back to classic yellow tabs).
+- **B187** — **Bands → Coverage** map uses real MHz scale (was broken to ~0 MHz); HF/VHF/UHF zoom chips.
 
 - **B146+** — **Settings → System** sub-tab: host CPU/RAM, listeners, session, OpenWebRX internals (`hoststats.json` when present).
 - **B162** — Fix **Settings → Public** sub-tab (scroll + pane visibility).

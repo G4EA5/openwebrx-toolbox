@@ -49,6 +49,13 @@ Under OpenWebRX+ **htdocs** (same tree as `openwebrx.js`):
 | Docker | Same path inside the container (or your volume mount) |
 | Custom | Run `find / -name openwebrx.js 2>/dev/null` and open `plugins/receiver/init.js` beside it |
 
+**Docker — what persists**
+
+- **In your browser** (peaks, Toolbox settings, layout, audio clips, blue bookmarks): **yes** across `docker restart` / container recreate, as long as you use the **same receiver URL** in the **same browser** and do not clear site data. Toolbox does not put that data inside the container by default.
+- **On the host / in the container filesystem**: yellow server bookmarks and OpenWebRX `settings.json` follow your **data volume** (e.g. `./settings:/var/lib/openwebrx`). The `init.js` load line and a **local** `toolbox/` folder only survive image upgrades if that tree is on a **bind-mount** or you re-apply after recreate. **CDN-only** install still needs `init.js` on persistent storage once.
+
+Full table: [README → Install → Docker](https://github.com/G4EA5/openwebrx-toolbox#docker).
+
 If the file is missing, create it. Keep the usual `(async () => { … })();` wrapper and put `await Plugins.load(…)` **inside** it.
 
 **Remove any old Band Survey line** — do not load `band_survey` and `toolbox` together.

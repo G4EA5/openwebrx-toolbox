@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB185)
+# OpenWebRX Toolbox (vB272)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -433,6 +433,21 @@ Install **inside** the OpenWebRX+ container (or bind-mount `plugins/receiver`).
 Clone the repo in the container, copy files as in Option B, edit `init.js`,
 restart the container if needed, then hard-refresh the browser.
 
+**What persists (Docker users)**
+
+| What | Survives `docker restart`? | Survives new container / image without volumes? |
+| --- | --- | --- |
+| Peaks, Toolbox settings, panel layout, skip list, amber `[load]` | **Yes** — in **this browser** (`localStorage`) | **Yes** — same receiver URL in the same browser |
+| Audio clips | **Yes** — **IndexedDB** in this browser | **Yes** — same URL + browser |
+| Blue local bookmarks | **Yes** — OpenWebRX store in this browser | **Yes** — same URL + browser |
+| Yellow server bookmarks, OpenWebRX `settings.json` | **Yes** — if `/var/lib/openwebrx` (or your data dir) is on a **volume** | **Only with a bind-mount / named volume** |
+| `init.js` + local `toolbox/` files (Option B) | **Yes** — if `plugins/receiver` is bind-mounted or on the data volume | **No** — edits inside an ephemeral container are lost |
+| CDN-only install (`Plugins.load` URL in `init.js`) | **Yes** — once `init.js` is on a **persistent** volume | **No** — if the container filesystem is recreated bare |
+
+Toolbox does **not** store survey data on the server by default. Restarting Docker does **not** clear your peaks or settings in Chrome/Firefox — that data is tied to the **receiver page origin**, not the container process. You **do** lose browser data if you clear site data, use a different browser, or change host/port (treat it as a new site).
+
+**Practical tips:** mount OpenWebRX’s config/data directory (commonly `./settings:/var/lib/openwebrx` in compose examples); put `init.js` there or bind-mount `htdocs/plugins/receiver`. Pin a CDN **tag** or keep a local `toolbox/` copy on that mount so upgrades do not depend on re-editing a throwaway container.
+
 Raspberry Pi images with Varnish (after file changes):
 
 ```bash
@@ -503,7 +518,7 @@ Settings → Panel layout → **Reset Explore layout** restores defaults.
 | **Scan bands** / **Fresh scan** | Walk ticked bands; Fresh clears peaks first |
 | **Stop** | Halt band / range / bookmark scan; may auto-bookmark qualified peaks |
 | **Scan bookmarks** | Loop local / loaded bookmarks until Stop |
-| **Jump loudest** | Strongest peak on **this** waterfall tile (narrow bands — airband, marine, NFM, SSB/CW). FM broadcast (WFM) is off by default — enable under Settings → **Jump tuning · experimental** (or Extras → Jump · FM broadcast). Jump dB / Cluster / Center screen under each Jump button; FM Grid / ±kHz / Detect under that Settings box. |
+| **Jump loudest** | Strongest peak on **this** waterfall tile (narrow bands — airband, marine, NFM, SSB/CW). FM broadcast (WFM) is off by default — enable **Settings → Extras → Jump · FM broadcast**. Jump dB / Cluster / Center screen under each Jump button; FM Grid / ±kHz / Detect at the bottom of the Extras box when that extra is on. |
 | **Hold** / **Skip** / **Always skip** / **Lockout** | Bookmark-scan dwell controls |
 
 ---
@@ -730,6 +745,10 @@ limits on **Peaks**; clip caps on **Audio**.
 | Yellow server bookmarks | On the **radio host** — not replaced by Toolbox clear/load |
 
 Nothing is uploaded except optional **Webhook URL** POSTs.
+
+**Storage quotas:** Settings caps (logs, peaks, audio, skip, etc.) trim **oldest** data in this browser when full — see [docs/storage-quotas.md](docs/storage-quotas.md).
+
+**Docker:** container restarts do not wipe the table above — it lives in the **browser** at your receiver URL. Host-side files (`init.js`, local `toolbox.js`, yellow bookmarks) need a **volume** or bind-mount; see [Install → Docker](#docker).
 
 ---
 

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenWebRX Toolbox</title>
+  <script>
+    (function () {
+      try {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = new URL("toolbox.css", location.href).href;
+        document.head.appendChild(l);
+      } catch (eCss) {}
+    })();
+  </script>
+  <script>
+    (function () {
+      function applyTitle() {
+        try {
+          var params = new URLSearchParams(location.search);
+          var lab = params.get("label") || params.get("tab") || "Toolbox";
+          document.title = "Toolbox — " + lab;
+        } catch (e) {}
+      }
+      function waitMsg() {
+        var wait = document.querySelector(".bs-tab-popout-wait");
+        if (!wait) return;
+        var extra = "";
+        try {
+          var params = new URLSearchParams(location.search);
+          var hideNote = params.get("httpnote") === "0";
+          if (location.protocol === "http:" && !hideNote) {
+            extra = " HTTP: same receiver — Not secure means no HTTPS, not an unsafe detach. Traffic is unencrypted; use HTTPS or VPN-only when remote.";
+          }
+        } catch (eP) {}
+        if (wait.getAttribute("data-bs-booting") === "1") {
+          wait.textContent = "Reconnecting to Toolbox…" + extra;
+        }
+      }
+      function boot() {
+        applyTitle();
+        var wait = document.querySelector(".bs-tab-popout-wait");
+        if (wait) wait.setAttribute("data-bs-booting", "1");
+        waitMsg();
+        var tries = 0;
+        function tryBoot() {
+          try {
+            if (window.opener && !window.opener.closed &&
+                typeof window.opener.__owrxToolboxTabPopoutBoot === "function") {
+              window.opener.__owrxToolboxTabPopoutBoot(window);
+              return true;
+            }
+          } catch (eOp) {}
+          try {
+            if (window.parent && window.parent !== window &&
+                typeof window.parent.__owrxToolboxTabPopoutBoot === "function") {
+              window.parent.__owrxToolboxTabPopoutBoot(window);
+              return true;
+            }
+          } catch (ePar) {}
+          return false;
+        }
+        if (tryBoot()) return;
+        var tmr = setInterval(function () {
+          tries += 1;
+          if (tryBoot()) {
+            clearInterval(tmr);
+            return;
+          }
+          if (tries >= 48) {
+            clearInterval(tmr);
+            if (wait) {
+              var hasGroup = false;
+              try { hasGroup = !!new URLSearchParams(location.search).get("group"); } catch (eG) {}
+              wait.textContent = hasGroup
+                ? "Cannot reconnect — keep the main OpenWebRX / Toolbox tab open (refresh that page if needed), then press F5 here. Or close this window and use Reattach all on the receiver."
+                : "Waiting for Toolbox… hard-refresh the receiver page, then detach again.";
+            }
+          }
+        }, 250);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+      } else {
+        boot();
+      }
+    })();
+  </script>
+</head>
+<body class="bs-tab-popout">
+  <p class="bs-tab-popout-wait">Loading tab…</p>
+</body>
+</html>
