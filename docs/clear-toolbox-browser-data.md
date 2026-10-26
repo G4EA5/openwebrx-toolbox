@@ -38,8 +38,12 @@ Object.keys(localStorage).filter(function (k) { return k.indexOf("owrx_toolbox")
 location.reload(true);
 ```
 
+## Before a full clear (optional)
+
+**Settings → Data & housekeeping → Export browser data** saves one JSON file (settings, peaks, log, and related lists — **not** audio). **Export settings** is smaller (settings only). Audio clips: export from the **Audio** tab if you need them.
+
 ## After clearing
 
 - OpenWebRX should load **without** “Loading Toolbox…”.
 - Click **Toolbox** in the top bar when you want the panel (first open may take a few seconds).
-- Check the panel header shows the current build (e.g. **B296** or newer) after deploy.
+- Check the panel header shows the current build (e.g. **B297** or newer) after deploy.

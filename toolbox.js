@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B296";
+  Plugins.toolbox._version = "B297";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -8057,6 +8057,7 @@ Plugins.toolbox.init = function () {
     gate("bs-import-csv", "importExport", "Import");
     gate("bs-import-json", "importExport", "Import");
     gate("bs-export-settings", "importExport", "Export settings");
+    gate("bs-export-browser-data", "importExport", "Export browser data");
     gate("bs-import-settings", "importExport", "Import settings");
     gate("bs-save-user-defaults", "importExport", "Save as my defaults");
     gate("bs-clear-user-defaults", "importExport", "Clear my defaults");
@@ -23549,8 +23550,7 @@ Plugins.toolbox.init = function () {
     try { applyBuiltinExploreLayout(false); } catch (eExDef) {}
   }
 
-  function exportSettingsJson() {
-    if (!requirePublicFeature("importExport", "Export settings")) return;
+  function settingsObjectForExport() {
     readForm();
     var out = {};
     var d = settingsDefaults();
@@ -23565,8 +23565,69 @@ Plugins.toolbox.init = function () {
       else if (k === "recentProfiles") out[k] = (S.recentProfiles || []).slice();
       else out[k] = S[k];
     });
-    downloadFile(LS_SETTINGS_FILE, JSON.stringify(out, null, 2), "application/json");
+    return out;
+  }
+
+  function exportSettingsJson() {
+    if (!requirePublicFeature("importExport", "Export settings")) return;
+    downloadFile(LS_SETTINGS_FILE, JSON.stringify(settingsObjectForExport(), null, 2), "application/json");
     setStatus("Exported settings JSON.");
+  }
+
+  /** On-demand JSON backup (no audio blobs — zero cost until clicked). */
+  function exportToolboxBrowserData() {
+    if (!requirePublicFeature("importExport", "Browser data backup")) return;
+    setStatus("Preparing browser backup…");
+    setTimeout(function () {
+      try {
+        var peaksPayload = { hits: [], tileLooks: {} };
+        if (_hitsLoaded && hits && hits.length) {
+          peaksPayload.hits = hits.slice();
+          peaksPayload.tileLooks = tileLooks && typeof tileLooks === "object" ? tileLooks : {};
+        } else {
+          try {
+            var raw = window.localStorage.getItem(LS_HITS);
+            if (raw) {
+              var o = JSON.parse(raw);
+              if (o && Array.isArray(o.hits)) peaksPayload.hits = o.hits;
+              if (o && o.tileLooks && typeof o.tileLooks === "object") peaksPayload.tileLooks = o.tileLooks;
+            }
+          } catch (eH) {}
+        }
+        try { ensureOccHeatLoaded(); } catch (eOcc) {}
+        var layout = null;
+        try {
+          if (typeof exportExploreLayoutObject === "function") layout = exportExploreLayoutObject();
+          else if (typeof getExploreLayout === "function") layout = getExploreLayout();
+        } catch (eLay) {}
+        var kit = {
+          kind: "owrx-toolbox-browser-backup",
+          version: Plugins.toolbox._version || 0,
+          exportedAt: new Date().toISOString(),
+          page_url: location.href,
+          audio_clip_count: audioClips ? audioClips.length : 0,
+          audio_note: "Audio clips are not included (IndexedDB). Export clips from the Audio tab if needed.",
+          restore_note: "Restore via Import settings, Peaks/Log import, and bookmarks — no single Import for this file yet.",
+          settings: settingsObjectForExport(),
+          exploreLayout: layout,
+          bookmarks: {
+            local: typeof localBookmarkList === "function" ? localBookmarkList() : [],
+            loaded: (loadedBookmarks || []).slice()
+          },
+          peaks: peaksPayload,
+          traffic_log: (trafficLogRows || []).slice(),
+          decoder_archive: (decoderArchiveRows || []).slice(),
+          qso_pad: (qsoRows || []).slice(),
+          occupancy_heat: (occHeatLog || []).slice(),
+          watches: { rules: (sigWatchRules || []).slice(), hits: (sigWatchHits || []).slice() }
+        };
+        var text = JSON.stringify(kit, null, 2);
+        downloadFile("toolbox-browser-backup-" + Date.now() + ".json", text, "application/json");
+        setStatus("Browser backup saved (" + Math.round(text.length / 1024) + " KB, no audio).");
+      } catch (eKit) {
+        setStatus("Browser backup failed.");
+      }
+    }, 0);
   }
 
   function fillSdrControlForm() {
@@ -24225,7 +24286,7 @@ Plugins.toolbox.init = function () {
       '<button type="button" class="bs-bm-edit-pop-close" id="bs-factory-pop-close" title="Cancel" aria-label="Close">×</button>' +
       "</div>" +
       '<div class="bs-bm-edit-pop-body">' +
-      '<p class="bs-hint">Choose what to clear in <b>this browser</b> only. Export settings first if you want a backup.</p>' +
+      '<p class="bs-hint">Choose what to clear in <b>this browser</b> only. <b>Export browser data</b> or <b>Export settings</b> first if you want a backup.</p>' +
       '<p class="bs-factory-safe-title">Never deleted (no option to remove these)</p>' +
       '<ul class="bs-factory-safe-list">' +
       "<li>OpenWebRX <b>band profiles / presets</b> on the radio</li>" +
@@ -28560,6 +28621,8 @@ Plugins.toolbox.init = function () {
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
       "<li><b>Factory reset</b> — red button at the <b>top of Settings</b>. Opens a dialog: tick what to clear in this browser, or Full reset. <b>Never</b> deletes OpenWebRX bands/presets, server settings, or stock data. Panel layout and personal defaults are kept.</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
+      "<li><b>Export browser data</b> — one JSON backup on click (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). <b>Not</b> audio clips (Audio tab). Restore is per-tab import today. Zero cost until you click.</li>" +
+      "<li><b>Backup kit</b> (Light features) — smaller kit: settings + Explore layout + bookmarks.</li>" +
       "<li><b>Save as my defaults</b> — store the settings currently shown plus <b>Explore box positions</b> (free placement) as personal defaults in this browser. <b>Reset settings</b> and a Factory reset that clears Toolbox settings restore them afterwards. <b>Clear my defaults</b> returns to built-in Toolbox defaults. Personal defaults themselves are never wiped by Factory reset.</li>" +
       "</ul><p><b>Peak webhook</b> (Settings → Extras → Peak webhook)</p><ul>" +
       "<li><b>What it is for</b> — tell another system on your network when a <b>band or range survey</b> finds a frequency that was not on the previous peak list (a “new” peak). Typical uses: Home Assistant / Node-RED automation, <code>ntfy</code> push, Discord/Slack incoming webhook, or a tiny DIY script that logs activity.</li>" +
@@ -64451,6 +64514,7 @@ Plugins.toolbox.init = function () {
       settingsBoxHtml("Data &amp; housekeeping",
         '<div class="bs-row">' +
         '<button type="button" class="bs-btn-export" id="bs-export-settings" title="Download settings JSON (not peak hits or audio).">Export settings</button>' +
+        '<button type="button" class="bs-btn-export" id="bs-export-browser-data" title="One JSON file: settings, peaks, log, decoder, QSO, bookmarks, heat, watches — not audio (export clips on Audio tab). Runs only when you click.">Export browser data</button>' +
         '<button type="button" class="bs-btn-import" id="bs-import-settings" title="Import settings JSON and merge.">Import settings</button>' +
         '<button type="button" class="bs-btn-clear" id="bs-reset-settings" title="Reset settings to personal defaults if saved, otherwise built-in defaults. Keeps peak list.">Reset settings</button>' +
         "</div>" +
@@ -64459,6 +64523,7 @@ Plugins.toolbox.init = function () {
         '<button type="button" class="bs-btn-clear" id="bs-clear-user-defaults" title="Remove personal defaults so Reset / Factory reset use built-in Toolbox defaults again.">Clear my defaults</button>' +
         "</div>" +
         '<p class="bs-hint" id="bs-user-defaults-hint">No personal defaults yet — Reset / Factory reset use built-in Toolbox defaults.</p>' +
+        '<p class="bs-hint"><b>Export browser data</b> bundles settings, peaks, log, and related lists in one JSON file (no audio). Restore still uses per-tab import.</p>' +
         '<p class="bs-hint">Guest clear/import: Settings → Public → Clear &amp; files.</p>') +
       settingsBoxHtml("Quiet hours",
         '<p class="bs-hint">One-click presets for scheduled-scan quiet hours (Bands → schedule). Same times as the quiet start/end fields.</p>' +
@@ -67698,6 +67763,7 @@ Plugins.toolbox.init = function () {
     wireBackupKit("bs-backup-kit-2");
 
     if ($("bs-export-settings")) $("bs-export-settings").onclick = exportSettingsJson;
+    if ($("bs-export-browser-data")) $("bs-export-browser-data").onclick = exportToolboxBrowserData;
     if ($("bs-import-settings")) $("bs-import-settings").onclick = function () {
       var inp = $("bs-settings-file");
       if (inp) inp.click();

@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB272)
+# OpenWebRX Toolbox (vB297)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -60,7 +60,7 @@ the top bar, then **Settings → Check install**.
 
 ### What’s new since v965 (B era)
 
-After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B169** (see Help → **What’s new since v965**). Summary:
+After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B297** (see Help → **What’s new since v965**). Summary:
 
 | Area | Highlights |
 | --- | --- |
@@ -483,7 +483,10 @@ tab). Explore opens by default.
 Hide tabs under Settings → **General** → **Visible tabs**. **Show all tabs**
 restores everything. Settings always stays on; sub-tabs are **General** · **System** (optional) · **Public** (admin). **More sections** live at the **bottom of General** (which More panes appear). **Settings → Public** sets the guest allowlist. Log / Watch / Bookmarks / Audio / Skip / Peaks / Range also have optional **Extra sections** (checkboxes under General).
 Any of those that store transferable data have **Export** / **Import** (file or
-Shift-click paste), same gate as Peaks CSV/JSON.
+Shift-click paste), same gate as Peaks CSV/JSON. For a **single JSON backup** of
+settings plus peaks, log, decoder, QSO, bookmarks, heat, and watches (not audio),
+use **Settings → Data & housekeeping → Export browser data** — runs only when you
+click; see [storage quotas](docs/storage-quotas.md#backup-and-export).
 
 **Light switches** (Settings → Extras): mute while scanning, Hold auto-clear,
 peak → Identify, Log auto-scroll / Voice chip, Watch quiet-when-focused /
@@ -746,7 +749,9 @@ limits on **Peaks**; clip caps on **Audio**.
 
 Nothing is uploaded except optional **Webhook URL** POSTs.
 
-**Storage quotas:** Settings caps (logs, peaks, audio, skip, etc.) trim **oldest** data in this browser when full — see [docs/storage-quotas.md](docs/storage-quotas.md).
+**Storage quotas:** Settings caps (logs, peaks, audio, skip, etc.) trim **oldest** data in this browser when full — defaults **999** / **30** heat days — see [docs/storage-quotas.md](docs/storage-quotas.md).
+
+**Backup:** **Export settings** (JSON only) · **Export browser data** (broader JSON, no audio clips) · per-tab CSV/JSON · optional **Backup kit** (Light features: settings + Explore layout + bookmarks).
 
 **Docker:** container restarts do not wipe the table above — it lives in the **browser** at your receiver URL. Host-side files (`init.js`, local `toolbox.js`, yellow bookmarks) need a **volume** or bind-mount; see [Install → Docker](#docker).
 

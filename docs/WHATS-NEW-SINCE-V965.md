@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B272** (current). Check install and the Help tab show the running build (e.g. `B271`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B297** (current). Check install and the Help tab show the running build (e.g. `B297`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,14 +13,27 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B272** | Current era (`toolbox-vB272` tag on GitHub when published) |
+| **B1…B297** | Current era (`@main` on CDN or a `toolbox-vB###` tag when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB272/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB297/toolbox.js` (or `@main` for latest).
 
 ---
 
-## Recent (B146–B272)
+## Recent (B290–B297)
+
+- **B297** — **Settings → Data & housekeeping → Export browser data** — one JSON backup on click (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). **No audio** (export clips on **Audio**). No extra work at load time.
+- **B296** — Storage trim fixes (audio drops **oldest** clips); deploy scripts accept **B###** versions; [storage-quotas.md](storage-quotas.md) doc.
+- **B295** — **Heat days** default **30** (was 7).
+- **B294** — **Storage quotas** default **999** (was 400).
+- **B293** — Header chrome: **S·R·−·×** on the version row; **Find·100·%·M** with tabs.
+- **B292** — Eight header tools in a **4+4** grid on the far right.
+- **B291** — Version line: toolbox repo link + **G4EA5 GitHub** profile link.
+- **B290** — Header **4+4** tool grid restored beside centred version.
+
+---
+
+## Earlier (B146–B289)
 
 - **B272** — **Settings** — UX feel + Light features boxes back; **Public** header/extra-section/network allowlist + sync/preset buttons.
 - **B271** — **Settings → Public** — **Allow all More panes** for the visitor allowlist.

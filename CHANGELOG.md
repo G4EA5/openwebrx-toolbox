@@ -1,5 +1,10 @@
 # Changelog
 
+## [B297] — Export browser data
+
+- **Settings → Data & housekeeping:** **Export browser data** builds one JSON backup on click (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). Audio clips excluded; no extra work at load time.
+- README, Help tab, and `docs/storage-quotas.md` / related pages document backup vs per-tab export.
+
 ## [B296] — Audit fixes
 
 - **Max audio** quota trim drops oldest clips (same as recording), not newest.
