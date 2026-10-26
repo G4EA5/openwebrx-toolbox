@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B297";
+  Plugins.toolbox._version = "B301";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -1353,7 +1353,7 @@ Plugins.toolbox.init = function () {
     { id: "bmFiles", label: "Bookmarks files", where: "Bookmarks", tip: "Save/load/clear Toolbox lists (blue local + amber [load]). Load yellow copies OpenWebRX server bookmarks into [load] only — not green band-plan markers." },
     { id: "homelabWebhook", label: "Peak webhook", where: "Settings", tip: "When a band/range survey finds a brand-new peak, optionally POST a small JSON notice to a URL you run (Home Assistant, ntfy, a DIY script, …)." },
     { id: "installCheck", label: "Install check", where: "Settings", tip: "Check install; open the GitHub repo for updates." },
-    { id: "detachTabs", label: "Detach main tabs", where: "Settings", tip: "Right-click a main tab → Detach to new window, new browser tab, or this receiver tab (fullscreen over the dock page). Detach together and Add to open pop-out. Help and Settings stay on the main Toolbox. Bands / Bookmarks pop-outs include the Scan strip. Same receiver URL. Off by default.", defaultOn: false },
+    { id: "detachTabs", label: "Detach main tabs", where: "Settings", tip: "Right-click a main tab → Detach to new window, new browser tab, or this receiver tab (floating resizable box — main Toolbox stays usable). Detach together and Add to open pop-out. Help and Settings stay on the main Toolbox. Bands / Bookmarks pop-outs include the Scan strip. Same receiver URL. Off by default.", defaultOn: false },
     /* —— Identify (heuristic boosters; no neural net) —— */
     { id: "idBandplan", label: "Identify · bandplan priors", where: "Identify", tip: "Boost guesses from known service / ham allocations (FM broadcast, airband, marine, AIS, FT8/JS8 dials, APRS, …) using the same Band mode table. On by default." },
     { id: "idStable", label: "Identify · stable Live vote", where: "Identify", tip: "Smooth Live Identify by voting across the last few samples so the top guess flickers less. On by default." },
@@ -8058,6 +8058,7 @@ Plugins.toolbox.init = function () {
     gate("bs-import-json", "importExport", "Import");
     gate("bs-export-settings", "importExport", "Export settings");
     gate("bs-export-browser-data", "importExport", "Export browser data");
+    gate("bs-import-browser-data", "importExport", "Import browser data");
     gate("bs-import-settings", "importExport", "Import settings");
     gate("bs-save-user-defaults", "importExport", "Save as my defaults");
     gate("bs-clear-user-defaults", "importExport", "Clear my defaults");
@@ -20343,14 +20344,166 @@ Plugins.toolbox.init = function () {
   function syncDockTabDetachFramesVisibility(activeGroupId) {
     var overlay = document.getElementById("bs-tab-dock-detach-overlay");
     if (!overlay) return;
-    var frames = overlay.querySelectorAll(".bs-tab-dock-detach-iframe");
-    var multi = frames.length > 1;
-    Array.prototype.forEach.call(frames, function (fr) {
-      var gid = fr.getAttribute("data-bs-detach-group") || "";
-      if (!multi) fr.hidden = false;
-      else fr.hidden = !!(activeGroupId && gid !== activeGroupId);
+    var floats = overlay.querySelectorAll(".bs-tab-dock-detach-float");
+    var multi = floats.length > 1;
+    Array.prototype.forEach.call(floats, function (wr) {
+      var gid = wr.getAttribute("data-bs-detach-group") || "";
+      if (!multi) wr.hidden = false;
+      else wr.hidden = !!(activeGroupId && gid !== activeGroupId);
     });
   }
+
+  function defaultDockDetachFloatGeometry(staggerIndex) {
+    var vw = viewportWidth();
+    var vh = window.innerHeight || 768;
+    var w = clamp(720, 520, Math.min(920, vw - 24));
+    var h = clamp(480, 280, Math.min(640, vh - 24));
+    var panel = $("bs-panel");
+    var pr = null;
+    try { if (panel && !panel.hidden) pr = panel.getBoundingClientRect(); } catch (ePr) {}
+    var left;
+    var top;
+    var off = (Number(staggerIndex) || 0) * 28;
+    if (pr && pr.width > 40 && pr.height > 40) {
+      left = pr.right + 12 + off;
+      top = pr.top + off;
+      if (left + w > vw - 8) left = Math.max(8, pr.left);
+      left = clamp(left, 8, Math.max(8, vw - w - 8));
+      top = clamp(top, 8, Math.max(8, vh - h - 8));
+    } else {
+      left = clamp(Math.floor((vw - w) / 2) + off, 8, Math.max(8, vw - w - 8));
+      top = clamp(Math.floor((vh - h) / 2) + off, 8, Math.max(8, vh - h - 8));
+    }
+    return { w: Math.round(w), h: Math.round(h), left: Math.round(left), top: Math.round(top) };
+  }
+
+  function applyDockDetachFloatGeometry(wrap, geom) {
+    if (!wrap || !geom) return;
+    wrap.style.left = geom.left + "px";
+    wrap.style.top = geom.top + "px";
+    wrap.style.width = geom.w + "px";
+    wrap.style.height = geom.h + "px";
+  }
+
+  function bindDockDetachFloatLayout(wrap, groupId) {
+    if (!wrap || wrap._bsDockFloatBound) return;
+    wrap._bsDockFloatBound = true;
+    var dragging = null;
+    var resizeStart = null;
+    var head = wrap.querySelector(".bs-tab-dock-detach-head");
+    function persistGeom() {
+      var g = detachedTabGroups[groupId];
+      if (!g) return;
+      try {
+        var r = wrap.getBoundingClientRect();
+        g.dockGeom = {
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+          left: Math.round(r.left),
+          top: Math.round(r.top)
+        };
+      } catch (eG) {}
+    }
+    function onMove(ev) {
+      if (!dragging || !resizeStart) return;
+      ev.preventDefault();
+      var vw = window.innerWidth || 1024;
+      var vh = window.innerHeight || 768;
+      var minW = 360;
+      var minH = 280;
+      var dx = ev.clientX - resizeStart.clientX;
+      var dy = ev.clientY - resizeStart.clientY;
+      var kind = dragging;
+      var left = resizeStart.left;
+      var top = resizeStart.top;
+      var w = resizeStart.width;
+      var h = resizeStart.height;
+      if (kind === "move") {
+        left = resizeStart.left + dx;
+        top = resizeStart.top + dy;
+      } else {
+        if (kind.indexOf("e") >= 0) w = resizeStart.width + dx;
+        if (kind.indexOf("w") >= 0) {
+          w = resizeStart.width - dx;
+          left = resizeStart.left + dx;
+        }
+        if (kind.indexOf("s") >= 0) h = resizeStart.height + dy;
+        if (kind.indexOf("n") >= 0) {
+          h = resizeStart.height - dy;
+          top = resizeStart.top + dy;
+        }
+        if (w < minW) {
+          if (kind.indexOf("w") >= 0) left -= (minW - w);
+          w = minW;
+        }
+        if (h < minH) {
+          if (kind.indexOf("n") >= 0) top -= (minH - h);
+          h = minH;
+        }
+      }
+      left = clamp(left, 4, Math.max(4, vw - w - 4));
+      top = clamp(top, 4, Math.max(4, vh - h - 4));
+      w = clamp(w, minW, Math.max(minW, vw - left - 4));
+      h = clamp(h, minH, Math.max(minH, vh - top - 4));
+      wrap.style.left = left + "px";
+      wrap.style.top = top + "px";
+      wrap.style.width = w + "px";
+      wrap.style.height = h + "px";
+    }
+    function onUp() {
+      if (!dragging) return;
+      dragging = null;
+      resizeStart = null;
+      persistGeom();
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    if (head) {
+      head.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        var pr = wrap.getBoundingClientRect();
+        resizeStart = {
+          left: pr.left,
+          top: pr.top,
+          width: pr.width,
+          height: pr.height,
+          clientX: ev.clientX,
+          clientY: ev.clientY
+        };
+        dragging = "move";
+        try { head.setPointerCapture(ev.pointerId); } catch (eCap) {}
+        ev.preventDefault();
+      });
+    }
+    Array.prototype.forEach.call(wrap.querySelectorAll("[data-resize]"), function (h) {
+      h.addEventListener("pointerdown", function (ev) {
+        if (ev.button && ev.button !== 0) return;
+        var pr = wrap.getBoundingClientRect();
+        resizeStart = {
+          left: pr.left,
+          top: pr.top,
+          width: pr.width,
+          height: pr.height,
+          clientX: ev.clientX,
+          clientY: ev.clientY
+        };
+        dragging = h.getAttribute("data-resize") || "se";
+        try { h.setPointerCapture(ev.pointerId); } catch (eCap2) {}
+        ev.preventDefault();
+      });
+    });
+  }
+
+  var DOCK_DETACH_RESIZE_HANDLES_HTML =
+    '<div class="bs-resize-n" data-resize="n" title="Resize top"></div>' +
+    '<div class="bs-resize-ne" data-resize="ne" title="Resize corner"></div>' +
+    '<div class="bs-resize-e" data-resize="e" title="Resize width"></div>' +
+    '<div class="bs-resize-se" data-resize="se" title="Resize corner"></div>' +
+    '<div class="bs-resize-s" data-resize="s" title="Resize height"></div>' +
+    '<div class="bs-resize-sw" data-resize="sw" title="Resize corner"></div>' +
+    '<div class="bs-resize-w" data-resize="w" title="Resize width"></div>' +
+    '<div class="bs-resize-nw" data-resize="nw" title="Resize corner"></div>';
 
   function teardownDockTabDetachOverlayIfEmpty() {
     var overlay = document.getElementById("bs-tab-dock-detach-overlay");
@@ -20361,14 +20514,27 @@ Plugins.toolbox.init = function () {
     try { document.documentElement.classList.remove("bs-tab-dock-detach-open"); } catch (eCls) {}
   }
 
-  function openDockTabDetachFrame(groupId, popUrl) {
+  function openDockTabDetachFrame(groupId, popUrl, label) {
     var overlay = ensureDockTabDetachOverlay();
+    var stagger = overlay.querySelectorAll(".bs-tab-dock-detach-float").length;
+    var geom = defaultDockDetachFloatGeometry(stagger);
+    var wrap = document.createElement("div");
+    wrap.className = "bs-tab-dock-detach-float";
+    wrap.setAttribute("data-bs-detach-group", groupId);
+    wrap.innerHTML =
+      '<div class="bs-tab-dock-detach-head" title="Drag to move">' +
+      '<span class="bs-tab-dock-detach-title">' + escapeHtml(String(label || "Detached tab")) + "</span>" +
+      "</div>" +
+      DOCK_DETACH_RESIZE_HANDLES_HTML;
     var iframe = document.createElement("iframe");
     iframe.className = "bs-tab-dock-detach-iframe";
     iframe.setAttribute("data-bs-detach-group", groupId);
     iframe.setAttribute("title", "Detached Toolbox tabs");
     iframe.src = popUrl;
-    overlay.appendChild(iframe);
+    wrap.appendChild(iframe);
+    overlay.appendChild(wrap);
+    applyDockDetachFloatGeometry(wrap, geom);
+    bindDockDetachFloatLayout(wrap, groupId);
     syncDockTabDetachFramesVisibility(groupId);
     return iframe;
   }
@@ -21158,7 +21324,7 @@ Plugins.toolbox.init = function () {
       );
     }).join("");
     bar.innerHTML = tabsHtml +
-      '<button type="button" class="bs-tiny bs-btn-util bs-tab-reattach" title="Move these tabs back to the main Toolbox window.">Reattach all</button>';
+      '<button type="button" class="bs-tiny bs-btn-util bs-tab-reattach" title="Move these tabs back to the main Toolbox window.">Reattach</button>';
     var reBtn = bar.querySelector(".bs-tab-reattach");
     if (reBtn) {
       reBtn.onclick = function () { reattachDetachGroup(groupId, { confirmWin: g.win }); };
@@ -21223,7 +21389,7 @@ Plugins.toolbox.init = function () {
             setStatus("Could not open detach window.");
             try { closeDetachPopoutWindow(win); } catch (eC) {}
           } else {
-            tabPopoutShowBootMessage(win, "Remount failed — use Reattach all on the main receiver tab.");
+            tabPopoutShowBootMessage(win, "Remount failed — use Reattach on the main receiver tab.");
           }
         }
       } catch (eM) {
@@ -21237,7 +21403,52 @@ Plugins.toolbox.init = function () {
     });
   }
 
+  var TAB_POPOUT_BOOT_SCRIPT =
+    "(function(){function meta(){try{return window.__owrxTabPopoutMeta||{}}catch(e){return{}}}function applyTitle(){try{var m=meta();document.title='Toolbox \\u2014 '+(m.label||m.tab||'Toolbox')}catch(e){}}function waitMsg(){var wait=document.querySelector('.bs-tab-popout-wait');if(!wait)return;var extra='';try{var m=meta();if(location.protocol==='http:'&&!m.hideHttpNote){extra=' HTTP: same receiver \\u2014 Not secure means no HTTPS, not an unsafe detach. Traffic is unencrypted; use HTTPS or VPN-only when remote.'}}catch(eP){}if(wait.getAttribute('data-bs-booting')==='1'){wait.textContent='Reconnecting to Toolbox\\u2026'+extra}}function boot(){applyTitle();var wait=document.querySelector('.bs-tab-popout-wait');if(wait)wait.setAttribute('data-bs-booting','1');waitMsg();var tries=0;function tryBoot(){try{if(window.opener&&!window.opener.closed&&typeof window.opener.__owrxToolboxTabPopoutBoot==='function'){window.opener.__owrxToolboxTabPopoutBoot(window);return true}}catch(eOp){}try{if(window.parent&&window.parent!==window&&typeof window.parent.__owrxToolboxTabPopoutBoot==='function'){window.parent.__owrxToolboxTabPopoutBoot(window);return true}}catch(ePar){}return false}if(tryBoot())return;var tmr=setInterval(function(){tries+=1;if(tryBoot()){clearInterval(tmr);return}if(tries>=48){clearInterval(tmr);if(wait){var hasGroup=!!meta().group;wait.textContent=hasGroup?'Cannot reconnect \\u2014 keep the main OpenWebRX / Toolbox tab open (refresh that page if needed), then press F5 here. Or close this window and use Reattach on the receiver.':'Waiting for Toolbox\\u2026 hard-refresh the receiver page, then detach again.'}}},250)}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot)}else{boot()}})();";
+
+  function tabPopoutShellHtml(meta) {
+    meta = meta || {};
+    var cssHref = toolboxAbsoluteAssetUrl("toolbox.css");
+    var metaJs = JSON.stringify({
+      tab: String(meta.tabId || ""),
+      label: String(meta.label || ""),
+      group: String(meta.groupId || ""),
+      hideHttpNote: !!meta.hideHttpNote
+    });
+    return (
+      "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+      "<title>OpenWebRX Toolbox</title>" +
+      '<link rel="stylesheet" href="' + escapeHtml(cssHref) + '">' +
+      "<script>window.__owrxTabPopoutMeta=" + metaJs + ";</script>" +
+      "<script>" + TAB_POPOUT_BOOT_SCRIPT + "</script>" +
+      "</head><body class=\"bs-tab-popout\">" +
+      "<p class=\"bs-tab-popout-wait\">Loading tab\\u2026</p></body></html>"
+    );
+  }
+
+  function tabPopoutBlobUrlForMeta(meta) {
+    try {
+      return URL.createObjectURL(new Blob([tabPopoutShellHtml(meta)], { type: "text/html;charset=utf-8" }));
+    } catch (eBlob) {
+      return "";
+    }
+  }
+
+  function revokeTabPopoutBlobWhenClosed(win, blobUrl) {
+    if (!win || !blobUrl) return;
+    try {
+      win.addEventListener("unload", function () {
+        try { URL.revokeObjectURL(blobUrl); } catch (eR) {}
+      });
+    } catch (eU) {}
+  }
+
   function tabPopoutGroupIdFromUrl(popWin) {
+    try {
+      var m = popWin.__owrxTabPopoutMeta;
+      if (m && m.group) return String(m.group);
+    } catch (eM) {}
     try {
       return new URLSearchParams(popWin.location.search).get("group") || "";
     } catch (e) {
@@ -21393,7 +21604,7 @@ Plugins.toolbox.init = function () {
       if (!opts.remount) {
         try { closeDetachPopoutWindow(win); } catch (eEmpty) {}
       } else {
-        tabPopoutShowBootMessage(win, "Tab content missing — on the receiver use Reattach all, then detach again.");
+        tabPopoutShowBootMessage(win, "Tab content missing — on the receiver use Reattach, then detach again.");
       }
       return false;
     }
@@ -21425,8 +21636,8 @@ Plugins.toolbox.init = function () {
     try { applyToolbarVisibility(); } catch (eTbMtVis) {}
     if (!opts.remount) {
       setStatus(dockInTab
-        ? label + " detached in this tab — use Reattach on the pop-out bar or Reattach all."
-        : label + " detached — use the pop-out tab bar or Reattach all.");
+        ? label + " detached in a floating box — drag the title bar; use Reattach on the pop-out bar."
+        : label + " detached — use Reattach on the pop-out tab bar.");
     } else {
       setStatus(label + " pop-out reloaded — tabs restored in this window.");
     }
@@ -21476,7 +21687,17 @@ Plugins.toolbox.init = function () {
     var openAsTab = opts.target === "tab";
     var feats = "popup=yes,width=920,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes";
     installTabPopoutBootHandler();
-    var popUrl = toolboxTabPopoutUrl(tabIds[0], label, groupId);
+    var popMeta = {
+      tabId: tabIds[0],
+      label: label,
+      groupId: groupId,
+      hideHttpNote: !!S.hideDetachHttpNote
+    };
+    var popBlobUrl = tabPopoutBlobUrlForMeta(popMeta);
+    if (!popBlobUrl) {
+      setStatus("Could not open detach window.");
+      return;
+    }
     window.__owrxTabPopoutPending = {
       win: null,
       groupId: groupId,
@@ -21486,7 +21707,7 @@ Plugins.toolbox.init = function () {
     };
     var win;
     if (openInDockTab) {
-      var iframe = openDockTabDetachFrame(groupId, popUrl);
+      var iframe = openDockTabDetachFrame(groupId, popBlobUrl, label);
       iframe.onload = function () {
         try {
           var cw = iframe.contentWindow;
@@ -21500,12 +21721,14 @@ Plugins.toolbox.init = function () {
       win = iframe.contentWindow;
     } else {
       win = openAsTab
-        ? window.open(popUrl, "_blank")
-        : window.open(popUrl, "owrx-toolbox-tab-" + groupId, feats);
+        ? window.open(popBlobUrl, "_blank")
+        : window.open(popBlobUrl, "owrx-toolbox-tab-" + groupId, feats);
+      revokeTabPopoutBlobWhenClosed(win, popBlobUrl);
     }
     window.__owrxTabPopoutPending.win = win;
     if (!win) {
       window.__owrxTabPopoutPending = null;
+      try { URL.revokeObjectURL(popBlobUrl); } catch (eRevPop) {}
       setStatus(openInDockTab
         ? "Could not open in-tab detach — try again or use Detach to new window."
         : "Pop-out blocked — allow pop-ups for this receiver, then Detach again.");
@@ -21591,7 +21814,9 @@ Plugins.toolbox.init = function () {
       if (detachPopoutIsDockedInTab(win)) {
         try { restoreToolbarToMainPanel(win); } catch (eTbD) {}
         var fe = win.frameElement;
-        if (fe && fe.parentNode) fe.parentNode.removeChild(fe);
+        var floatWrap = fe && fe.closest ? fe.closest(".bs-tab-dock-detach-float") : null;
+        if (floatWrap && floatWrap.parentNode) floatWrap.parentNode.removeChild(floatWrap);
+        else if (fe && fe.parentNode) fe.parentNode.removeChild(fe);
         teardownDockTabDetachOverlayIfEmpty();
         try { applyToolbarVisibility(); } catch (eVisD) {}
         return true;
@@ -21921,7 +22146,7 @@ Plugins.toolbox.init = function () {
       menu.appendChild(b);
     }
     addItem(
-      reattachN ? "Reattach all tabs (" + reattachN + ")" : "Reattach all tabs",
+      reattachN ? "Reattach (" + reattachN + ")" : "Reattach",
       function () { reattachAllDetachedTabs(); },
       reattachN < 1
     );
@@ -21949,7 +22174,7 @@ Plugins.toolbox.init = function () {
       });
       addItem("Detach to new window", function () { detachMainTab(tabId); }, !detachExtra || isPanelDetached() || detachLocked);
       addItem("Detach to new browser tab", function () { detachMainTab(tabId, { target: "tab" }); }, !detachExtra || isPanelDetached() || detachLocked);
-      addItem("Detach in this tab (dock page)", function () { detachMainTab(tabId, { target: "dock" }); }, !detachExtra || isPanelDetached() || detachLocked);
+      addItem("Detach in this tab (floating box)", function () { detachMainTab(tabId, { target: "dock" }); }, !detachExtra || isPanelDetached() || detachLocked);
       addItem("Detach together to new window…", function () { openTabDetachTogetherPicker(tabId); }, !detachExtra || isPanelDetached() || detachLocked);
       addItem("Detach together to new browser tab…", function () { openTabDetachTogetherPicker(tabId, { target: "tab" }); }, !detachExtra || isPanelDetached() || detachLocked);
       addItem("Detach together in this tab…", function () { openTabDetachTogetherPicker(tabId, { target: "dock" }); }, !detachExtra || isPanelDetached() || detachLocked);
@@ -21977,11 +22202,11 @@ Plugins.toolbox.init = function () {
     var hint = document.createElement("p");
     hint.className = "bs-tab-menu-hint";
     hint.textContent = detachLocked
-      ? "Help and Settings stay on the main Toolbox — use Reattach all if a pop-out still has them."
+      ? "Help and Settings stay on the main Toolbox — use Reattach if a pop-out still has them."
       : detachExtra
       ? "In this tab = fullscreen over the receiver (side dock stays in the same browser tab). Bands / Bookmarks include the Scan strip. Help and Settings stay on the main panel." +
         (detachHttpSecurityNotePlain() || " Use HTTPS on the server to avoid browser “Not secure” on HTTP.")
-      : "Turn on detach above, or Settings → Extras → Detach main tabs. Missing tabs? Use Reattach all.";
+      : "Turn on detach above, or Settings → Extras → Detach main tabs. Missing tabs? Use Reattach.";
     menu.appendChild(hint);
     try {
       mountToolboxOverlay(menu, tabId);
@@ -23607,7 +23832,7 @@ Plugins.toolbox.init = function () {
           page_url: location.href,
           audio_clip_count: audioClips ? audioClips.length : 0,
           audio_note: "Audio clips are not included (IndexedDB). Export clips from the Audio tab if needed.",
-          restore_note: "Restore via Import settings, Peaks/Log import, and bookmarks — no single Import for this file yet.",
+          restore_note: "Restore with Settings → Import browser data (same file). Audio not included.",
           settings: settingsObjectForExport(),
           exploreLayout: layout,
           bookmarks: {
@@ -23628,6 +23853,116 @@ Plugins.toolbox.init = function () {
         setStatus("Browser backup failed.");
       }
     }, 0);
+  }
+
+  function normalizeToolboxBrowserBackup(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    if (obj.kind === "owrx-toolbox-browser-backup") return obj;
+    if (obj.kind === "owrx-toolbox-backup-kit") {
+      return {
+        kind: "owrx-toolbox-browser-backup",
+        settings: obj.settings,
+        exploreLayout: obj.exploreLayout,
+        bookmarks: obj.bookmarks
+      };
+    }
+    return null;
+  }
+
+  function importSigWatchFromBackup(watchObj) {
+    if (!watchObj || typeof watchObj !== "object") return;
+    sigWatchRules = Array.isArray(watchObj.rules) ? watchObj.rules.slice() : [];
+    sigWatchHits = Array.isArray(watchObj.hits) ? watchObj.hits.slice() : [];
+    if (sigWatchHits.length > 200) sigWatchHits = sigWatchHits.slice(0, 200);
+    saveSigWatch();
+    sigWatchRender();
+  }
+
+  function importToolboxBrowserDataFromObject(obj) {
+    if (!requirePublicFeature("importExport", "Import browser data")) return false;
+    var kit = normalizeToolboxBrowserBackup(obj);
+    if (!kit) return false;
+    var when = kit.exportedAt ? String(kit.exportedAt).slice(0, 19).replace("T", " ") : "backup";
+    if (!window.confirm(
+      "Import browser backup (" + when + ")?\n\n" +
+      "• Merges settings\n" +
+      "• Replaces peaks, log, decoder archive, QSO, heat, watches, and loaded [load] bookmarks in this browser\n" +
+      "• Blue local bookmarks only if the file includes them (you will confirm)\n" +
+      "• Audio clips are not in backup files"
+    )) return false;
+    var parts = [];
+    if (kit.settings && typeof kit.settings === "object") {
+      if (importSettingsMerge(kit.settings)) parts.push("settings");
+    }
+    if (kit.exploreLayout && typeof kit.exploreLayout === "object") {
+      if (exploreLayoutApplyImported(kit.exploreLayout, { skipModeCheck: true })) parts.push("Explore layout");
+    }
+    if (kit.bookmarks && typeof kit.bookmarks === "object") {
+      var loadedRows = Array.isArray(kit.bookmarks.loaded)
+        ? kit.bookmarks.loaded.map(normalizeLoadedBookmark).filter(Boolean)
+        : [];
+      if (loadedRows.length) {
+        applyLoadedBookmarks(loadedRows, "browser backup", { replace: true, noConfirm: true });
+        parts.push("loaded bookmarks");
+      }
+      var localRows = Array.isArray(kit.bookmarks.local)
+        ? kit.bookmarks.local.filter(function (b) { return b && (b.frequency || b.freq); })
+        : [];
+      if (localRows.length && restoreLocalBookmarkList(localRows, "browser backup")) parts.push("local bookmarks");
+    }
+    if (kit.peaks && typeof kit.peaks === "object") {
+      ensureHitsLoaded(function () {
+        hits = Array.isArray(kit.peaks.hits) ? kit.peaks.hits.slice() : [];
+        tileLooks = kit.peaks.tileLooks && typeof kit.peaks.tileLooks === "object" ? kit.peaks.tileLooks : {};
+        _hitsClassified = false;
+        trimPeaksIfNeeded();
+        saveHits();
+        try { renderHits(); } catch (eRh) {}
+        try { updateTabLabels(); } catch (ePk) {}
+      });
+      parts.push("peaks");
+    }
+    if (Array.isArray(kit.traffic_log)) {
+      trafficLogRows = kit.traffic_log.slice();
+      trafficLogTrim();
+      saveTrafficLog();
+      try { trafficLogRender(); } catch (eLog) {}
+      parts.push("log");
+    }
+    if (Array.isArray(kit.decoder_archive)) {
+      decoderArchiveRows = kit.decoder_archive.slice(-decoderArchiveCap());
+      saveDecoderArchive();
+      try { decoderArchiveRender(); } catch (eDec) {}
+      parts.push("decoder");
+    }
+    if (Array.isArray(kit.qso_pad)) {
+      qsoRows = kit.qso_pad.map(qsoNormalize).filter(Boolean).slice(-maxQsoRowsCap());
+      saveQso();
+      try { qsoRender(); } catch (eQso) {}
+      parts.push("QSO");
+    }
+    if (Array.isArray(kit.occupancy_heat)) {
+      try { ensureOccHeatLoaded(); } catch (eOcc) {}
+      occHeatLog = kit.occupancy_heat.slice(-4000);
+      saveOccHeat();
+      parts.push("heat");
+    }
+    if (kit.watches) {
+      importSigWatchFromBackup(kit.watches);
+      parts.push("watches");
+    }
+    try { applyAllStorageQuotaTrims(); } catch (eTrim) {}
+    try { updateTabLabels(); } catch (eLab) {}
+    setStatus(parts.length
+      ? "Imported browser backup: " + parts.join(", ") + "."
+      : "Nothing to import in that file.");
+    return parts.length > 0;
+  }
+
+  function importToolboxBrowserDataPick() {
+    if (!requirePublicFeature("importExport", "Import browser data")) return;
+    var inp = $("bs-browser-data-file");
+    if (inp) inp.click();
   }
 
   function fillSdrControlForm() {
@@ -26926,9 +27261,10 @@ Plugins.toolbox.init = function () {
     return rows;
   }
 
-  function applyLoadedBookmarks(rows, source) {
-    var replace = !loadedBookmarks.length;
-    if (loadedBookmarks.length) {
+  function applyLoadedBookmarks(rows, source, opts) {
+    opts = opts || {};
+    var replace = typeof opts.replace === "boolean" ? opts.replace : !loadedBookmarks.length;
+    if (!opts.noConfirm && loadedBookmarks.length) {
       replace = window.confirm(
         "Replace " + loadedBookmarks.length + " loaded bookmark(s) with " + rows.length + " from " +
         (source || "file") + "? OK = replace. Cancel = merge new frequencies only."
@@ -27213,15 +27549,6 @@ Plugins.toolbox.init = function () {
     } catch (eUrl) {
       return rel;
     }
-  }
-
-  function toolboxTabPopoutUrl(tabId, label, groupId) {
-    var base = toolboxAbsoluteAssetUrl("tab-popout.html");
-    var q = "tab=" + encodeURIComponent(tabId || "");
-    if (label) q += "&label=" + encodeURIComponent(String(label));
-    if (groupId) q += "&group=" + encodeURIComponent(String(groupId));
-    if (S.hideDetachHttpNote) q += "&httpnote=0";
-    return base + (base.indexOf("?") >= 0 ? "&" : "?") + q;
   }
 
   /*@@CALLSIGN_ALLOC_EMBED_BEGIN@@*/
@@ -28621,7 +28948,7 @@ Plugins.toolbox.init = function () {
       "</ul><p><b>Data &amp; housekeeping</b></p><ul>" +
       "<li><b>Factory reset</b> — red button at the <b>top of Settings</b>. Opens a dialog: tick what to clear in this browser, or Full reset. <b>Never</b> deletes OpenWebRX bands/presets, server settings, or stock data. Panel layout and personal defaults are kept.</li>" +
       "<li><b>Export settings</b> · <b>Import settings</b> · <b>Reset settings</b> — settings JSON only (not peaks or audio).</li>" +
-      "<li><b>Export browser data</b> — one JSON backup on click (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). <b>Not</b> audio clips (Audio tab). Restore is per-tab import today. Zero cost until you click.</li>" +
+      "<li><b>Export browser data</b> · <b>Import browser data</b> — one JSON backup (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). Import merges settings and replaces the listed data in this browser. <b>Not</b> audio (Audio tab). Zero cost until you click.</li>" +
       "<li><b>Backup kit</b> (Light features) — smaller kit: settings + Explore layout + bookmarks.</li>" +
       "<li><b>Save as my defaults</b> — store the settings currently shown plus <b>Explore box positions</b> (free placement) as personal defaults in this browser. <b>Reset settings</b> and a Factory reset that clears Toolbox settings restore them afterwards. <b>Clear my defaults</b> returns to built-in Toolbox defaults. Personal defaults themselves are never wiped by Factory reset.</li>" +
       "</ul><p><b>Peak webhook</b> (Settings → Extras → Peak webhook)</p><ul>" +
@@ -64515,6 +64842,8 @@ Plugins.toolbox.init = function () {
         '<div class="bs-row">' +
         '<button type="button" class="bs-btn-export" id="bs-export-settings" title="Download settings JSON (not peak hits or audio).">Export settings</button>' +
         '<button type="button" class="bs-btn-export" id="bs-export-browser-data" title="One JSON file: settings, peaks, log, decoder, QSO, bookmarks, heat, watches — not audio (export clips on Audio tab). Runs only when you click.">Export browser data</button>' +
+        '<button type="button" class="bs-btn-import" id="bs-import-browser-data" title="Restore from Export browser data JSON (merges settings; replaces peaks, log, and related lists). No audio.">Import browser data</button>' +
+        '<input type="file" id="bs-browser-data-file" accept=".json,application/json" hidden>' +
         '<button type="button" class="bs-btn-import" id="bs-import-settings" title="Import settings JSON and merge.">Import settings</button>' +
         '<button type="button" class="bs-btn-clear" id="bs-reset-settings" title="Reset settings to personal defaults if saved, otherwise built-in defaults. Keeps peak list.">Reset settings</button>' +
         "</div>" +
@@ -64523,7 +64852,7 @@ Plugins.toolbox.init = function () {
         '<button type="button" class="bs-btn-clear" id="bs-clear-user-defaults" title="Remove personal defaults so Reset / Factory reset use built-in Toolbox defaults again.">Clear my defaults</button>' +
         "</div>" +
         '<p class="bs-hint" id="bs-user-defaults-hint">No personal defaults yet — Reset / Factory reset use built-in Toolbox defaults.</p>' +
-        '<p class="bs-hint"><b>Export browser data</b> bundles settings, peaks, log, and related lists in one JSON file (no audio). Restore still uses per-tab import.</p>' +
+        '<p class="bs-hint"><b>Export / Import browser data</b> — one JSON file for settings, peaks, log, and related lists (no audio). <b>Import settings</b> is settings only.</p>' +
         '<p class="bs-hint">Guest clear/import: Settings → Public → Clear &amp; files.</p>') +
       settingsBoxHtml("Quiet hours",
         '<p class="bs-hint">One-click presets for scheduled-scan quiet hours (Bands → schedule). Same times as the quiet start/end fields.</p>' +
@@ -67764,6 +68093,27 @@ Plugins.toolbox.init = function () {
 
     if ($("bs-export-settings")) $("bs-export-settings").onclick = exportSettingsJson;
     if ($("bs-export-browser-data")) $("bs-export-browser-data").onclick = exportToolboxBrowserData;
+    if ($("bs-import-browser-data")) $("bs-import-browser-data").onclick = importToolboxBrowserDataPick;
+    if ($("bs-browser-data-file") && !$("bs-browser-data-file")._bsWired) {
+      $("bs-browser-data-file")._bsWired = true;
+      $("bs-browser-data-file").onchange = function () {
+        var f = this.files && this.files[0];
+        this.value = "";
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            var obj = JSON.parse(String(reader.result || "").replace(/^\uFEFF/, "").trim());
+            if (!importToolboxBrowserDataFromObject(obj)) {
+              setStatus("Browser data import failed — use a file from Export browser data.");
+            }
+          } catch (e) {
+            setStatus("Browser data import failed — " + friendlyError(e, "Import"));
+          }
+        };
+        reader.readAsText(f);
+      };
+    }
     if ($("bs-import-settings")) $("bs-import-settings").onclick = function () {
       var inp = $("bs-settings-file");
       if (inp) inp.click();

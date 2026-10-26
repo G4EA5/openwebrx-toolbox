@@ -485,7 +485,7 @@ restores everything. Settings always stays on; sub-tabs are **General** · **Sys
 Any of those that store transferable data have **Export** / **Import** (file or
 Shift-click paste), same gate as Peaks CSV/JSON. For a **single JSON backup** of
 settings plus peaks, log, decoder, QSO, bookmarks, heat, and watches (not audio),
-use **Settings → Data & housekeeping → Export browser data** — runs only when you
+use **Settings → Data & housekeeping → Export browser data** / **Import browser data** — runs only when you
 click; see [storage quotas](docs/storage-quotas.md#backup-and-export).
 
 **Light switches** (Settings → Extras): mute while scanning, Hold auto-clear,

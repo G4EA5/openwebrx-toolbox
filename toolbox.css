@@ -4289,23 +4289,128 @@ body.bs-ex-box-dnd {
 #bs-tab-dock-detach-overlay {
   position: fixed;
   inset: 0;
-  z-index: 100140;
-  background: #0b1220;
-  display: flex;
-  flex-direction: column;
+  z-index: 10035;
+  pointer-events: none;
+  background: transparent;
 }
 
-.bs-tab-dock-detach-iframe {
+.bs-tab-dock-detach-float {
+  position: fixed;
+  z-index: 10050;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 360px;
+  min-height: 280px;
+  background: #111111;
+  color: #f4f4f4;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  font: 13px/1.35 sans-serif;
+}
+
+.bs-tab-dock-detach-float[hidden] {
+  display: none !important;
+}
+
+.bs-tab-dock-detach-head {
+  flex: 0 0 auto;
+  cursor: move;
+  touch-action: none;
+  padding: 6px 10px;
+  background: #1e293b;
+  border-bottom: 1px solid #475569;
+  user-select: none;
+}
+
+.bs-tab-dock-detach-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.bs-tab-dock-detach-float .bs-tab-dock-detach-iframe {
   flex: 1 1 auto;
   width: 100%;
-  height: 100%;
   min-height: 0;
   border: none;
   background: #0b1220;
 }
 
-.bs-tab-dock-detach-iframe[hidden] {
-  display: none !important;
+.bs-tab-dock-detach-float [class*="bs-resize-"] {
+  position: absolute;
+  z-index: 3;
+  background: transparent;
+  touch-action: none;
+}
+
+.bs-tab-dock-detach-float .bs-resize-n {
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-s {
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-e {
+  top: 28px;
+  right: 0;
+  width: 8px;
+  bottom: 12px;
+  cursor: ew-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-w {
+  top: 28px;
+  left: 0;
+  width: 8px;
+  bottom: 12px;
+  cursor: ew-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-nw,
+.bs-tab-dock-detach-float .bs-resize-ne,
+.bs-tab-dock-detach-float .bs-resize-sw,
+.bs-tab-dock-detach-float .bs-resize-se {
+  width: 14px;
+  height: 14px;
+}
+
+.bs-tab-dock-detach-float .bs-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.bs-tab-dock-detach-float .bs-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 50%, #9ca3af 50%, #9ca3af 62%, transparent 62%),
+    linear-gradient(135deg, transparent 72%, #9ca3af 72%, #9ca3af 84%, transparent 84%);
 }
 
 body.bs-tab-popout {

@@ -22,7 +22,8 @@ Tab labels such as **Log 400** show the **current row count**, not the max setti
 | Action | Where | What you get |
 | --- | --- | --- |
 | **Export settings** | Settings → Data & housekeeping | Settings JSON only (not peaks or audio). |
-| **Export browser data** | Same | One JSON file: settings, peaks, log, decoder, QSO, loaded bookmarks, occupancy heat, watches, Explore layout. **Audio clips excluded** (IndexedDB — use **Audio** tab export). Built **only when you click**; does not slow normal use. Restore today is still **per-tab** import (settings, peaks CSV/JSON, log, etc.). |
+| **Import browser data** | Same | Restores a file from **Export browser data**: merges **settings**; replaces peaks, log, decoder, QSO, heat, watches, and loaded bookmarks in this browser. Optional blue-bookmark restore if the file includes them. No audio. |
+| **Export browser data** | Same | One JSON file: settings, peaks, log, decoder, QSO, loaded bookmarks, occupancy heat, watches, Explore layout. **Audio clips excluded** (IndexedDB — use **Audio** tab export). Built **only when you click**; does not slow normal use. |
 | **Backup kit** | Settings → Light features (when **Backup kit** is on) | Settings + Explore layout + bookmarks (smaller than browser data). |
 | Per-tab export | Peaks, Log, Audio, Watch, … | CSV or JSON for that list only. |
 

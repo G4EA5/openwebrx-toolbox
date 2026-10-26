@@ -1,5 +1,17 @@
 # Changelog
 
+## [B301] — Import browser data
+
+- **Settings → Data & housekeeping:** **Import browser data** restores JSON from **Export browser data** (settings merge; peaks, log, decoder, QSO, heat, watches, loaded bookmarks replace). Backup-kit files import settings, layout, and bookmarks only. Audio still not included.
+
+## [B299] — Detach in this tab = floating box
+
+- **Detach in this tab** opens a **movable, resizable** panel (like undocked Toolbox), not a fullscreen layer over the receiver. Main Toolbox stays clickable.
+
+## [B298] — Two-file install only
+
+- Detached **tab** pop-outs no longer need **`tab-popout.html`** — bootstrap shell is built from **`toolbox.js`** (blob URL + `toolbox.css`). Copy **`toolbox.js`** + **`toolbox.css`** only.
+
 ## [B297] — Export browser data
 
 - **Settings → Data & housekeeping:** **Export browser data** builds one JSON backup on click (settings, peaks, log, decoder, QSO, bookmarks, heat, watches). Audio clips excluded; no extra work at load time.
