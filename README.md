@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB297)
+# OpenWebRX Toolbox (vB303)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -60,15 +60,15 @@ the top bar, then **Settings → Check install**.
 
 ### What’s new since v965 (B era)
 
-After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B297** (see Help → **What’s new since v965**). Summary:
+After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B303** (see Help → **What’s new since v965**). Summary:
 
 | Area | Highlights |
 | --- | --- |
 | **More** | Feeds → Yours, expanded panes (5 default per group), Plan/News/Tips, Calls/prefix data in `toolbox.js` |
-| **Explore** | Light boxes, Listen, S-meter calibrate, **SDR only** on Profile hop (B73–B109) |
+| **Explore** | Light boxes, Listen, S-meter calibrate, **SDR only** on Profile hop (B73–B109); **Go MHz** stays on the chosen radio — nearest band on that SDR when the MHz is outside profile labels (**B302–B303**, HackRF vs RTL) |
 | **Bands** | Packs per-SDR, **SDR only** bar (with Explore); Beacons/Solar/Today moved to More |
 | **Range / Anz / ID** | Per-tab **Choose SDR** (ID: **All SDRs** or one kind); Anz **Main waterfall** on wide spans |
-| **Settings** | **Update Toolbox**, multi-SDR block at bottom of **General**, **Public** sub-tab, layout profiles (replaces old Pi preset) |
+| **Settings** | **Update Toolbox**, multi-SDR block at bottom of **General**, **Public** sub-tab, **Import / Export browser data** (B297–B301), layout profiles (replaces old Pi preset) |
 | **Full guide** | [`docs/WHATS-NEW-SINCE-V965.md`](docs/WHATS-NEW-SINCE-V965.md) · [`CHANGELOG.md`](CHANGELOG.md) |
 
 ### What’s new since v440 (high level)

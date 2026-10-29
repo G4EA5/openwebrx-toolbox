@@ -1,5 +1,13 @@
 # Changelog
 
+## [B303] — Explore Go: nearest band on same SDR (555 MHz HackRF)
+
+- **Go MHz** on HackRF (or **SDR only**) switches to the **closest band on that radio** when no profile label includes the target (e.g. 555 MHz → HackRF 70cm), then tunes — same idea as RTL. Does not pick another stick’s profile when you are already on HackRF.
+
+## [B302] — Explore Go respects SDR only (HackRF)
+
+- **Explore → Go MHz** with **SDR only** set (e.g. HackRF) picks a profile on that radio only — no silent jump to another SDR’s band (e.g. MW ~1 MHz when you typed 555 MHz). Clear status when no HackRF/RTL profile covers the target MHz.
+
 ## [B301] — Import browser data
 
 - **Settings → Data & housekeeping:** **Import browser data** restores JSON from **Export browser data** (settings merge; peaks, log, decoder, QSO, heat, watches, loaded bookmarks replace). Backup-kit files import settings, layout, and bookmarks only. Audio still not included.

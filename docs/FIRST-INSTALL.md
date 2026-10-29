@@ -2,7 +2,7 @@
 
 Plain-language guide for **first-time** setup. Nothing here removes features — it only explains what to do on the **radio host** vs in the **browser**.
 
-**Current build:** B era (e.g. **B297**). After install, the Help tab and **Settings → Check install** show your exact version.
+**Current build:** B era (e.g. **B303**). After install, the Help tab and **Settings → Check install** show your exact version.
 
 ---
 

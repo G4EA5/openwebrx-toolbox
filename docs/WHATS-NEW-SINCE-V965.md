@@ -1,6 +1,6 @@
 # What’s new since v965 (B era)
 
-OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B297** (current). Check install and the Help tab show the running build (e.g. `B297`).
+OpenWebRX Toolbox **v965** was the last **numeric** build tag (`toolbox-v965`). Everything after that uses the **B** era: **B1**, **B2**, … **B303** (current). Check install and the Help tab show the running build (e.g. `B303`).
 
 Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the **operator guide** — what changed for day-to-day use.
 
@@ -13,10 +13,20 @@ Full line-by-line history: [`CHANGELOG.md`](../CHANGELOG.md). This page is the *
 | Label | Meaning |
 | --- | --- |
 | **v965** | Last numeric release before the B era |
-| **B1…B297** | Current era (`@main` on CDN or a `toolbox-vB###` tag when published) |
+| **B1…B303** | Current era (`@main` on CDN or a `toolbox-vB###` tag when published) |
 | **v440** | Older frozen snapshot in [`v440/`](../v440/) — not the same as v965 |
 
-CDN pin example: `…@toolbox-vB297/toolbox.js` (or `@main` for latest).
+CDN pin example: `…@toolbox-vB303/toolbox.js` (or `@main` for latest).
+
+---
+
+## Recent (B298–B303)
+
+- **B303** — **Explore → Go MHz** with **HackRF** (or **SDR only**) picks the **closest band on that radio** when no profile name includes your MHz (e.g. 555 → HackRF 70 cm), then tunes — same behaviour as RTL. Does not hop to the other stick.
+- **B302** — Explore **Go** respects **SDR only** — no silent profile pick on a different radio when the filter is set.
+- **B301** — **Settings → Data & housekeeping → Import browser data** — restore from **Export browser data** JSON (settings merge; peaks, log, bookmarks, etc.).
+- **B299** — **Detach in this tab** — floating movable panel, not a fullscreen layer over the receiver.
+- **B298** — Two-file install only (`toolbox.js` + `toolbox.css`; no separate pop-out HTML).
 
 ---
 

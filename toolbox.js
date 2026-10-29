@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B301";
+  Plugins.toolbox._version = "B303";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -32798,7 +32798,8 @@ Plugins.toolbox.init = function () {
     return idLooksUhf(p && p.id);
   }
 
-  function profileForFreq(freqHz) {
+  function profileForFreq(freqHz, sdrKindOnly) {
+    sdrKindOnly = String(sdrKindOnly || "").trim();
     var list = profiles();
     var best = null;
     var bestSpan = Infinity;
@@ -32807,7 +32808,8 @@ Plugins.toolbox.init = function () {
     var i, p, r, lo, hi, span, mid, d;
     for (i = 0; i < list.length; i++) {
       p = list[i];
-      r = parseMhzRange(p.label);
+      if (sdrKindOnly && !profileMatchesPackSdrKind(p.value, sdrKindOnly)) continue;
+      r = parseMhzRange(p.label) || profileMhzRange(p);
       if (!r) continue;
       lo = r.lo * 1e6;
       hi = r.hi * 1e6;
@@ -32825,6 +32827,21 @@ Plugins.toolbox.init = function () {
       }
     }
     return best || near;
+  }
+
+  /** Explore Go: SDR only dropdown, else the live OpenWebRX profile’s radio (not another stick’s “nearest”). */
+  function exploreActiveSdrKindFilter() {
+    var only = String(S.exploreSdrShowOnly || "").trim();
+    if (only) return only;
+    try {
+      var cv = String(currentProfileValue() || "");
+      if (cv.indexOf("|") < 0) return "";
+      var dev = profileSdrKind(cv);
+      var kind = smeterCalKindFromDeviceId(dev);
+      if (kind && kind !== "generic") return kind;
+      return dev || "";
+    } catch (e) {}
+    return "";
   }
 
   function profileMhzRange(p) {
@@ -72561,16 +72578,28 @@ Plugins.toolbox.init = function () {
       hz = clamped.hz;
       exploreSetStatus("Public Explore limited to " + publicExploreLimitLabel() + " — using " + fmtMhz(hz));
     }
-    var p = profileForFreq(hz);
+    var sdrOnly = exploreActiveSdrKindFilter();
+    var p = profileForFreq(hz, sdrOnly);
     if (isPublicReceiver() && (publicExploreBandsRestricted() || publicExploreLimitsHz())) {
       if (!p || !profileAllowedForPublicExplore(p)) {
-        p = allowedPublicExploreProfileForHz(hz);
+        var alt = allowedPublicExploreProfileForHz(hz);
+        if (alt && (!sdrOnly || profileMatchesPackSdrKind(alt.value, sdrOnly))) p = alt;
       }
       if (!p) {
         exploreSetStatus("Public Explore: " + fmtMhz(hz) + " is outside allowed bands" +
           (publicExploreLimitLabel() ? " (" + publicExploreLimitLabel() + ")" : "") + ".");
         return;
       }
+    }
+    if (!p) {
+      exploreSetStatus(sdrOnly
+        ? ("No “" + sdrOnly + "” profile for " + fmtMhz(hz) + " — add a band or widen coverage.")
+        : ("No profile for " + fmtMhz(hz) + " — add a band in OpenWebRX settings."));
+      return;
+    }
+    var span = profileMhzRange(p);
+    if (span && (hz < span.lo * 1e6 || hz > span.hi * 1e6)) {
+      exploreSetStatus("Profile → " + (p.label || p.id || "") + " (nearest band) · " + fmtMhz(hz));
     }
     var sel = $("openwebrx-sdr-profiles-listbox");
     var needSwitch = !!(p && sel && p.value && sel.value !== p.value);
@@ -72592,7 +72621,13 @@ Plugins.toolbox.init = function () {
     };
     if (needSwitch) {
       exploreSetStatus("Profile → " + (p.label || p.id || "") + " · " + fmtMhz(hz));
-      switchProfile(p.value).then(function () { finish(); });
+      switchProfile(p.value).then(function (ok) {
+        if (ok === false) {
+          exploreSetStatus(profileSwitchFailureHint(p.value));
+          return;
+        }
+        finish();
+      });
     } else {
       finish();
       exploreSetStatus(clamped.clamped

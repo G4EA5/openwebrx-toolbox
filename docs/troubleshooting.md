@@ -87,6 +87,16 @@ hard-refresh (**B136+**).
 
 In-panel **Help** tab has the full guide; hover any control for a short tip.
 
+## Explore Go MHz lands on the wrong frequency (HackRF / SDR only)
+
+Hard-refresh (**B303+**). With **SDR only = HackRF** (or while the live profile is
+HackRF), **Go** only switches among **HackRF** bands — it will not pick an RTL profile
+and snap back. If your MHz is outside every HackRF profile **label** (e.g. 555 MHz when
+you only have 430–440 MHz 70 cm), Toolbox switches to the **nearest HackRF band** on
+that radio, then tunes (same idea as RTL). Status shows **nearest band** when that
+happens. To tune anywhere without that hop, add a wider HackRF profile in OpenWebRX
+settings.
+
 ## Settings → More or Public looks wrong
 
 Hard-refresh (**Ctrl+Shift+R**). Toolbox rebuilds the panel when markup is stale
@@ -107,5 +117,5 @@ There is no separate GitHub wiki — docs live in this repo:
 
 - **[What’s new since v965 (B era)](WHATS-NEW-SINCE-V965.md)** — operator guide after `toolbox-v965`
 - **[README](../README.md)** — install, SDR hardware, troubleshooting table
-- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B297)
+- **[CHANGELOG.md](../CHANGELOG.md)** — every build note (B1…B303)
 - **In-panel Help** tab — full UI guide + **What’s new since v965** (same era as above)
