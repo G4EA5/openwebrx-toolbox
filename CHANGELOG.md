@@ -1,5 +1,9 @@
 # Changelog
 
+## [B304] — Explore Go MHz (all SDR types + docs)
+
+- **Explore → Go** scopes profile pick to the **OpenWebRX device id** (two RTL sticks, HackRF vs Airspy, custom Soapy names) — not only SDR kind. Uses full **profileFreqRange** (labels + cached metadata). **Help** and **README** explain Go MHz for every supported radio type.
+
 ## [B303] — Explore Go: nearest band on same SDR (555 MHz HackRF)
 
 - **Go MHz** on HackRF (or **SDR only**) switches to the **closest band on that radio** when no profile label includes the target (e.g. 555 MHz → HackRF 70cm), then tunes — same idea as RTL. Does not pick another stick’s profile when you are already on HackRF.

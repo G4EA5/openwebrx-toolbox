@@ -26,7 +26,7 @@ var TOOLBOX_ALLOW_OWNER_OVERRIDE = true;
 var TOOLBOX_PUBLIC_POLICY = null;
 
 Plugins.toolbox = {};
-  Plugins.toolbox._version = "B303";
+  Plugins.toolbox._version = "B304";
   /* Version eras: v1…v965, then vB1, vB2, … (vC1 after B999). See formatToolboxVersion. */
 /* Optional OpenWebRX+ magic_key for continuous center retune (setfrequency).
    Match your receiver if you changed it; stock OpenWebRX+ often uses this default. */
@@ -28806,7 +28806,14 @@ Plugins.toolbox.init = function () {
       "<li><b>Hardware gain</b> — RF / IF (or RTL tuner) from the active OpenWebRX profile. Auto-shows when Toolbox detects your SDR (RTL, SDRplay/RSP, HackRF, Airspy, Lime, …). Default mode is <b>Auto</b> (AGC) when the profile has no manual value. <b>Changing gain needs OpenWebRX Settings admin login in this browser</b> (page / Basic auth is not enough): open <b>Settings</b>, sign in, hard-refresh, then use Explore → Receiver. Guests see a locked preview.</li>" +
       "<li><b>IF</b> — passband width·shift + CW pitch. <b>Waterfall</b> — min/max, Auto, Continuous, Default.</li>" +
       "<li><b>Look</b> — <b>UI/WF themes</b>, bandplan, and wheel-to-tune are shared with the stock receiver (change either side, both update). <b>Toolbox</b> panel tint + opacity are panel-only (stock has its own opacity slider). <b>Memories</b> — 12 slots. <b>Find</b> — search / nearest / copy tune link / Digi panel. <b>On this frequency</b> and <b>Recent tunes</b> sit under the other boxes.</li>" +
-      "<li><b>Tune</b> — type MHz in the LCD (top left) and press <b>Go</b> or Enter to jump (switches profile if needed). Hover a digit and scroll the mouse wheel to nudge that place (Shift ×10). <b>Mute / Vol</b> sit in the Tune header (always visible). <b>VFO</b> — A/B · A=B · Swap · lock tune · lock profile · stock step / Snap / history.</li>" +
+      "<li><b>Tune</b> — type MHz in the LCD (top left) and press <b>Go</b> or Enter. See <b>Go MHz</b> below. Hover a digit and scroll the mouse wheel to nudge that place (Shift ×10). <b>Mute / Vol</b> sit in the Tune header (always visible). <b>VFO</b> — A/B · A=B · Swap · lock tune · lock profile · stock step / Snap / history.</li>" +
+      "<li><b>Go MHz</b> (Tune box) — jumps the receiver to the MHz you type. Works the same for <b>RTL-SDR, HackRF, Airspy, SDRplay, Lime, Soapy</b>, and other OpenWebRX profiles Toolbox recognises (from the device id on each <code>device|band</code> profile).</li>" +
+      "<ul>" +
+      "<li><b>Which radio?</b> — If <b>Profile → SDR only</b> is set (e.g. HackRF), only that kind is used. If <b>All SDRs</b>, Go stays on the <b>same OpenWebRX device</b> as the live profile (so a second RTL stick or a HackRF is not confused with the other).</li>" +
+      "<li><b>Which band?</b> — Toolbox reads MHz ranges from profile names (and cached profile metadata). It picks the <b>narrowest band that includes</b> your MHz; if none include it, the <b>nearest band on that device</b> (status says <b>nearest band</b>), then tunes. Example: 555 MHz with only 430–440 MHz 70 cm on HackRF → switches to that 70 cm profile, then dials 555.</li>" +
+      "<li><b>Limits</b> — Toolbox does not bypass OpenWebRX: if the server or hardware refuses that MHz on the chosen profile, the dial may clamp. Add a wider custom profile in OpenWebRX settings if you need guaranteed coverage.</li>" +
+      "<li><b>Input</b> — <code>145.5</code>, <code>145,5</code>, optional <code>MHz</code> suffix; values ≥10000 are treated as Hz.</li>" +
+      "</ul>" +
       "<li><b>Explore on</b> — drag ≥⅓ width to hop tiles, short-click to tune, wheel steps VFO (Shift ×10, Alt profile).</li>" +
       "<li><b>Profile</b> box — <b>SDR only</b> filters the profile dropdown and ◀/▶ hop here (All SDRs or one kind). Does not change Range / Analyzer / Identify choosers.</li>" +
       "<li>For automated sweeps use <b>Range → Full range (Explorer)</b>.</li>" +
@@ -32798,8 +32805,9 @@ Plugins.toolbox.init = function () {
     return idLooksUhf(p && p.id);
   }
 
-  function profileForFreq(freqHz, sdrKindOnly) {
-    sdrKindOnly = String(sdrKindOnly || "").trim();
+  function profileForFreq(freqHz, scope) {
+    if (typeof scope === "string") scope = { kind: scope, deviceId: "" };
+    scope = scope || {};
     var list = profiles();
     var best = null;
     var bestSpan = Infinity;
@@ -32808,8 +32816,8 @@ Plugins.toolbox.init = function () {
     var i, p, r, lo, hi, span, mid, d;
     for (i = 0; i < list.length; i++) {
       p = list[i];
-      if (sdrKindOnly && !profileMatchesPackSdrKind(p.value, sdrKindOnly)) continue;
-      r = parseMhzRange(p.label) || profileMhzRange(p);
+      if (!profileMatchesExploreScope(p.value, scope)) continue;
+      r = profileFreqRange(p);
       if (!r) continue;
       lo = r.lo * 1e6;
       hi = r.hi * 1e6;
@@ -32829,19 +32837,46 @@ Plugins.toolbox.init = function () {
     return best || near;
   }
 
-  /** Explore Go: SDR only dropdown, else the live OpenWebRX profile’s radio (not another stick’s “nearest”). */
-  function exploreActiveSdrKindFilter() {
-    var only = String(S.exploreSdrShowOnly || "").trim();
-    if (only) return only;
-    try {
-      var cv = String(currentProfileValue() || "");
-      if (cv.indexOf("|") < 0) return "";
-      var dev = profileSdrKind(cv);
-      var kind = smeterCalKindFromDeviceId(dev);
-      if (kind && kind !== "generic") return kind;
-      return dev || "";
-    } catch (e) {}
-    return "";
+  /** Match profile to Explore Go scope (OpenWebRX device id and/or pack SDR kind). */
+  function profileMatchesExploreScope(profileValue, scope) {
+    scope = scope || {};
+    var deviceId = String(scope.deviceId || "").trim();
+    var kind = String(scope.kind || "").trim();
+    profileValue = String(profileValue || "");
+    if (deviceId) return profileValue.indexOf(deviceId + "|") === 0;
+    if (!kind) return true;
+    if (profileMatchesPackSdrKind(profileValue, kind)) return true;
+    if (profileSdrKind(profileValue) === kind) return true;
+    return false;
+  }
+
+  /**
+   * Which radio Explore Go should use: SDR only filter, else the live profile’s device
+   * (stays on that stick — RTL #1 vs #2, HackRF vs Airspy, custom Soapy ids, …).
+   */
+  function exploreTuneProfileScope() {
+    var kinds = Object.keys(profileSdrKindCounts()).sort();
+    var onlyKind = String(S.exploreSdrShowOnly || "").trim();
+    if (onlyKind) onlyKind = toolboxSdrKindCanon(onlyKind, kinds) || onlyKind;
+    var cv = "";
+    try { cv = String(currentProfileValue() || ""); } catch (eV) {}
+    var curDev = cv.indexOf("|") >= 0 ? cv.split("|")[0].trim() : "";
+
+    if (onlyKind) {
+      var deviceId = "";
+      if (curDev && profileMatchesPackSdrKind(cv, onlyKind)) deviceId = curDev;
+      else {
+        try { deviceId = String(sdrDeviceIdForPackKind(onlyKind) || "").trim(); } catch (eD) {}
+      }
+      return { kind: onlyKind, deviceId: deviceId };
+    }
+
+    if (curDev) {
+      var kind = smeterCalKindFromDeviceId(curDev);
+      if (kind === "generic") kind = curDev;
+      return { kind: kind, deviceId: curDev };
+    }
+    return { kind: "", deviceId: "" };
   }
 
   function profileMhzRange(p) {
@@ -55033,7 +55068,7 @@ Plugins.toolbox.init = function () {
       '<input type="text" inputmode="decimal" class="bs-ex-freq" id="bs-ex-goto" placeholder="——.——————" autocomplete="off" spellcheck="false" aria-label="Frequency MHz" data-tip="Type MHz and Go/Enter. Hover a digit and scroll the wheel to nudge that place (Shift ×10).">' +
       "</label>" +
       '<span class="bs-ex-freq-unit">MHz</span>' +
-      '<button type="button" class="bs-primary bs-btn-go bs-ex-btn bs-ex-go-btn" id="bs-ex-go" title="Tune to this MHz, switching profile if needed.">Go</button>' +
+      '<button type="button" class="bs-primary bs-btn-go bs-ex-btn bs-ex-go-btn" id="bs-ex-go" title="Tune to this MHz on the scoped radio (SDR only or live profile): pick covering band, else nearest band on that device, then dial.">Go</button>' +
       "</div>" +
       '<div class="bs-ex-digi-smeter" id="bs-ex-digi-smeter" title="Digital S-meter (same relative level as the analogue needle).">' +
       '<span class="bs-ex-digi-s" id="bs-ex-digi-s">S—</span>' +
@@ -72578,12 +72613,12 @@ Plugins.toolbox.init = function () {
       hz = clamped.hz;
       exploreSetStatus("Public Explore limited to " + publicExploreLimitLabel() + " — using " + fmtMhz(hz));
     }
-    var sdrOnly = exploreActiveSdrKindFilter();
-    var p = profileForFreq(hz, sdrOnly);
+    var scope = exploreTuneProfileScope();
+    var p = profileForFreq(hz, scope);
     if (isPublicReceiver() && (publicExploreBandsRestricted() || publicExploreLimitsHz())) {
       if (!p || !profileAllowedForPublicExplore(p)) {
         var alt = allowedPublicExploreProfileForHz(hz);
-        if (alt && (!sdrOnly || profileMatchesPackSdrKind(alt.value, sdrOnly))) p = alt;
+        if (alt && profileMatchesExploreScope(alt.value, scope)) p = alt;
       }
       if (!p) {
         exploreSetStatus("Public Explore: " + fmtMhz(hz) + " is outside allowed bands" +
@@ -72592,8 +72627,9 @@ Plugins.toolbox.init = function () {
       }
     }
     if (!p) {
-      exploreSetStatus(sdrOnly
-        ? ("No “" + sdrOnly + "” profile for " + fmtMhz(hz) + " — add a band or widen coverage.")
+      var who = scope.deviceId || scope.kind || "";
+      exploreSetStatus(who
+        ? ("No profile on “" + who + "” for " + fmtMhz(hz) + " — add a band or widen coverage.")
         : ("No profile for " + fmtMhz(hz) + " — add a band in OpenWebRX settings."));
       return;
     }

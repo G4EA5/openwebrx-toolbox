@@ -1,4 +1,4 @@
-# OpenWebRX Toolbox (vB303)
+# OpenWebRX Toolbox (vB304)
 
 **OpenWebRX+ receiver plugin** — band / range survey, Explore, Identify, Log,
 Watch, peaks, bookmarks, audio clips, DX / sats, and more. Formerly **Band
@@ -60,12 +60,12 @@ the top bar, then **Settings → Check install**.
 
 ### What’s new since v965 (B era)
 
-After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B303** (see Help → **What’s new since v965**). Summary:
+After tag **`toolbox-v965`**, versions are **B1**, **B2**, … **B304** (see Help → **What’s new since v965**). Summary:
 
 | Area | Highlights |
 | --- | --- |
 | **More** | Feeds → Yours, expanded panes (5 default per group), Plan/News/Tips, Calls/prefix data in `toolbox.js` |
-| **Explore** | Light boxes, Listen, S-meter calibrate, **SDR only** on Profile hop (B73–B109); **Go MHz** stays on the chosen radio — nearest band on that SDR when the MHz is outside profile labels (**B302–B303**, HackRF vs RTL) |
+| **Explore** | Light boxes, Listen, S-meter calibrate, **SDR only** on Profile hop (B73–B109); **Go MHz** — device-scoped profile pick for any supported SDR (**B302–B304**; see [Explore Go MHz](#explore-go-mhz)) |
 | **Bands** | Packs per-SDR, **SDR only** bar (with Explore); Beacons/Solar/Today moved to More |
 | **Range / Anz / ID** | Per-tab **Choose SDR** (ID: **All SDRs** or one kind); Anz **Main waterfall** on wide spans |
 | **Settings** | **Update Toolbox**, multi-SDR block at bottom of **General**, **Public** sub-tab, **Import / Export browser data** (B297–B301), layout profiles (replaces old Pi preset) |
@@ -247,6 +247,20 @@ Practical differences by setup:
 - **Presets** (Air, FM, …) match common profile id/name patterns. Custom names still
   work — tick bands manually or use **All**.
 - **Hardware gain** can be adjusted from Explore → Receiver (see Explore tab guide).
+
+### Explore Go MHz
+
+In **Explore → Tune**, type a frequency and press **Go** or **Enter**. Toolbox picks an OpenWebRX **profile** on the correct **radio**, then calls the same tune API OpenWebRX uses for manual dial.
+
+| Step | Behaviour |
+| --- | --- |
+| **Which radio?** | **Profile → SDR only** (Explore / Bands) if set — e.g. HackRF only. Otherwise the **live profile’s device** (`device\|band` prefix), so two RTL dongles or HackRF vs Airspy are not mixed. |
+| **Which band?** | Parse MHz from profile **names** (plus cached metadata when available). Prefer the **narrowest band that includes** your MHz; if none, the **nearest band on that device**, then tune (status may say **nearest band**). |
+| **SDR types** | Same logic for **RTL-SDR**, **RTL TCP/Soapy**, **HackRF**, **Airspy / HF+**, **SDRplay**, **Lime**, **Soapy** (Pluto, bladeRF, USRP, …), and custom device ids Toolbox maps from the profile list. |
+| **Limits** | Toolbox does not override OpenWebRX or driver limits — if a MHz is outside what the server allows on that profile, the dial may clamp. Add a wider profile in OpenWebRX settings if needed. |
+| **Input** | `145.5`, `145,5`, optional `MHz`; integers ≥ 10000 are treated as **Hz**. |
+
+Full operator notes: in-panel **Help (?)** → **Explore tab** → **Go MHz**, or [`docs/troubleshooting.md`](docs/troubleshooting.md#explore-go-mhz-lands-on-the-wrong-frequency-hackrf--sdr-only).
   Needs OpenWebRX Settings admin login. Tested most on RTL-SDR.
 - **Analyzer** draws from the live OWRX waterfall (relative dB). It is **not** a
   standalone [HackRF sweep visualizer](https://github.com/G4EA5/hackrf_sweep_visualizer_v1).

@@ -89,13 +89,14 @@ In-panel **Help** tab has the full guide; hover any control for a short tip.
 
 ## Explore Go MHz lands on the wrong frequency (HackRF / SDR only)
 
-Hard-refresh (**B303+**). With **SDR only = HackRF** (or while the live profile is
-HackRF), **Go** only switches among **HackRF** bands — it will not pick an RTL profile
-and snap back. If your MHz is outside every HackRF profile **label** (e.g. 555 MHz when
-you only have 430–440 MHz 70 cm), Toolbox switches to the **nearest HackRF band** on
-that radio, then tunes (same idea as RTL). Status shows **nearest band** when that
-happens. To tune anywhere without that hop, add a wider HackRF profile in OpenWebRX
-settings.
+Hard-refresh (**B304+**). **Go** picks a profile on the scoped **OpenWebRX device**
+(live profile’s `device|band`, or **SDR only** when set) — not another stick. Band
+choice: narrowest profile whose **name/metadata range includes** your MHz; else
+**nearest band on that device** (status **nearest band**), then tune. Same for RTL,
+HackRF, Airspy, SDRplay, Lime, Soapy, and custom device ids. If names are UUIDs,
+**B304+** also uses cached profile frequency metadata when OpenWebRX provides it.
+OpenWebRX may still clamp MHz outside what that profile allows — add a wider profile
+in server settings if needed. **Help (?) → Explore tab → Go MHz** · README **Explore Go MHz**.
 
 ## Settings → More or Public looks wrong
 
