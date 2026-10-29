@@ -46,4 +46,4 @@ location.reload(true);
 
 - OpenWebRX should load **without** “Loading Toolbox…”.
 - Click **Toolbox** in the top bar when you want the panel (first open may take a few seconds).
-- Check the panel header shows the current build (e.g. **B303** or newer) after deploy.
+- Check the panel header shows the current build (e.g. **B304** or newer) after deploy.
